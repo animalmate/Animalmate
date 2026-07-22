@@ -1,0 +1,37 @@
+# 00 규칙 #4: 시크릿/개인정보 커밋 금지 — 아래 항목은 절대 커밋되면 안 된다.
+
+# 환경 변수 / 시크릿
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# 백업 덤프 (PII 포함 — 평문 공개 금지, 02-TECH-STACK §3)
+*.dump
+*.sql.gz
+*.sql.age
+*.sql.gpg
+backups/
+
+# 의존성 / 빌드 산출물
+node_modules/
+.next/
+dist/
+build/
+out/
+coverage/
+
+# 로그 / 임시
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+tmp/
+.cache/
+
+# 에디터
+.vscode/
+.idea/
+*.swp

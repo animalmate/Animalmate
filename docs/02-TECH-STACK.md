@@ -1,0 +1,91 @@
+# 02. 기술 스택 & 아키텍처 (v2 — 무료 티어 제약 검증 반영)
+
+> 설계 기준 3가지: ① 고정비 최소(도메인+LLM 크레딧 외 0원) ② 관리자 교체 가능(조직 계정·문서화)
+> ③ 보안(기본 거부, 서버 강제). v1→v2 변경: 스케줄러를 Vercel Cron에서 **Supabase pg_cron으로 이관**
+> (Hobby 크론은 하루 1회 제한), keep-alive·백업·SMTP 항목 추가.
+
+## 1. 스택 (결정 + 이유)
+| 영역 | 선택 | 이유 / 비용 |
+|---|---|---|
+| 프레임워크 | Next.js (App Router) + TypeScript | 웹앱+API 단일 리포. 무료 |
+| 호스팅 | Vercel Hobby | 무료(비상업 용도 — 비영리 동아리 해당). **Cron 기능은 사용 금지** |
+| 스케줄러 | **Supabase pg_cron + pg_net** | 분 단위 가능·무료. HTTP로 우리 API(CRON_SECRET 보호) 호출 |
+| DB/인증/벡터/스토리지 | Supabase Free | Postgres+pgvector+Auth(매직링크)+Storage. 무료 |
+| ORM | Drizzle | 서버리스 친화, 마이그레이션 파일 기반 |
+| LLM | 생성+임베딩 API (선불 크레딧) | 월 수천 원 수준. 하드 한도+알림 필수 |
+| 이메일 | Resend Free (100통/일) | 초대·알림·핸드오프. **Supabase Auth의 SMTP로도 연결(필수)** |
+| 모니터링 | UptimeRobot Free(5분 핑) + Sentry Free | 가동 감시 + keep-alive 겸용. 알림 = 공용 메일 |
+| 백업 | GitHub Actions 주 1회 pg_dump | 무료 티어는 자동 백업 없음 → 자체 백업 |
+
+고정비 총액: 도메인 연 ~2만원 + LLM 크레딧 월 수천 원. 그 외 전부 무료 티어.
+
+## 2. 아키텍처 개요
+```
+부원/운영진 브라우저
+   │  (Supabase Auth 매직링크로 로그인만. DB 직접 접근 없음)
+   ▼
+Next.js @ Vercel ── API Routes: 인증·역할·소유권·임기 검증 (서버 강제)
+   │        ├── Supabase Postgres (RLS 전면 활성화 = 기본 거부, service role은 서버 전용)
+   │        ├── pgvector: 문서 청크 (visibility 필터를 SQL로 강제)
+   │        └── LLM API (서버에서만 호출, 사용자별 일일 쿼터)
+   ▲
+Supabase pg_cron (분 단위) ──pg_net HTTP──▶ /api/cron/* (CRON_SECRET 검증)
+   ├── 매분: 발행 워커 (due인 scheduled_posts → 카페 글쓰기 API)
+   ├── 매일 09:00: 회차 초안 생성(D-3) + 팀장단 알림
+   ├── 매시: 이벤트 마감 처리 (정원/시각)
+   ├── 매일 00:10: 임기 만료 강등
+   └── 매일: 네이버 refresh token 선제 갱신
+외부: UptimeRobot ──5분──▶ /api/health (경량 DB SELECT → 일시정지 방지 + 감시)
+```
+
+## 3. 무료 티어 함정과 대응 (검증 완료 — 반드시 준수)
+1. **Vercel Hobby Cron 금지**: 하루 1회 제한 + 시간 단위 정밀도(지정 시각 미보장) + 재시도 없음
+   + 10초 타임아웃. 정시 발행 불가 → 모든 스케줄은 pg_cron으로. 발행 워커는 1회 실행당
+   소량(예: 5건)만 처리해 함수 타임아웃을 피한다.
+2. **Supabase 7일 미사용 일시정지**: 무료 프로젝트는 7일간 요청이 없으면 자동 정지되고,
+   정지 후 장기간 방치 시 복구 불가(약 90일 창). 대응: /api/health가 DB를 1회 조회하고
+   UptimeRobot이 5분마다 호출(+pg_cron 자체 활동도 보조). 이 링크가 끊기면 방학 중 서비스가
+   죽는다는 사실을 장애 대응 가이드에 명시.
+3. **자동 백업 없음**: 무료 티어는 백업 미제공. GitHub Actions 주 1회 pg_dump → age/GPG
+   암호화 → 비공개 저장소(또는 비공개 아티팩트)에 보관. 암호화 키는 비밀번호 금고에.
+   **평문 덤프를 공개 리포에 올리지 않는다(PII).** 학기 1회 복원 리허설.
+4. **Supabase 기본 인증 메일 한도**: 기본 SMTP는 시간당 수 건 수준이라 300명 매직링크 운영
+   불가 → Auth 설정에서 커스텀 SMTP(Resend)를 반드시 연결.
+5. Supabase Free 용량 참고: DB 500MB / Storage 1GB / MAU 5만 / Edge 호출 50만/월 —
+   300명 규모에 충분. 이미지 원본은 카페에 있으므로 Storage는 발행용 임시 저장만.
+
+## 4. 보안 원칙 (관리자 교체를 전제로 한 기본 거부 설계)
+- **RLS 전면 활성화 + 정책 미부여 = 기본 거부.** anon key로는 어떤 테이블도 직접 읽고 쓸 수 없다.
+  데이터 접근은 전부 Next.js 서버(service role key, 서버 환경변수 전용) 경유. 이 구조 덕에
+  에이전트가 실수로 클라이언트 쿼리를 짜도 데이터가 새지 않는다.
+- 인증: 초대제 + 이메일 매직링크. 세션 만료 기본값 유지. 회장단·시스템관리자 계정과
+  인프라 대시보드(GitHub/Supabase/Vercel)는 2FA.
+- 크론 엔드포인트: Authorization 헤더의 CRON_SECRET 검증 없이는 무조건 401.
+- 챗봇 남용 방지: 사용자별 일일 질문 쿼터(DB 카운터)로 LLM 비용 폭주 차단 + 시스템 프롬프트
+  인젝션 방어 + 개인정보 질의 거절.
+- 네이버 refresh token은 TOKEN_ENCRYPTION_KEY로 암호화 저장. 키 로테이션 절차 문서화.
+- 감사: 관리 행위 전건 audit_logs. 학기 전환·권한 변경은 특히.
+
+## 5. 네이버 카페 API 제약 (변경 없음 — 요약)
+- 제공: 카페 가입, 글쓰기(POST /v1/cafe/{clubid}/menu/{menuid}/articles)뿐.
+  읽기/수정/삭제/댓글 없음(00 규칙 참조). subject/content UTF-8 URL 인코딩, 이미지는
+  multipart(여러 장은 파라미터 반복). menuid는 boards 테이블에서 조회(하드코딩 금지).
+- 앱은 동아리 조직 계정 소유, 개발 상태 앱은 등록 멤버(봇 계정)만 호출 가능. 일일 한도는
+  콘솔 수치 기록. 봇 계정 비밀번호 변경 시 재동의 필요.
+
+## 6. 환경 변수 (env.example과 동기화)
+```
+NEXT_PUBLIC_APP_URL=
+SUPABASE_URL= / SUPABASE_ANON_KEY= / SUPABASE_SERVICE_ROLE_KEY=   # service role은 서버 전용
+LLM_API_KEY=                      # 서버 전용
+NAVER_CLIENT_ID= / NAVER_CLIENT_SECRET= / NAVER_CAFE_CLUB_ID=
+TOKEN_ENCRYPTION_KEY=             # refresh token 암호화
+RESEND_API_KEY=
+CRON_SECRET=                      # pg_net 호출 헤더와 일치해야 함
+BACKUP_ENCRYPTION_KEY=            # GitHub Actions 시크릿에만 (백업 암호화)
+```
+
+## 7. 계정·이관 원칙 (요약 — 상세는 자산 대장)
+- 모든 인프라 계정은 동아리 공용 이메일 소유. GitHub는 Organization, 개발자는 멤버.
+- 운영진 교체 시 로테이션: 비밀번호 전체 → API 키 재발급 → CRON_SECRET/암호화 키 →
+  복구 전화번호 → 결제수단. 절차는 인수인계 문서에.
