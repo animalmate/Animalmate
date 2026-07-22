@@ -12,7 +12,8 @@
 | 스케줄러 | **Supabase pg_cron + pg_net** | 분 단위 가능·무료. HTTP로 우리 API(CRON_SECRET 보호) 호출 |
 | DB/인증/벡터/스토리지 | Supabase Free | Postgres+pgvector+Auth(매직링크)+Storage. 무료 |
 | ORM | Drizzle | 서버리스 친화, 마이그레이션 파일 기반 |
-| LLM | 생성+임베딩 API (선불 크레딧) | 월 수천 원 수준. 하드 한도+알림 필수 |
+| LLM(생성) | **Gemini 3.1 Flash-Lite (유료 티어)** | 유료 티어로 확정. 프롬프트 캐싱으로 비용 절감. 하드 한도+알림 필수. **구형 2.0 계열 모델명 사용 금지**(코드·프롬프트·문서 전부 3.x 계열만). 코드는 `GEMINI_MODEL` 환경변수로 읽음(기본값 하드코딩 금지) |
+| LLM(임베딩) | Gemini 최신 임베딩 모델 | 구형 2.0 계열 금지. 코드는 `GEMINI_EMBEDDING_MODEL` 환경변수로 읽음. 정확한 ID는 Phase 1에서 콘솔 확인 후 핀 고정 |
 | 이메일 | Resend Free (100통/일) | 초대·알림·핸드오프. **Supabase Auth의 SMTP로도 연결(필수)** |
 | 모니터링 | UptimeRobot Free(5분 핑) + Sentry Free | 가동 감시 + keep-alive 겸용. 알림 = 공용 메일 |
 | 백업 | GitHub Actions 주 1회 pg_dump | 무료 티어는 자동 백업 없음 → 자체 백업 |
@@ -63,6 +64,13 @@ Supabase pg_cron (분 단위) ──pg_net HTTP──▶ /api/cron/* (CRON_SECRE
 - 크론 엔드포인트: Authorization 헤더의 CRON_SECRET 검증 없이는 무조건 401.
 - 챗봇 남용 방지: 사용자별 일일 질문 쿼터(DB 카운터)로 LLM 비용 폭주 차단 + 시스템 프롬프트
   인젝션 방어 + 개인정보 질의 거절.
+- **챗봇 retrieval = visibility 필터(질문자 역할 기준)**: 검색은 항상 질문자의 role 이하 문서만
+  대상으로 한다(`WHERE visibility_rank <= 질문자_role_rank`, 03-DATA-MODEL §4). 필터는 검색
+  SQL 레벨에서 강제하며, 애플리케이션 후처리로 대체하지 않는다.
+- **입력창 고지**: 챗봇 입력창 안내 문구는 **'개인정보 입력 금지' 하나만 유지**한다(다른 고지 문구는
+  두지 않는다). PII 미입력 유도가 목적이며, 서버측 개인정보 질의 거절과 이중으로 작동한다.
+- **프롬프트 캐싱 적용**: 시스템 프롬프트·공통 지시문 등 반복되는 프리픽스는 Gemini 프롬프트
+  캐싱으로 재사용해 유료 티어 토큰 비용을 줄인다. 캐시 키에 개인정보/가변 검색결과를 넣지 않는다.
 - 네이버 refresh token은 TOKEN_ENCRYPTION_KEY로 암호화 저장. 키 로테이션 절차 문서화.
 - 감사: 관리 행위 전건 audit_logs. 학기 전환·권한 변경은 특히.
 
@@ -77,7 +85,9 @@ Supabase pg_cron (분 단위) ──pg_net HTTP──▶ /api/cron/* (CRON_SECRE
 ```
 NEXT_PUBLIC_APP_URL=
 SUPABASE_URL= / SUPABASE_ANON_KEY= / SUPABASE_SERVICE_ROLE_KEY=   # service role은 서버 전용
-LLM_API_KEY=                      # 서버 전용
+GEMINI_API_KEY=                   # 서버 전용 (Gemini)
+GEMINI_MODEL=                     # 생성 모델 ID. 기본값 하드코딩 금지 — Phase 1에서 콘솔 확인 후 핀 고정
+GEMINI_EMBEDDING_MODEL=           # 임베딩 모델 ID. Gemini 최신 임베딩 모델
 NAVER_CLIENT_ID= / NAVER_CLIENT_SECRET= / NAVER_CAFE_CLUB_ID=
 TOKEN_ENCRYPTION_KEY=             # refresh token 암호화
 RESEND_API_KEY=

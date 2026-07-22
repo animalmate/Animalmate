@@ -29,7 +29,7 @@
 | 키 이름 | 용도 | 저장 위치 | 로테이션 주기 | 비고 |
 |---|---|---|---|---|
 | SUPABASE_SERVICE_ROLE_KEY | 서버 DB 접근 | Vercel 환경변수 + 금고 | 운영진 교체 시 | 서버 전용 |
-| LLM_API_KEY | LLM 호출 | Vercel 환경변수 + 금고 | 운영진 교체 시 | 한도 설정 |
+| GEMINI_API_KEY | Gemini 생성+임베딩 호출 | Vercel 환경변수 + 금고 | 운영진 교체 시 | 한도 설정 |
 | NAVER_CLIENT_ID/SECRET | 카페 앱 | Vercel 환경변수 + 금고 | 운영진 교체 시 | |
 | TOKEN_ENCRYPTION_KEY | refresh token 암호화 | Vercel 환경변수 + 금고 | 신중히(재암호화 필요) | |
 | CRON_SECRET | pg_cron→API 인증 | Supabase + Vercel + 금고 | 운영진 교체 시 | 양쪽 일치 |
