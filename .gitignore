@@ -35,3 +35,6 @@ tmp/
 .vscode/
 .idea/
 *.swp
+
+# 에이전트 도구 상태
+.omc/

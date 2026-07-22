@@ -15,10 +15,16 @@ if (existsSync(envPath)) {
     const eq = trimmed.indexOf('=');
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
-    let val = trimmed.slice(eq + 1).trim();
-    // 감싼 따옴표 제거
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
+    let val = trimmed.slice(eq + 1);
+    const q = val.trim();
+    if ((q.startsWith('"') && q.endsWith('"')) || (q.startsWith("'") && q.endsWith("'"))) {
+      // 따옴표로 감싼 값: 내부의 # 는 보존
+      val = q.slice(1, -1);
+    } else {
+      // 인라인 주석 제거: 값 시작(^) 또는 공백 뒤의 # 부터 잘라낸다
+      const m = val.match(/(^|\s)#/);
+      if (m) val = val.slice(0, m.index);
+      val = val.trim();
     }
     if (!(key in process.env)) process.env[key] = val;
   }

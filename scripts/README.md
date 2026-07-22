@@ -10,23 +10,27 @@
 2. 아래 값 채우기:
    - `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` — 네이버 개발자센터 앱
    - `NAVER_CAFE_CLUB_ID` — 대상 카페 clubid
-   - `NAVER_REFRESH_TOKEN` — 봇 계정 OAuth 동의 후 발급
-   - `NAVER_ACCESS_TOKEN` — (토큰 갱신 스크립트로 발급받아 채움)
+   - `NAVER_REFRESH_TOKEN` — `naver-token.mjs` 로 발급(아래 실행 순서 1번)
    - `NAVER_TEST_MENUID` — **테스트 게시판** menuid (실제 공지 게시판 금지)
 
 ## 실행 순서
 ```bash
-# 1) refresh token → access token 갱신 검증
-node scripts/refresh-cafe-token.mjs
-#    출력된 access_token 을 .env 의 NAVER_ACCESS_TOKEN 에 붙여넣는다.
+# 1) refresh token 발급 (최초 1회) — 브라우저 OAuth 동의
+#    사전: 개발자센터 앱에 Callback URL http://localhost:3000/callback 등록 필요.
+node scripts/naver-token.mjs
+#    출력된 refresh token 을 .env 의 NAVER_REFRESH_TOKEN 에 붙여넣고 금고에도 저장한다.
 
 # 2) 글쓰기 3종 검증 (텍스트 / 이미지 1장 / 이미지 2장)
+#    시작 시 refresh token 으로 access token 을 자동 갱신한다.
 node scripts/verify-cafe-write.mjs
+
+# (선택) refresh token → access token 수동 갱신만 점검하고 싶을 때
+node scripts/refresh-cafe-token.mjs
 ```
 
 ## 통과 기준(DoD)
-- `verify-cafe-write.mjs` 가 **3/3 성공**하고 각 글의 카페 URL을 출력.
-- `refresh-cafe-token.mjs` 가 새 access_token 발급 성공.
+- `naver-token.mjs` 가 refresh token 발급 성공 → `.env`/금고에 저장.
+- `verify-cafe-write.mjs` 가 **3/3 성공**하고 각 글의 카페 URL을 출력(내부에서 access token 자동 갱신).
 - 콘솔에서 확인한 **일일 호출 한도** 수치를 `docs/05-ASSET-REGISTRY.md` 에 기록.
 
 ## 주의

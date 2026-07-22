@@ -8,6 +8,7 @@
 
 const OPENAPI_BASE = 'https://openapi.naver.com/v1/cafe';
 const TOKEN_URL = 'https://nid.naver.com/oauth2.0/token';
+export const AUTHORIZE_URL = 'https://nid.naver.com/oauth2.0/authorize';
 
 /**
  * 필수 환경 변수를 읽고, 없으면 명확한 에러로 중단한다.
@@ -110,6 +111,35 @@ export async function refreshAccessToken({ clientId, clientSecret, refreshToken 
     status: res.status,
     accessToken: raw?.access_token,
     // 네이버는 갱신 시 refresh_token 을 재발급할 수도, 안 할 수도 있다.
+    refreshToken: raw?.refresh_token,
+    expiresIn: raw?.expires_in ? Number(raw.expires_in) : undefined,
+    raw,
+  };
+}
+
+/**
+ * authorization code 를 access/refresh token 으로 교환한다 (최초 발급).
+ * @param {object} p
+ * @param {string} p.clientId
+ * @param {string} p.clientSecret
+ * @param {string} p.code
+ * @param {string} p.state
+ * @returns {Promise<{ok: boolean, status: number, accessToken?: string, refreshToken?: string, expiresIn?: number, raw: any}>}
+ */
+export async function exchangeCodeForToken({ clientId, clientSecret, code, state }) {
+  const params = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    state,
+  });
+  const res = await fetch(`${TOKEN_URL}?${params.toString()}`, { method: 'GET' });
+  const raw = await safeJson(res);
+  return {
+    ok: res.ok && !raw?.error,
+    status: res.status,
+    accessToken: raw?.access_token,
     refreshToken: raw?.refresh_token,
     expiresIn: raw?.expires_in ? Number(raw.expires_in) : undefined,
     raw,
