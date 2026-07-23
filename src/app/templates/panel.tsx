@@ -24,7 +24,7 @@ function ownerText(t: Template): string {
   return OWNER_LABEL[t.ownerType] ?? t.ownerType;
 }
 
-export function TemplatesPanel() {
+export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -119,7 +119,7 @@ export function TemplatesPanel() {
           <Select value={ownerType} onChange={(e) => setOwnerType(e.target.value)} disabled={editingId !== null}>
             <option value="personal">개인</option>
             <option value="team">팀</option>
-            <option value="global">공용(회장단만)</option>
+            {isBoard ? <option value="global">공용(회장단만)</option> : null}
           </Select>
         </Field>
         {ownerType === 'team' ? (
@@ -166,10 +166,14 @@ export function TemplatesPanel() {
                   </div>
                   <div className="truncate text-gray-500">{t.titleTemplate}</div>
                 </div>
-                <span className="flex shrink-0 gap-2">
-                  <SecondaryButton onClick={() => startEdit(t)}>수정</SecondaryButton>
-                  <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
-                </span>
+                {isBoard || t.ownerType !== 'global' ? (
+                  <span className="flex shrink-0 gap-2">
+                    <SecondaryButton onClick={() => startEdit(t)}>수정</SecondaryButton>
+                    <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-xs text-gray-400">공용(읽기)</span>
+                )}
               </li>
             ))}
           </ul>
