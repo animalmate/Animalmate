@@ -11,7 +11,7 @@ import type { Actor } from '@/auth/permissions';
 const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const suite = DIRECT_URL ? describe : describe.skip;
 
-const MENUID = 990071;
+const MENUID = 990081;
 const EMAIL = 'resv-scope-test@example.invalid';
 const TEAM_A = 'RS-TEST-A팀';
 const TEAM_B = 'RS-TEST-B팀';

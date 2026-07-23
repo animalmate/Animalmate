@@ -136,7 +136,7 @@ export async function applyPublishResult(
   db: DB,
   post: ScheduledPost,
   result: PublishResult
-): Promise<ScheduledPost> {
+): Promise<ScheduledPost | null> {
   const patch = nextStateForResult({ status: post.status, retryCount: post.retryCount }, result);
   const [row] = await db
     .update(scheduledPosts)
@@ -149,6 +149,9 @@ export async function applyPublishResult(
     })
     .where(eq(scheduledPosts.id, post.id))
     .returning();
+
+  // 사이클 도중 예약이 취소(삭제)되면 갱신 대상이 없다 — 조용히 건너뛴다(워커 크래시 방지).
+  if (!row) return null;
 
   const action =
     patch.status === 'published'
@@ -169,7 +172,7 @@ export async function applyPublishResult(
       after: { status: patch.status, retryCount: patch.retryCount, cafeArticleUrl: patch.cafeArticleUrl },
     })
   );
-  return row!;
+  return row;
 }
 
 async function updateStatus(

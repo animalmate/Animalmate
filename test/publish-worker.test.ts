@@ -89,18 +89,23 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
 
   it('재시도 소진 후 실패(failed) → 운영진 알림 메일 발송(규칙 #5)', async () => {
     const id = await makeDuePost();
-    // 이미 재시도 2회(MAX) 소진 상태로 세팅 → 이번 오류로 failed 확정.
-    await db.update(scheduledPosts).set({ retryCount: 2 }).where(eq(scheduledPosts.id, id));
+    // 재시도 2회(MAX) 소진 + 아주 오래된 발행시각(다른 테스트 due 글보다 먼저 처리되도록) → 이번 오류로 failed 확정.
+    await db
+      .update(scheduledPosts)
+      .set({ retryCount: 2, publishAt: new Date(Date.now() - 30 * 86_400_000) })
+      .where(eq(scheduledPosts.id, id));
     const errorRes: CafeWriteResult = {
       ok: false,
       status: 403,
       raw: { message: { error: { code: 'AP003', message: '카페스탭 등급 필요' } } },
     };
+    const okRes: CafeWriteResult = { ok: true, status: 200, articleUrl: 'dry-run://ok', raw: {} };
     const sent: { to: string | string[]; subject: string }[] = [];
-    const summary = await runPublishWorker(db, {
+    // 오류는 내 예약에만 주입(병렬 테스트 예약 오염 방지 — 다른 due 글은 성공 처리).
+    await runPublishWorker(db, {
       dryRun: true,
       sleep: async () => {},
-      cafeWrite: async () => errorRes,
+      cafeWrite: async (post) => (post.id === id ? errorRes : okRes),
       alertEmails: async () => ['ops@example.invalid'],
       mailer: {
         send: async (m) => { sent.push({ to: m.to, subject: m.subject }); },
@@ -108,12 +113,12 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
       },
     });
 
-    expect(summary.failed).toBeGreaterThanOrEqual(1);
     const post = await getPost(db, id);
     expect(post!.status).toBe('failed');
-    expect(sent.length).toBe(1); // 실패 알림 1건(묶음)
-    expect(sent[0]!.to).toEqual(['ops@example.invalid']);
-    expect(sent[0]!.subject).toContain('발행 실패');
+    // 내 실패 예약이 포함된 알림이 운영진에게 발송됨.
+    const alert = sent.find((m) => (Array.isArray(m.to) ? m.to.includes('ops@example.invalid') : m.to === 'ops@example.invalid'));
+    expect(alert).toBeDefined();
+    expect(alert!.subject).toContain('발행 실패');
   });
 
   it('code 999 주입 → failed 아님, scheduled 유지, 요약 waited 집계', async () => {

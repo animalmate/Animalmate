@@ -96,6 +96,7 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
     const res = await write(post, { accessToken, dryRun });
     const result = classifyPublishResponse(res);
     const updated = await applyPublishResult(db, post, result);
+    if (!updated) continue; // 사이클 도중 취소(삭제)된 예약 — 집계·알림 대상 아님.
 
     summary.processed += 1;
     if (result.kind === 'success') {
