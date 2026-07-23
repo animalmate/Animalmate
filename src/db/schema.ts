@@ -44,21 +44,8 @@ export const postStatusEnum = pgEnum('post_status', [
   'published',
   'failed',
 ]);
-export const eventStatusEnum = pgEnum('event_status', [
-  'draft',
-  'recruiting',
-  'closed',
-  'done',
-  'canceled',
-]);
-export const applicationStatusEnum = pgEnum('application_status', [
-  'applied',
-  'confirmed',
-  'waitlisted',
-  'canceled',
-]);
-export const confirmModeEnum = pgEnum('confirm_mode', ['fcfs', 'manual']);
-
+// 신청 기능 폐기로 단순화(결정 2026-07-23): draft → published → done | canceled.
+export const eventStatusEnum = pgEnum('event_status', ['draft', 'published', 'done', 'canceled']);
 // enum 정의에 없지만 03 본문에서 쓰는 보조 enum
 export const membershipStatusEnum = pgEnum('membership_status', ['active', 'expired']);
 export const teamKindEnum = pgEnum('team_kind', ['activity', 'functional']);
@@ -193,34 +180,14 @@ export const events = pgTable('events', {
   meetTime: time('meet_time'),
   place: text('place'),
   capacity: integer('capacity'),
-  confirmMode: confirmModeEnum('confirm_mode').notNull().default('fcfs'),
   status: eventStatusEnum('status').notNull().default('draft'),
-  // 확정자에게만 노출(applications.status=confirmed). 필수 필드 미완성 시 발행 불가(안전장치).
-  openchatUrl: text('openchat_url'),
-  openchatCode: text('openchat_code'),
+  // 공지 발행용 회차 데이터. 필수 필드(event_date/place/capacity) 미완성 시 발행 불가(F1 안전장치).
+  // 신청/확정/오픈채팅은 스코프 피벗으로 제거(신청=카페 댓글, 수합=팀장단 수동).
   scheduledPostId: uuid('scheduled_post_id').references(() => scheduledPosts.id, {
     onDelete: 'set null',
   }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
-
-export const applications = pgTable(
-  'applications',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    eventId: uuid('event_id')
-      .notNull()
-      .references(() => events.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    status: applicationStatusEnum('status').notNull().default('applied'),
-    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
-    decidedAt: timestamp('decided_at', { withTimezone: true }),
-    decidedBy: uuid('decided_by').references(() => users.id),
-  },
-  (t) => [unique('applications_event_user_uq').on(t.eventId, t.userId)]
-);
 
 // ── RAG/챗봇 ───────────────────────────────────────────────────────────
 export const documents = pgTable('documents', {
