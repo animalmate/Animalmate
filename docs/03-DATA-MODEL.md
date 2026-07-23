@@ -33,14 +33,23 @@
   title, content_md, image_urls[], publish_at, status, cafe_article_url?,
   fail_reason?, retry_count, approved_by?, created_at, updated_at)
 
-### 봉사 워크플로
+### 봉사 워크플로 (F1 수동 선예약 중심, 2026-07-23 개정)
+- `post_templates` (id, owner_type, owner_id, name, title_template, body_template,
+  updated_by, updated_at, created_at)   ← 발행 양식(구현 예정)
+  - 제목/본문에 `{{날짜}} {{장소}} {{집합시간}} {{정원}}` 플레이스홀더. 팀 소유 또는 공용.
+    회장단·팀장단 CRUD(소유권 규칙은 게시물과 동일). "공용" 표현 방식은 질문 참조.
 - `recurring_rules` (id, team_id, label, month_week[1..4|last], weekday, time,
   board_menuid, template_md, draft_lead_days default 3, is_active)
+  - **역할 축소(개정)**: 크론 자동 생성 제거. 이제 **일괄 생성 도우미의 저장된 입력값**(반복 패턴
+    프리셋)으로만 쓴다. template_md 는 post_templates 참조로 이관 검토(질문).
 - `events` (id, team_id, rule_id?, title, event_date, meet_time, place,
   capacity, status, scheduled_post_id?, created_at)
-  - 공지 발행용 회차 데이터. 필수 필드(event_date, place, capacity) 미완성 시 발행 불가(F1 안전장치).
-  - **스코프 피벗(2026-07-23)**: 신청/확정/오픈채팅 제거 → `applications` 테이블·`confirm_mode`·
-    `openchat_url/code` 폐기(마이그레이션 0001 적용). 신청=카페 댓글(현행), 수합=팀장단 수동.
+  - **봉사 회차 = 예약 폼과 통합**: 일시(event_date/meet_time)·장소·정원은 event 에 저장되어
+    챗봇 상태 질의("이번 주 봉사 어디야")의 **원천**이 된다. 필수 필드(event_date, place, capacity)
+    미완성 시 발행 불가(F1 안전장치). scheduled_post 와 1:1 연결(연결 방향은 질문 참조).
+  - **스코프 피벗(2026-07-23)**: 신청/확정/오픈채팅 제거 → `applications`·`confirm_mode`·
+    `openchat_url/code` 폐기(0001). 신청=카페 댓글(현행), 수합=팀장단 수동.
+  - 발행 D-3 미완성 점검(과거 draft-generate 크론을 점검용으로 전환). 자동 회차 생성은 폐기.
 
 ### RAG/챗봇
 - `documents` (id, title, content_md, visibility, owner_type, owner_id,
