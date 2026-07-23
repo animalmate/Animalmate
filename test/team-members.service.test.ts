@@ -5,19 +5,19 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { teams, teamMembers, users, memberships, auditLogs } from '@/db/schema';
-import { addTeamMemberByEmail, removeTeamMember, listTeamMembers, TeamMemberError } from '@/org/team-members';
+import { setTeamRoster, TeamMemberError } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
 
 const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const suite = DIRECT_URL ? describe : describe.skip;
 
-const EMAIL = 'team-leader-test@example.invalid';
-const BOARD_EMAIL = 'team-leader-test-board@example.invalid';
-const TEAM_A = 'TM-TEST-A팀';
-const TEAM_B = 'TM-TEST-B팀';
+const EMAIL = 'roster-test@example.invalid';
+const BOARD_EMAIL = 'roster-test-board@example.invalid';
+const TEAM_A = 'RT-TEST-A팀';
+const TEAM_B = 'RT-TEST-B팀';
 
-suite('팀 담당자(팀장) 배정 — 이메일 지정 + 역할 승격/강등', () => {
+suite('팀장단 명단 저장(setTeamRoster) — 공지 명단 + 관리 권한 동기화', () => {
   let sql: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let board: Actor;
@@ -48,6 +48,7 @@ suite('팀 담당자(팀장) 배정 — 이메일 지정 + 역할 승격/강등'
       .where(and(eq(memberships.userId, userId), eq(memberships.status, 'active')));
     return rows.map((r) => r.role);
   }
+  const leaderCount = async (teamId: string) => (await db.select({ userId: teamMembers.userId }).from(teamMembers).where(eq(teamMembers.teamId, teamId))).length;
 
   beforeAll(async () => {
     sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
@@ -60,7 +61,6 @@ suite('팀 담당자(팀장) 배정 — 이메일 지정 + 역할 승격/강등'
     const [u] = await db.insert(users).values({ email: EMAIL, name: '테스트팀장' }).returning();
     userId = u!.id;
     await db.insert(memberships).values({ userId, role: 'member', termStart: '2026-01-01', termEnd: '2030-01-01', status: 'active' });
-    // 감사 로그 actor_user_id 는 users FK — 실제 회장단 사용자를 만들어 사용.
     const [bu] = await db.insert(users).values({ email: BOARD_EMAIL, name: '테스트회장단' }).returning();
     await db.insert(memberships).values({ userId: bu!.id, role: 'board', termStart: '2026-01-01', termEnd: '2030-01-01', status: 'active' });
     board = { userId: bu!.id, role: 'sysadmin', membershipActive: true, teams: [] };
@@ -72,37 +72,48 @@ suite('팀 담당자(팀장) 배정 — 이메일 지정 + 역할 승격/강등'
     await sql.end({ timeout: 5 });
   });
 
-  it('비회장단은 팀장 지정 불가(403)', async () => {
-    await expect(addTeamMemberByEmail(db, staffNonBoard, teamAId, EMAIL)).rejects.toBeInstanceOf(PermissionError);
+  it('비회장단은 명단 저장 불가(403)', async () => {
+    await expect(setTeamRoster(db, staffNonBoard, teamAId, [{ label: '팀장', name: 'x', phone: '', email: EMAIL }])).rejects.toBeInstanceOf(PermissionError);
   });
 
-  it('없는 이메일은 user_not_found', async () => {
-    await expect(addTeamMemberByEmail(db, board, teamAId, 'nobody@example.invalid')).rejects.toBeInstanceOf(TeamMemberError);
+  it('없는 이메일 → user_not_found(+email)', async () => {
+    await expect(setTeamRoster(db, board, teamAId, [{ label: '팀장', name: 'x', phone: '', email: 'nobody@example.invalid' }])).rejects.toMatchObject({
+      name: 'TeamMemberError',
+      code: 'user_not_found',
+      email: 'nobody@example.invalid',
+    });
   });
 
-  it('이메일로 팀장 지정 → member 가 staff 로 승격 + team_members 생성', async () => {
+  it('이메일 포함 명단 저장 → JSONB 저장 + member→staff 승격 + team_members 생성', async () => {
     expect(await activeRole()).toContain('member');
-    const m = await addTeamMemberByEmail(db, board, teamAId, EMAIL);
-    expect(m.position).toBe('leader');
+    await setTeamRoster(db, board, teamAId, [{ label: '팀장', name: '', phone: '010-1', email: EMAIL }]);
+    const [t] = await db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, teamAId));
+    expect(t!.leaders[0]).toMatchObject({ label: '팀장', name: '테스트팀장', phone: '010-1', email: EMAIL }); // 이름은 계정에서 채움
     expect(await activeRole()).toContain('staff');
     expect(await activeRole()).not.toContain('member');
-    const members = await listTeamMembers(db, teamAId);
-    expect(members.some((x) => x.userId === userId && x.position === 'leader')).toBe(true);
+    expect(await leaderCount(teamAId)).toBe(1);
   });
 
-  it('두 번째 팀에도 지정 가능(중복 아님)', async () => {
-    await addTeamMemberByEmail(db, board, teamBId, EMAIL);
-    expect((await listTeamMembers(db, teamBId)).length).toBe(1);
+  it('이메일 없는 행은 공지용으로만 저장(권한 없음)', async () => {
+    await setTeamRoster(db, board, teamAId, [
+      { label: '팀장', name: '', phone: '010-1', email: EMAIL },
+      { label: '부팀장', name: '홍길동', phone: '010-2' },
+    ]);
+    const [t] = await db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, teamAId));
+    expect(t!.leaders.length).toBe(2);
+    expect(await leaderCount(teamAId)).toBe(1); // 권한은 이메일 있는 1명만
   });
 
-  it('한 팀 해제해도 다른 팀 소속 남으면 staff 유지', async () => {
-    await removeTeamMember(db, board, teamAId, userId);
-    expect((await listTeamMembers(db, teamAId)).length).toBe(0);
-    expect(await activeRole()).toContain('staff'); // teamB 소속 남음
-  });
+  it('두 번째 팀에도 지정 후, 첫 팀에서 빼도 staff 유지 → 마지막까지 빼면 member 강등', async () => {
+    await setTeamRoster(db, board, teamBId, [{ label: '팀장', name: '', phone: '', email: EMAIL }]);
+    expect(await leaderCount(teamBId)).toBe(1);
 
-  it('마지막 팀까지 해제하면 staff → member 강등', async () => {
-    await removeTeamMember(db, board, teamBId, userId);
+    await setTeamRoster(db, board, teamAId, []); // A팀 명단 비움
+    expect(await leaderCount(teamAId)).toBe(0);
+    expect(await activeRole()).toContain('staff'); // B팀 소속 남음
+
+    await setTeamRoster(db, board, teamBId, []); // B팀도 비움
+    expect(await leaderCount(teamBId)).toBe(0);
     expect(await activeRole()).toContain('member');
     expect(await activeRole()).not.toContain('staff');
   });

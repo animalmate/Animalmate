@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { setTeamActive, setTeamLeaders, deleteTeam, TeamInUseError } from '@/org/teams';
+import { setTeamActive, deleteTeam, TeamInUseError } from '@/org/teams';
+import { setTeamRoster, TeamMemberError } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
@@ -15,13 +16,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   try {
     const b = await req.json();
     if (Array.isArray(b.leaders)) {
-      const team = await setTeamLeaders(db, actor, id, b.leaders);
+      const team = await setTeamRoster(db, actor, id, b.leaders);
       return NextResponse.json({ team });
     }
     const team = await setTeamActive(db, actor, id, Boolean(b.isActive));
     return NextResponse.json({ team });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    if (e instanceof TeamMemberError) return NextResponse.json({ error: e.code, email: e.email }, { status: 400 });
     return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }

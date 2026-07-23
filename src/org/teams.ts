@@ -3,7 +3,7 @@
 
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { teams, events, recurringRules, scheduledPosts, type TeamLeader } from '@/db/schema';
+import { teams, events, recurringRules, scheduledPosts } from '@/db/schema';
 import { isPrivileged, type Actor } from '@/auth/permissions';
 import { PermissionError } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
@@ -33,18 +33,7 @@ export async function setTeamActive(db: Db, actor: Actor, id: string, isActive: 
   await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: isActive ? 'team.activate' : 'team.deactivate', targetTable: 'teams', targetId: id, after: { isActive } }));
   return row;
 }
-
-/** 팀장단 명단 교체(매 학기 갱신). 회장단 전용. audit(개인정보 값은 남기지 않고 인원수만). */
-export async function setTeamLeaders(db: Db, actor: Actor, id: string, leaders: TeamLeader[]): Promise<Team> {
-  ensureBoard(actor);
-  const clean = leaders
-    .map((l) => ({ label: String(l.label ?? '').trim(), name: String(l.name ?? '').trim(), phone: String(l.phone ?? '').trim() }))
-    .filter((l) => l.name || l.phone);
-  const [row] = await db.update(teams).set({ leaders: clean }).where(eq(teams.id, id)).returning();
-  if (!row) throw new Error('team not found');
-  await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: 'team.set_leaders', targetTable: 'teams', targetId: id, after: { count: clean.length } }));
-  return row;
-}
+// 팀장단 명단 저장은 org/team-members.ts 의 setTeamRoster 로 이동(명단+관리 권한 동기화).
 
 export class TeamInUseError extends Error {
   readonly status = 409;

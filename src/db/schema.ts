@@ -75,11 +75,12 @@ export const memberships = pgTable('memberships', {
   status: membershipStatusEnum('status').notNull().default('active'),
 });
 
-/** 팀장단 1인(공지에 삽입되는 연락처). 개인정보 — 런타임 입력이며 코드/시드에 넣지 않는다(규칙 #4). */
+/** 팀장단 1인(공지에 삽입되는 연락처 + 관리 권한 계정). 개인정보 — 런타임 입력이며 코드/시드에 넣지 않는다(규칙 #4). */
 export interface TeamLeader {
   label: string; // 팀장 / 부팀장 등
   name: string;
   phone: string;
+  email?: string; // 있으면 그 계정에 이 팀 관리 권한 부여(team_members 동기화). 없으면 공지 표시용.
 }
 
 export const teams = pgTable('teams', {
