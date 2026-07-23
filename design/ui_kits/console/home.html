@@ -1,0 +1,97 @@
+<!-- @dsCard group="Console" viewport="1000x720" name="홈/대시보드" -->
+<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script>Babel.registerPreset('react-classic',{presets:[[Babel.availablePresets['react'],{runtime:'classic'}]]});</script>
+<style>html,body{margin:0;background:var(--surface-page)}</style>
+</head><body><div id="root"></div>
+<script type="text/plain" id="app">
+const { useState } = React;
+
+/* ── Icon ── */
+const P = {
+  plus:<path d="M12 5v14M5 12h14"/>, chevronRight:<path d="m9 18 6-6-6-6"/>,
+  users:<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
+  logout:<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></>,
+  menu:<path d="M3 6h18M3 12h18M3 18h18"/>, x:<path d="M18 6 6 18M6 6l12 12"/>,
+  doc:<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></>,
+  board:<><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></>,
+  key:<path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/>,
+  alert:<><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></>,
+  megaphone:<><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></>,
+  layers:<><path d="m12 2 10 6-10 6L2 8z"/><path d="m2 14 10 6 10-6"/></>,
+};
+function Icon({name,size=20,strokeWidth=1.8,style}){return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{flex:"none",...style}} aria-hidden="true">{P[name]||null}</svg>;}
+
+/* ── RoleBadge ── */
+function RoleBadge({role="member"}){const M={member:["부원","var(--ink-100)","var(--ink-500)"],staff:["운영진","var(--blue-100)","var(--blue-700)"],board:["회장단","var(--amber-100)","var(--amber-700)"],sysadmin:["관리자","var(--ink-900)","#fff"]};const[l,bg,fg]=M[role]||M.member;return <span style={{display:"inline-flex",alignItems:"center",borderRadius:999,padding:"3px 10px",font:"var(--text-badge)",background:bg,color:fg,whiteSpace:"nowrap"}}>{l}</span>;}
+
+/* ── Banner ── */
+function Banner({kind="info",title,children,icon}){const M={info:["alert","var(--info-100)","var(--info-700)"],warning:["alert","var(--warning-100)","var(--warning-700)"],error:["alert","var(--error-100)","var(--error-700)"]};const[di,bg,fg]=M[kind]||M.info;return <div style={{display:"flex",gap:10,padding:"12px 14px",borderRadius:"var(--radius-md)",background:bg,color:fg,font:"var(--text-body)",alignItems:"flex-start"}}><Icon name={icon||di} size={18} style={{marginTop:2}}/><div style={{flex:1,minWidth:0}}>{title&&<strong style={{display:"block",font:"var(--text-label)",marginBottom:children?2:0}}>{title}</strong>}{children}</div></div>;}
+
+/* ── Card ── */
+function Card({children,style}){return <div style={{background:"var(--surface-card)",border:"1px solid var(--border-default)",borderRadius:"var(--radius-lg)",boxShadow:"var(--shadow-card)",padding:20,...style}}>{children}</div>;}
+
+/* ── MENUS ── */
+const MENUS={member:[],staff:[{key:"queue",label:"예약",icon:"megaphone"},{key:"templates",label:"템플릿",icon:"doc"},{key:"bulk",label:"일괄 생성",icon:"layers"}],board:[{key:"queue",label:"예약",icon:"megaphone"},{key:"templates",label:"템플릿",icon:"doc"},{key:"bulk",label:"일괄 생성",icon:"layers"},{key:"teams",label:"조직",icon:"users"},{key:"code",label:"가입코드",icon:"key"},{key:"boards",label:"게시판",icon:"board"}]};MENUS.sysadmin=MENUS.board;
+
+/* ── NavBar ── */
+function NavBar({role="member",active,mobile=false,onNavigate,onLogout}){
+  const[open,setOpen]=useState(false);const menus=MENUS[role]||[];const go=k=>{setOpen(false);onNavigate&&onNavigate(k);};
+  const item=(m,big)=>(<button key={m.key} onClick={()=>go(m.key)} style={{display:"flex",alignItems:"center",gap:big?12:7,cursor:"pointer",border:"none",borderRadius:"var(--radius-md)",font:"var(--text-btn)",padding:big?"0 14px":"0 12px",height:big?52:40,width:big?"100%":"auto",background:active===m.key?"var(--blue-50)":"transparent",color:active===m.key?"var(--blue-700)":"var(--text-body)"}}><Icon name={m.icon} size={18}/>{m.label}</button>);
+  return <header style={{position:"relative",background:"var(--surface-card)",borderBottom:"1px solid var(--border-default)"}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,height:60,padding:"0 16px",maxWidth:1120,margin:"0 auto"}}>
+      <button onClick={()=>go("home")} style={{display:"flex",alignItems:"center",gap:8,border:"none",background:"none",cursor:"pointer",padding:0}}><img src="../../assets/logo-emblem-circle.png" alt="애니멀메이트" style={{width:34,height:34}}/><strong style={{font:"700 17px/1 var(--font-sans)",color:"var(--text-title)"}}>애니멀메이트</strong></button>
+      {!mobile&&<nav style={{display:"flex",gap:2,marginLeft:16}}>{menus.map(m=>item(m))}</nav>}
+      <span style={{flex:1}}/><RoleBadge role={role}/>
+      {!mobile&&<button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:6,border:"none",background:"none",cursor:"pointer",color:"var(--text-muted)",font:"var(--text-caption)",padding:"8px 4px"}}><Icon name="logout" size={16}/>로그아웃</button>}
+      {mobile&&menus.length>0&&<button onClick={()=>setOpen(!open)} aria-label="메뉴" style={{width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center",border:"none",background:"none",cursor:"pointer",color:"var(--text-title)"}}><Icon name={open?"x":"menu"} size={22}/></button>}
+    </div>
+    {mobile&&open&&<div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,background:"var(--surface-card)",borderBottom:"1px solid var(--border-default)",boxShadow:"var(--shadow-raised)",padding:12,display:"flex",flexDirection:"column",gap:2}}>{menus.map(m=>item(m,true))}</div>}
+  </header>;
+}
+
+/* ── Home ── */
+const DESC={queue:"공지 예약을 만들고 관리해요",templates:"자주 쓰는 양식을 저장해요",bulk:"정기 봉사를 한 번에 예약해요",teams:"팀과 팀장단을 관리해요",code:"학기별 가입코드를 발급해요",boards:"카페 게시판을 연결해요"};
+function Home({role="board",userName="김하늘",membershipInactive=false,mobile=false}){
+  const[r,setR]=useState(role);const menus=MENUS[r]||[];const[nav,setNav]=useState("home");
+  return <div style={{background:"var(--surface-page)",minHeight:"100vh"}}>
+    <NavBar role={r} active={nav} mobile={mobile} onNavigate={setNav}/>
+    <main style={{width:"100%",maxWidth:mobile?"none":1000,margin:"0 auto",padding:mobile?"20px 16px 40px":"28px 24px 56px"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:18}}>
+        {membershipInactive&&<Banner kind="warning" title="이번 학기 멤버십이 아직 활성화되지 않았어요">새 학기 가입코드로 다시 등록하면 모든 기능을 쓸 수 있어요.</Banner>}
+        <div>
+          <h1 style={{margin:0,font:"var(--text-display)",color:"var(--text-title)"}}>안녕하세요, {userName}님</h1>
+          {!menus.length&&<p style={{margin:"6px 0 0",font:"var(--text-body)",color:"var(--text-muted)"}}>동아리 소식은 네이버 카페에서 확인할 수 있어요.</p>}
+        </div>
+        {menus.length>0?(
+          <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(3, 1fr)",gap:12}}>
+            {menus.map(m=>(
+              <button key={m.key} onClick={()=>setNav(m.key)} style={{display:"flex",alignItems:"center",gap:14,textAlign:"left",cursor:"pointer",background:"var(--surface-card)",border:"1px solid var(--border-default)",borderRadius:"var(--radius-lg)",boxShadow:"var(--shadow-card)",padding:18,minHeight:84}}>
+                <span style={{width:46,height:46,borderRadius:14,background:"var(--blue-50)",color:"var(--blue-600)",display:"flex",alignItems:"center",justifyContent:"center",flex:"none"}}><Icon name={m.icon} size={22}/></span>
+                <span style={{minWidth:0}}><strong style={{display:"block",font:"var(--text-h3)",color:"var(--text-title)"}}>{m.label}</strong><span style={{font:"var(--text-caption)",color:"var(--text-muted)"}}>{DESC[m.key]}</span></span>
+                <Icon name="chevronRight" size={18} style={{marginLeft:"auto",color:"var(--ink-300)"}}/>
+              </button>
+            ))}
+          </div>
+        ):(
+          <Card>
+            <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+              <img src="../../assets/logo-shapes.png" alt="" style={{width:72,height:72,objectFit:"contain",flex:"none"}}/>
+              <div><h3 style={{margin:"0 0 4px",font:"var(--text-h3)",color:"var(--text-title)"}}>부원 전용 안내</h3><p style={{margin:0,font:"var(--text-body)",color:"var(--text-body)"}}>봉사 신청과 공지는 네이버 카페에서 진행돼요. 곧 이곳에서 자주 묻는 질문에 답해 주는 챗봇도 만날 수 있어요.</p></div>
+            </div>
+          </Card>
+        )}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginTop:8,paddingTop:16,borderTop:"1px dashed var(--border-default)"}}>
+          <span style={{font:"var(--text-caption)",color:"var(--text-faint)"}}>역할 미리보기:</span>
+          {["member","staff","board"].map(x=><button key={x} onClick={()=>{setR(x);setNav("home");}} style={{cursor:"pointer",border:"1px solid var(--border-default)",background:r===x?"var(--blue-50)":"var(--surface-card)",color:r===x?"var(--blue-700)":"var(--text-muted)",borderRadius:999,padding:"5px 12px",font:"var(--text-badge)"}}>{{member:"부원",staff:"운영진",board:"회장단"}[x]}</button>)}
+        </div>
+      </div>
+    </main>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Home role="board" userName="김하늘"/>);
+</script>
+<script>(function(){var out=Babel.transform(document.getElementById('app').textContent,{presets:['react-classic']}).code;(0,eval)(out);})();</script></body></html>

@@ -50,7 +50,7 @@ export function ReservationsPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">예약 큐</h1>
+        <h1 className="text-[22px] font-bold text-ink-900">예약 큐</h1>
         <a href="/reservations/new">
           <Button>새 예약</Button>
         </a>
@@ -71,20 +71,20 @@ export function ReservationsPanel() {
                   <div className="font-medium">{r.title}</div>
                   <StatusBadge status={r.status} />
                 </div>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-ink-500">
                   {fmt(r.publishAt)} · 게시판 {r.boardMenuid}
                   {r.event?.eventDate ? ` · 봉사 ${r.event.eventDate}` : ''}
                 </div>
                 {r.status === 'draft' && r.missing.length > 0 ? (
-                  <div className="text-sm text-yellow-700">미완성: {r.missing.join(', ')}</div>
+                  <div className="text-sm text-warning-700">미완성: {r.missing.join(', ')}</div>
                 ) : null}
                 {r.status === 'failed' ? (
-                  <div className="rounded-md bg-red-50 p-2 text-sm text-red-700">
+                  <div className="rounded-md bg-coral-50 p-2 text-sm text-coral-700">
                     발행 실패{r.failReason ? `: ${r.failReason}` : ''}. 원인 확인 후 "재시도"로 발행 대기 큐에 다시 넣으세요.
                   </div>
                 ) : null}
                 {r.status === 'published' ? (
-                  <div className="rounded-md bg-gray-50 p-2 text-sm">
+                  <div className="rounded-md bg-cream-100 p-2 text-sm">
                     발행 완료 —{' '}
                     {r.cafeArticleUrl ? (
                       <a className="underline" href={r.cafeArticleUrl} target="_blank" rel="noreferrer">
@@ -93,7 +93,7 @@ export function ReservationsPanel() {
                     ) : (
                       '카페 링크 대기'
                     )}
-                    <div className="text-xs text-gray-500">발행된 글은 수정 불가입니다. 변경 사항은 카페 댓글로 안내하세요.</div>
+                    <div className="text-xs text-ink-500">발행된 글은 수정 불가입니다. 변경 사항은 카페 댓글로 안내하세요.</div>
                   </div>
                 ) : null}
                 {r.status !== 'published' ? (

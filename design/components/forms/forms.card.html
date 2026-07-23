@@ -1,0 +1,40 @@
+<!-- @dsCard group="Components" viewport="700x560" name="폼 입력" subtitle="입력·셀렉트·체크박스·OTP·반복 행" -->
+<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = (()=>{for(const k of Object.getOwnPropertyNames(window)){try{const v=window[k];if(v&&typeof v==="object"&&v.Button&&v.StatusBadge)return v}catch(e){}}return {};})();
+const { Field, Input, Textarea, Select, Checkbox, OtpInput, RepeatRows } = NS;
+function Demo(){
+  const [code,setCode]=React.useState("48");
+  const [chk,setChk]=React.useState(true);
+  const [rows,setRows]=React.useState([{t:"팀장",n:"김하늘",p:"010-1234-5678"},{t:"부팀장",n:"이보라",p:"010-9876-5432"}]);
+  return <div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+    <Field label="이메일" hint="학교 이메일을 권장해요" required><Input type="email" placeholder="mate@univ.ac.kr"/></Field>
+    <Field label="가입코드" error="코드가 맞지 않아요. 다시 확인해 주세요."><Input invalid defaultValue="ANIML-9999"/></Field>
+    <Field label="발행 날짜와 시간"><Input type="datetime-local" defaultValue="2026-08-01T18:00"/></Field>
+    <Field label="게시판"><Select placeholder="게시판 선택" options={["봉사 공지","자유 게시판"]}/></Field>
+    <Field label="인증 코드" hint="메일로 받은 6자리 숫자 — 붙여넣기 지원" style={{gridColumn:"1/-1",maxWidth:380}}><OtpInput value={code} onChange={setCode}/></Field>
+    <div style={{gridColumn:"1/-1"}}>
+      <Field label="팀장단" hint="직함·이름·전화 — 행 추가/삭제">
+        <RepeatRows items={rows} addLabel="팀장단 추가"
+          onAdd={()=>setRows([...rows,{t:"",n:"",p:""}])}
+          onRemove={(i)=>setRows(rows.filter((_,j)=>j!==i))}
+          renderItem={(r)=>(
+            <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr",gap:8}}>
+              <Input defaultValue={r.t} placeholder="직함" style={{height:"var(--control-h-sm)"}}/>
+              <Input defaultValue={r.n} placeholder="이름" style={{height:"var(--control-h-sm)"}}/>
+              <Input defaultValue={r.p} placeholder="전화" style={{height:"var(--control-h-sm)"}}/>
+            </div>)}/>
+      </Field>
+    </div>
+    <Checkbox label="봇 글쓰기 허용" checked={chk} onChange={e=>setChk(e.target.checked)}/>
+    <Field label="본문" style={{gridColumn:"1/-1"}}><Textarea rows={2} placeholder="공지 본문을 입력해 주세요"/></Field>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script></body></html>

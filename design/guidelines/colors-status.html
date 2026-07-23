@@ -1,0 +1,14 @@
+<!-- @dsCard group="Colors" viewport="700x130" subtitle="예약 상태 배지 5종" name="예약 상태 배지 컬러" -->
+<!DOCTYPE html><html><head><link rel="stylesheet" href="../styles.css"><style>
+.row{display:flex;gap:10px;padding:20px 16px;flex-wrap:wrap}
+.b{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 14px;font:var(--text-badge)}
+.dot{width:7px;height:7px;border-radius:99px;background:currentColor}
+</style></head><body>
+<div class="row">
+  <span class="b" style="background:var(--status-draft-bg);color:var(--status-draft-fg)"><i class="dot"></i>작성중</span>
+  <span class="b" style="background:var(--status-ready-bg);color:var(--status-ready-fg)"><i class="dot"></i>완성</span>
+  <span class="b" style="background:var(--status-scheduled-bg);color:var(--status-scheduled-fg)"><i class="dot"></i>발행 대기</span>
+  <span class="b" style="background:var(--status-published-bg);color:var(--status-published-fg)"><i class="dot"></i>발행됨</span>
+  <span class="b" style="background:var(--status-failed-bg);color:var(--status-failed-fg)"><i class="dot"></i>실패</span>
+</div>
+</body></html>

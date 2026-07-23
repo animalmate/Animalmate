@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="700x340" name="버튼" subtitle="4종 × 상태 + 아이콘/카운트다운/복사" -->
+<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = (()=>{for(const k of Object.getOwnPropertyNames(window)){try{const v=window[k];if(v&&typeof v==="object"&&v.Button&&v.StatusBadge)return v}catch(e){}}return {};})();
+const { Button, IconButton, CountdownButton, CopyButton, Icon } = NS;
+function Row({t, children}){return <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}><span style={{font:"var(--text-caption)",color:"var(--text-faint)",width:78,flex:"none",fontFamily:"var(--font-mono)"}}>{t}</span>{children}</div>;}
+function Demo(){
+  return <div style={{padding:16,display:"flex",flexDirection:"column",gap:12}}>
+    <Row t="primary"><Button size="sm">예약 생성</Button><Button size="sm" icon={<Icon name="plus" size={16}/>}>새 예약</Button><Button size="sm" loading>저장 중</Button><Button size="sm" disabled>비활성</Button></Row>
+    <Row t="secondary"><Button variant="secondary" size="sm">수정</Button><Button variant="secondary" size="sm" disabled>비활성</Button><CountdownButton seconds={60}>코드 재전송</CountdownButton></Row>
+    <Row t="destructive"><Button variant="destructive" size="sm">팀 삭제</Button><Button variant="destructive" size="sm" loading>취소 중</Button><Button variant="text" size="sm">가입하기</Button></Row>
+    <Row t="icon/copy"><IconButton icon={<Icon name="edit"/>} label="수정"/><IconButton icon={<Icon name="trash"/>} label="삭제" variant="danger"/><IconButton icon={<Icon name="x"/>} label="닫기" variant="solid"/><CopyButton size="sm" value="ANIMAL-2026-1"/></Row>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script></body></html>
