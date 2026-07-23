@@ -31,8 +31,12 @@ export const dryMailer: Mailer = {
 function otpSubjectBody(mail: OtpMail): { subject: string; text: string } {
   const kind = mail.purpose === 'signup' ? '가입' : '로그인';
   return {
-    subject: `[애니멀메이트] ${kind} 인증 코드`,
-    text: `${kind} 인증 코드: ${mail.code}\n\n10분 이내에 입력해 주세요. 본인이 요청하지 않았다면 무시하세요.`,
+    // 제목에 코드 포함(메일 목록에서 바로 확인). 네이버 메일은 스팸함으로 갈 수 있어 본문에 안내.
+    subject: `[애니멀메이트] ${kind} 인증 코드 ${mail.code}`,
+    text:
+      `${kind} 인증 코드: ${mail.code}\n\n` +
+      `10분 이내에 입력해 주세요. 본인이 요청하지 않았다면 무시하세요.\n` +
+      `※ 메일이 안 보이면 스팸함(특히 네이버 메일)을 확인해 주세요.`,
   };
 }
 

@@ -1,9 +1,13 @@
 // 인증 라우트 공용 — 에러 매핑 + 세션 쿠키 설정/삭제.
 import { NextResponse } from 'next/server';
 import { AuthError } from './auth-service';
+import { CooldownError } from './otp';
 import { SESSION_COOKIE, DEFAULT_TTL_SECONDS } from './session';
 
 export function authErrorResponse(e: unknown): NextResponse {
+  if (e instanceof CooldownError) {
+    return NextResponse.json({ error: 'cooldown', retryAfter: e.retryAfter }, { status: 429 });
+  }
   if (e instanceof AuthError) return NextResponse.json({ error: e.code }, { status: e.status });
   return NextResponse.json({ error: 'internal' }, { status: 500 });
 }

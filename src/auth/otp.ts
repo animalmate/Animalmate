@@ -11,6 +11,15 @@ export type EmailCodePurpose = 'signup' | 'login';
 
 export const OTP_TTL_SECONDS = 600; // 10분
 export const MAX_OTP_ATTEMPTS = 5;
+export const RESEND_COOLDOWN_SECONDS = 60; // 재전송 쿨다운
+
+export class CooldownError extends Error {
+  readonly status = 429;
+  constructor(readonly retryAfter: number) {
+    super(`cooldown ${retryAfter}s`);
+    this.name = 'CooldownError';
+  }
+}
 
 export function generateOtp(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -37,6 +46,21 @@ export interface CreateCodeArgs {
 /** 새 OTP 생성·저장(같은 email+purpose 의 미소비 코드는 무효화). 평문 코드를 반환(메일 발송용). */
 export async function createEmailCode(db: DB, args: CreateCodeArgs): Promise<string> {
   const now = args.now ?? new Date();
+
+  // 재전송 쿨다운: 직전 코드 발급 후 60초 내 재요청 차단.
+  const [last] = await db
+    .select({ createdAt: emailCodes.createdAt })
+    .from(emailCodes)
+    .where(and(eq(emailCodes.email, args.email), eq(emailCodes.purpose, args.purpose)))
+    .orderBy(desc(emailCodes.createdAt))
+    .limit(1);
+  if (last) {
+    const elapsed = (now.getTime() - last.createdAt.getTime()) / 1000;
+    if (elapsed < RESEND_COOLDOWN_SECONDS) {
+      throw new CooldownError(Math.ceil(RESEND_COOLDOWN_SECONDS - elapsed));
+    }
+  }
+
   const code = generateOtp();
   const codeHash = hashOtp(args.email, code, args.secret);
   const expiresAt = new Date(now.getTime() + OTP_TTL_SECONDS * 1000);
