@@ -7,6 +7,7 @@ import { scheduledPosts, events } from '@/db/schema';
 import type { Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
+import { renderTemplate } from './post-templates';
 
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
 
@@ -99,7 +100,16 @@ export interface Occurrence {
   meetTime?: string | null;
 }
 
-/** 발행 시각/봉사 일자를 여러 개 지정해 예약 N건을 한 번에 만든다. 각 건은 이후 개별 수정 가능. */
+function kstDateStr(d: Date): string {
+  const k = new Date(d.getTime() + 9 * 3600 * 1000);
+  return `${k.getUTCFullYear()}-${String(k.getUTCMonth() + 1).padStart(2, '0')}-${String(k.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * 발행 시각/봉사 일자를 여러 개 지정해 예약 N건을 한 번에 만든다. 각 건은 이후 개별 수정 가능.
+ * 제목/본문의 {{날짜}}{{집합시간}} 플레이스홀더는 각 건의 값으로 자동 치환한다(빈 값이면 그대로 둠).
+ * {{장소}}{{정원}}은 채우지 않고 남겨 개별 수정에서 입력하게 한다.
+ */
 export async function createReservationsMulti(
   db: Db,
   actor: Actor,
@@ -108,27 +118,31 @@ export async function createReservationsMulti(
 ): Promise<string[]> {
   const ids: string[] = [];
   for (const occ of occurrences) {
+    const vars: Record<string, string> = {};
+    if (shared.kind === 'volunteer') {
+      if (occ.eventDate) vars['날짜'] = occ.eventDate;
+      if (occ.meetTime) vars['집합시간'] = occ.meetTime;
+    } else if (occ.publishAt) {
+      vars['날짜'] = kstDateStr(occ.publishAt);
+    }
+    const title = renderTemplate(shared.title, vars);
+    const contentMd = renderTemplate(shared.contentMd, vars);
+
     const input: CreateReservationInput =
       shared.kind === 'volunteer'
         ? {
             kind: 'volunteer',
             teamId: String(shared.teamId),
             boardMenuid: shared.boardMenuid,
-            title: shared.title,
-            contentMd: shared.contentMd,
+            title,
+            contentMd,
             publishAt: occ.publishAt ?? null,
             eventDate: occ.eventDate ?? null,
             meetTime: occ.meetTime ?? null,
             place: null,
             capacity: null,
           }
-        : {
-            kind: 'general',
-            boardMenuid: shared.boardMenuid,
-            title: shared.title,
-            contentMd: shared.contentMd,
-            publishAt: occ.publishAt ?? null,
-          };
+        : { kind: 'general', boardMenuid: shared.boardMenuid, title, contentMd, publishAt: occ.publishAt ?? null };
     const post = await createReservation(db, actor, input);
     ids.push(post.id);
   }
