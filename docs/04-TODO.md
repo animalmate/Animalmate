@@ -3,6 +3,11 @@
 > 규칙: 위에서 아래로 진행. 각 항목의 DoD(완료 기준)를 만족해야 체크. Phase 0을 통과하지
 > 못하면(폴백 결정 전) Phase 1 코드를 쓰지 않는다. 막히면 맨 아래 "질문" 섹션에 기록.
 
+> **진행 요약(2026-07-24):** Phase 1 인증·F1 발행루프·프론트 UI·**디자인 스킨(design/docs/06-DESIGN)**·
+> **팀장단 roster(명단+이메일로 관리 권한 부여, "팀" 개칭)**·배포 인프라(Vercel·pg_cron 2잡·UptimeRobot·헬스)
+> 전부 완료·push. 테스트: 단위 76 / 통합 99(+HTTP E2E 5) / typecheck 0 / build ✓.
+> **남은 것: 실카페 발행 전환(NAVER_PUBLISH_DRY_RUN=false + 봇 카페스탭 임명), 챗봇(1D).**
+
 ## Phase 0 — 외부 검증 & 계정 셋업 (캠프 직후 ~8월 말) [GO/NO-GO 게이트]
 - [ ] 동아리 공용 Gmail 생성 (복구 이메일 = 회장 개인 메일)
 - [ ] 비밀번호 금고 세팅, 자산 대장 문서 시작 (계정/용도/복구수단/비용/갱신일)
@@ -53,12 +58,12 @@
       → 2026-07-23 완료. 마이그레이션에서 전 테이블 RLS 활성화. `test/rls.security.test.ts`가
       pg_tables 로 테이블을 런타임 수집(새 테이블 자동 포함) → rowsecurity=true + anon SELECT 0행
       + anon INSERT 거부 검증(46통과). RLS 누락 시 실패하는 역검증도 확인. CI(`.github/workflows/ci.yml`)에서 상시 실행.
-- [~] Supabase pg_cron + pg_net 셋업: 분 단위 스케줄이 CRON_SECRET 헤더로 /api/cron/* 호출
+- [x] Supabase pg_cron + pg_net 셋업: 분 단위 스케줄이 CRON_SECRET 헤더로 /api/cron/* 호출
       (Vercel Cron 사용 금지 — 00 규칙) DoD: 매분 잡이 테스트 엔드포인트에 도달 로그 확인
-      → 2026-07-23 pg_cron/pg_net 확장 활성화 완료(사용자). CRON_SECRET 발급·.env 저장. 첫 엔드포인트
-      /api/cron/publish + 인증 준비됨. 남음: 앱 배포 후 cron.schedule 잡 등록(README SQL)로 도달 로그 확인.
-- [ ] /api/health(경량 DB 조회) + UptimeRobot 5분 모니터 등록
-      DoD: 무료 티어 7일 일시정지 방지 링크 가동 + 다운 알림이 공용 메일로 수신됨
+      → 2026-07-24 완료(사용자). cron.job 2개 등록·active: jobid3 publish 매분(`* * * * *`),
+      jobid4 draft-generate 매일(`0 0 * * *`). 프로덕션 헬스 200/db:up. Vercel 배포+환경변수 라이브.
+- [x] /api/health(경량 DB 조회) + UptimeRobot 5분 모니터 등록
+      DoD: 무료 티어 7일 일시정지 방지 링크 가동 + 다운 알림. → 2026-07-24 UptimeRobot 등록 완료(사용자).
 - [ ] Supabase Auth 커스텀 SMTP를 **Gmail(공용 계정 앱 비밀번호)**로 연결 (기본 메일 한도로는 운영 불가)
       + 앱 알림 발송 모듈(nodemailer, Gmail SMTP): 팀장단 초안 알림·발행 실패 알림·핸드오프. 공용 SMTP_* env.
 ### 1B. 카페 발행
@@ -86,8 +91,9 @@
       → 2026-07-23 라우트+워커 완료: `src/app/api/cron/publish/route.ts`(CRON_SECRET 검증→워커→JSON 요약)
       + `src/publishing/publish-worker.ts`(due≤5, 실게시 건별 30초, code 999 대기재시도, **처리 요약을
       응답+audit(cron.publish)에 기록**) + `src/http/cron-auth.ts`(상수시간 비교). 인증 단위 5+워커 통합 2.
-      토큰 부트스트랩 완료(naver_tokens에 암호화 저장, .env NAVER_REFRESH_TOKEN 제거). pg_cron 확장 활성화됨.
-      **남음: 앱 배포 후 pg_cron 잡 등록(README SQL) + 실게시는 NAVER_PUBLISH_DRY_RUN=false 전환(사용자 신호).**
+      토큰 부트스트랩 완료(naver_tokens에 암호화 저장, .env NAVER_REFRESH_TOKEN 제거). pg_cron 잡 등록됨(jobid3 매분).
+      + 발행 실패(재시도 소진) 시 회장단 메일 알림(operators.boardEmails), 사이클 중 취소 예약 크래시 방어.
+      **남음(사용자): 실게시는 NAVER_PUBLISH_DRY_RUN=false 전환 + 봇을 실공지 게시판 카페스탭으로 임명.**
 ### 1C. 반복 공지 발행 (F1 — 2026-07-23 재개정: 수동 선예약 중심. 크론 자동 생성 폐기) — 서비스 구현 완료
 > 서비스·로직·API 완료(마이그레이션 0004/0005). UI(프론트)만 남음. next build 통과.
 - [x] "매월 N번째 X요일" 날짜 계산 유틸 → `src/recurrence/month-weekday.ts`(단위 12). 일괄 생성이 재사용.
