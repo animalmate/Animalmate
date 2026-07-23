@@ -4,12 +4,14 @@ import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select } from '@/components/ui';
 
 interface Leader { label: string; name: string; phone: string }
+interface Member { userId: string; email: string; name: string; position: string }
 interface Team {
   id: string;
   name: string;
   kind: string;
   isActive: boolean;
   leaders: Leader[];
+  members: Member[];
 }
 
 const KIND_LABEL: Record<string, string> = { activity: '활동팀', functional: '기능팀' };
@@ -89,10 +91,62 @@ export function TeamsPanel() {
               <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
             </span>
           </div>
+          <TeamLeadersManager team={t} onError={setError} onChanged={load} />
           <LeadersEditor team={t} onSave={(leaders) => patch(t.id, { leaders })} />
         </Card>
       ))}
-      <InfoText>회차·예약이 있는 팀은 삭제 대신 비활성화됩니다(기록 보존). 팀장단은 공지 {'{{팀장단}}'}에 자동 삽입됩니다.</InfoText>
+      <InfoText>회차·예약이 있는 팀은 삭제 대신 비활성화됩니다(기록 보존). 팀장단 명단은 공지 {'{{팀장단}}'}에 자동 삽입됩니다.</InfoText>
+    </div>
+  );
+}
+
+// 팀장(관리 담당) 계정 지정 — 이메일로 추가/제거(회장단·시스템관리자). 지정된 팀장은 자기 팀만 관리.
+function TeamLeadersManager({ team, onError, onChanged }: { team: Team; onError: (m: string) => void; onChanged: () => void }) {
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function add() {
+    onError('');
+    if (!email.trim()) return;
+    setBusy(true);
+    const res = await fetch(`/api/admin/teams/${team.id}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), position: 'leader' }),
+    });
+    setBusy(false);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); onError(errorMessage(d.error, d.message)); return; }
+    setEmail('');
+    onChanged();
+  }
+
+  async function remove(m: Member) {
+    onError('');
+    const res = await fetch(`/api/admin/teams/${team.id}/members?userId=${encodeURIComponent(m.userId)}`, { method: 'DELETE' });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); onError(errorMessage(d.error, d.message)); return; }
+    onChanged();
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-gray-200 p-3">
+      <div className="text-sm font-medium text-gray-700">팀장(관리 담당) — 이메일로 지정</div>
+      <InfoText>지정된 팀장은 이 팀의 템플릿·예약만 관리할 수 있습니다(가입 완료된 회원만 지정 가능).</InfoText>
+      {team.members.length > 0 ? (
+        <ul className="divide-y divide-gray-100 text-sm">
+          {team.members.map((m) => (
+            <li key={m.userId} className="flex items-center justify-between py-1.5">
+              <span>{m.name} <span className="text-xs text-gray-500">{m.email} · {m.position === 'leader' ? '팀장' : '팀원'}</span></span>
+              <button className="text-xs text-red-600 underline" onClick={() => remove(m)}>해제</button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-500">아직 지정된 팀장이 없습니다.</p>
+      )}
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="leader@example.com" autoComplete="off" />
+        <Button disabled={busy || !email.trim()} onClick={add}>{busy ? '지정 중…' : '팀장 지정'}</Button>
+      </div>
     </div>
   );
 }

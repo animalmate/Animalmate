@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { listAllTeams, createTeam, type TeamKind } from '@/org/teams';
+import { listTeamMembers } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
@@ -11,7 +12,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  return NextResponse.json({ teams: await listAllTeams(db) });
+  const teams = await listAllTeams(db);
+  const withMembers = await Promise.all(
+    teams.map(async (t) => ({ ...t, members: await listTeamMembers(db, t.id) }))
+  );
+  return NextResponse.json({ teams: withMembers });
 }
 
 export async function POST(req: Request): Promise<Response> {

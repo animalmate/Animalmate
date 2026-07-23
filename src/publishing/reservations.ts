@@ -34,7 +34,12 @@ export interface CreateVolunteerInput {
 export type CreateReservationInput = CreateGeneralInput | CreateVolunteerInput;
 
 export async function createReservation(db: Db, actor: Actor, input: CreateReservationInput): Promise<ScheduledPost> {
-  requireAuthorized(actor, { kind: 'post.create' });
+  // 일반(개인) 공지 = post.create(운영진). 봉사(팀) 공지 = 팀 소유 스코프(팀장은 소속 팀만, 회장단 override).
+  if (input.kind === 'volunteer') {
+    requireAuthorized(actor, { kind: 'recurring.manage', owner: { ownerType: 'team', ownerId: input.teamId } });
+  } else {
+    requireAuthorized(actor, { kind: 'post.create' });
+  }
 
   if (input.kind === 'general') {
     const [post] = await db
