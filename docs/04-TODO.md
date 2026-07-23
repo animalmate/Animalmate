@@ -66,11 +66,20 @@
       → 2026-07-23 코어 완료: `src/crypto/token-cipher.ts`(AES-256-GCM, TOKEN_ENCRYPTION_KEY) +
       `src/naver/oauth.ts`(refresh) + `src/naver/token-service.ts`(store/refreshAndStore, 실패 시
       status=error+NaverTokenError, refresh token 회전 반영). 테스트: 암호화 단위 8 + 서비스 통합 2.
-      남음: 자동 갱신 크론 배선(pg_cron 단계) + 상태 대시보드 위젯(인증/프론트) + 최초 토큰 부트스트랩
-      (TOKEN_ENCRYPTION_KEY 생성 후 .env 저장 → storeRefreshToken 으로 .env의 refresh token 이관).
-- [ ] scheduled_posts 작성 화면(제목/본문/이미지/게시판/발행시각) + 상태머신
-- [ ] 발행 워커(pg_cron 매분 → API): due 소량(≤5건) 처리, 재시도 2회, 실패 알림 메일
-      DoD: 예약 3건이 지정 시각 ±2분 내 카페에 게시되고 URL 저장됨
+      남음: 자동 갱신 크론 배선(pg_cron 단계) + 상태 대시보드 위젯(인증/프론트).
+      부트스트랩 스크립트 완료: `node scripts/bootstrap-token.mjs`(.env NAVER_REFRESH_TOKEN →
+      TOKEN_ENCRYPTION_KEY 암호화 → naver_tokens 저장, 성공 시 .env 토큰 제거 안내). 실행은 사용자가
+      TOKEN_ENCRYPTION_KEY 생성 후.
+- [~] scheduled_posts 작성 화면(제목/본문/이미지/게시판/발행시각) + 상태머신
+      → 2026-07-23 상태머신·서비스 완료: `src/publishing/state-machine.ts`(draft→ready→scheduled→
+      published|failed, **code 999=rate_limited→failed 아님·대기 후 재시도**, 단위테스트로 증명) +
+      `src/publishing/scheduled-posts.ts`(createDraft/markReady[필수값 검증]/schedule/fetchDuePosts/
+      applyPublishResult) + `src/naver/cafe-write.ts`(**dry-run 게이트: 기본 dryRun=true, false 명시 시만 실카페**).
+      단위 12 + 통합 6. 남음: 작성 UI(인증/프론트).
+- [ ] 발행 워커(pg_cron 매분 → API): due 소량(≤5건) 처리, 건별 30초 간격, code 999는 대기 후 재시도,
+      그 외 재시도 2회, 실패 알림 메일. DoD: 예약 3건이 지정 시각 ±2분 내 카페에 게시되고 URL 저장됨
+      → 코어 로직(fetchDuePosts/applyPublishResult/cafe-write) 준비됨. **cron 배선+CRON_SECRET+실카페(menuid 68)
+      는 사용자 인프라 준비 후.** 준비 신호 전까지 cafe-write dryRun 유지.
 ### 1C. 반복 공지 발행 (F1 — 스코프 피벗으로 재작성. 신청/확정/카톡 제거)
 - [ ] recurring_rules CRUD (팀 소유) + "매월 N번째 X요일" 날짜 계산 유틸(테스트 필수)
       → 날짜 계산 유틸 완료(2026-07-23): `src/recurrence/month-weekday.ts` + 테스트 12케이스
