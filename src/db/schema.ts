@@ -37,7 +37,7 @@ export const boardPositionEnum = pgEnum('board_position', [
   'vice_president',
   'treasurer',
 ]);
-export const ownerTypeEnum = pgEnum('owner_type', ['personal', 'team']);
+export const ownerTypeEnum = pgEnum('owner_type', ['personal', 'team', 'global']);
 export const visibilityEnum = pgEnum('visibility', ['member', 'staff', 'board']);
 export const postStatusEnum = pgEnum('post_status', [
   'draft',
@@ -138,6 +138,8 @@ export const scheduledPosts = pgTable(
     boardMenuid: integer('board_menuid')
       .notNull()
       .references(() => boards.menuid),
+    // 봉사 회차 연결(post→event 다대일). 봉사 외 일반 공지(총회 등)는 null.
+    eventId: uuid('event_id').references(() => events.id, { onDelete: 'set null' }),
     title: text('title').notNull(),
     contentMd: text('content_md').notNull(),
     imageUrls: text('image_urls').array(),
@@ -154,6 +156,23 @@ export const scheduledPosts = pgTable(
 );
 
 // ── 봉사 워크플로 ──────────────────────────────────────────────────────
+// 발행 양식(템플릿). 팀 소유·개인 소유·global(공용) 셋. global 은 owner_id=null, 편집=회장단만.
+export const postTemplates = pgTable('post_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerType: ownerTypeEnum('owner_type').notNull(), // personal | team | global
+  ownerId: uuid('owner_id'), // global 이면 null
+  name: text('name').notNull(),
+  titleTemplate: text('title_template').notNull(), // {{날짜}} {{장소}} {{집합시간}} {{정원}} 플레이스홀더
+  bodyTemplate: text('body_template').notNull(),
+  updatedBy: uuid('updated_by')
+    .notNull()
+    .references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// recurring_rules: 이제 "일괄 생성 도우미의 저장된 프리셋"(크론 자동 생성 아님). 실체 = generation preset.
+// 이름은 마이그레이션 안정성을 위해 유지(리네임 회피).
 export const recurringRules = pgTable('recurring_rules', {
   id: uuid('id').primaryKey().defaultRandom(),
   teamId: uuid('team_id')
@@ -162,12 +181,13 @@ export const recurringRules = pgTable('recurring_rules', {
   label: text('label').notNull(),
   monthWeek: monthWeekEnum('month_week').notNull(), // 매월 N번째(1~4|last)
   weekday: smallint('weekday').notNull(), // 0=일 … 6=토
-  time: time('time').notNull(),
+  time: time('time').notNull(), // 봉사 집합시간(event.meet_time 의 원천)
   boardMenuid: integer('board_menuid')
     .notNull()
     .references(() => boards.menuid),
-  templateMd: text('template_md').notNull(),
-  draftLeadDays: integer('draft_lead_days').notNull().default(3),
+  templateId: uuid('template_id').references(() => postTemplates.id, { onDelete: 'set null' }),
+  noticeLeadDays: integer('notice_lead_days').notNull().default(7), // 봉사일 - N일 = 발행일
+  publishTime: time('publish_time').notNull().default('20:00'), // 발행 시각
   isActive: boolean('is_active').notNull().default(true),
 });
 
@@ -183,13 +203,24 @@ export const events = pgTable('events', {
   place: text('place'),
   capacity: integer('capacity'),
   status: eventStatusEnum('status').notNull().default('draft'),
-  // 공지 발행용 회차 데이터. 필수 필드(event_date/place/capacity) 미완성 시 발행 불가(F1 안전장치).
-  // 신청/확정/오픈채팅은 스코프 피벗으로 제거(신청=카페 댓글, 수합=팀장단 수동).
-  scheduledPostId: uuid('scheduled_post_id').references(() => scheduledPosts.id, {
-    onDelete: 'set null',
-  }),
+  // 공지 발행용 회차 데이터 = 예약 폼과 통합(일시/장소/정원 = 챗봇 상태질의 원천).
+  // post→event 연결은 scheduled_posts.event_id 로 통일(events.scheduled_post_id 제거).
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// 미완성 점검 알림 발송 기록(중복 방지). 같은 예약글에 같은 날 중복 알림 금지.
+export const noticeCheckLog = pgTable(
+  'notice_check_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    scheduledPostId: uuid('scheduled_post_id')
+      .notNull()
+      .references(() => scheduledPosts.id, { onDelete: 'cascade' }),
+    noticeDate: date('notice_date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('notice_check_uq').on(t.scheduledPostId, t.noticeDate)]
+);
 
 // ── RAG/챗봇 ───────────────────────────────────────────────────────────
 export const documents = pgTable('documents', {

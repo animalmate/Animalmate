@@ -7,12 +7,22 @@ export interface OtpMail {
   purpose: 'signup' | 'login';
 }
 
+export interface GenericMail {
+  to: string | string[];
+  subject: string;
+  text: string;
+}
+
 export interface Mailer {
+  send(mail: GenericMail): Promise<void>;
   sendOtp(mail: OtpMail): Promise<void>;
 }
 
 /** SMTP 미설정 시 기본. 실제 발송 없이 로그만(개발/테스트). */
 export const dryMailer: Mailer = {
+  async send(mail) {
+    console.log(`[dry-mail] → ${mail.to}: ${mail.subject}. 실제 발송 안 함(SMTP 미설정).`);
+  },
   async sendOtp(mail) {
     console.log(`[dry-mail] OTP → ${mail.to} (${mail.purpose}). 실제 발송 안 함(SMTP 미설정).`);
   },
@@ -28,18 +38,25 @@ function otpSubjectBody(mail: OtpMail): { subject: string; text: string } {
 
 /** Gmail SMTP 메일러. nodemailer 를 지연 로드. */
 export function gmailMailer(env: NodeJS.ProcessEnv = process.env): Mailer {
+  async function transport() {
+    const nodemailer = await import('nodemailer');
+    const port = Number(env.SMTP_PORT ?? 587);
+    return nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port,
+      secure: port === 465, // 587=STARTTLS, 465=SSL
+      auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+    });
+  }
   return {
+    async send(mail) {
+      const t = await transport();
+      await t.sendMail({ from: env.SMTP_FROM ?? env.SMTP_USER, to: mail.to, subject: mail.subject, text: mail.text });
+    },
     async sendOtp(mail) {
-      const nodemailer = await import('nodemailer');
-      const port = Number(env.SMTP_PORT ?? 587);
-      const transport = nodemailer.createTransport({
-        host: env.SMTP_HOST,
-        port,
-        secure: port === 465, // 587=STARTTLS, 465=SSL
-        auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
-      });
       const { subject, text } = otpSubjectBody(mail);
-      await transport.sendMail({ from: env.SMTP_FROM ?? env.SMTP_USER, to: mail.to, subject, text });
+      const t = await transport();
+      await t.sendMail({ from: env.SMTP_FROM ?? env.SMTP_USER, to: mail.to, subject, text });
     },
   };
 }

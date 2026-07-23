@@ -88,22 +88,19 @@
       응답+audit(cron.publish)에 기록**) + `src/http/cron-auth.ts`(상수시간 비교). 인증 단위 5+워커 통합 2.
       토큰 부트스트랩 완료(naver_tokens에 암호화 저장, .env NAVER_REFRESH_TOKEN 제거). pg_cron 확장 활성화됨.
       **남음: 앱 배포 후 pg_cron 잡 등록(README SQL) + 실게시는 NAVER_PUBLISH_DRY_RUN=false 전환(사용자 신호).**
-### 1C. 반복 공지 발행 (F1 — 2026-07-23 재개정: 수동 선예약 중심. 크론 자동 생성 폐기)
-> 아래 대부분은 **판단 지점 확정 후 구현 착수**(질문 섹션 참조). 날짜 유틸은 그대로 재사용.
-- [x] "매월 N번째 X요일" 날짜 계산 유틸(테스트 필수)
-      → `src/recurrence/month-weekday.ts`(단위 12). 일괄 생성 도우미가 재사용.
-- [ ] post_templates CRUD (팀 소유 또는 공용): 제목/본문 플레이스홀더({{날짜}}{{장소}}{{집합시간}}{{정원}}).
-      회장단·팀장단 CRUD(소유권 규칙 동일). 작성 화면 "양식 불러오기" 프리필.
-- [ ] 직접 선예약 + 팀별 예약 큐: 팀장단이 임의 미래 시점 예약 제한 없이 등록. 큐 화면(발행일 순,
-      상태 표시), published 전까지 수정·취소(기존 상태머신·소유권 그대로). 예약 폼 = event(일시/장소/정원) 통합.
-- [ ] 일괄 생성 도우미: 반복 패턴(매월 N번째 X요일 HH:MM)+기간(시작~끝월) → 템플릿 기반 초안 N건
-      **즉시** 생성(날짜 유틸 재사용, 크론 아님). recurring_rules = 이 생성기의 저장된 입력값으로 역할 축소.
-- [~] draft-generate 크론 → **미완성 점검**으로 전환: 발행 D-3에 필수 필드 미완성 예약 → 팀장단 알림 메일.
-      → 현재 `src/recurrence/draft-generation.ts` 는 **구(회차 자동 생성)** 로직. **점검용으로 재작성 필요**.
-      `/api/cron/draft-generate` 라우트·CRON_SECRET·pg_cron 배선은 재사용. 발행 보류 원칙 유지.
-- [~] recurring_rules CRUD (팀 소유): `src/recurrence/recurring-rules.ts`(recurring.manage, 소프트삭제, audit)
-      기구현. **역할 재정의**(크론 트리거 아님 → 일괄 생성기 프리셋). 크론 자동 생성 코드는 제거 예정.
-      DoD(F1 전체): 파일럿 팀이 템플릿→선예약(또는 일괄 생성)→필드 완성→카페 발행까지 end-to-end 성공
+### 1C. 반복 공지 발행 (F1 — 2026-07-23 재개정: 수동 선예약 중심. 크론 자동 생성 폐기) — 서비스 구현 완료
+> 서비스·로직·API 완료(마이그레이션 0004/0005). UI(프론트)만 남음. next build 통과.
+- [x] "매월 N번째 X요일" 날짜 계산 유틸 → `src/recurrence/month-weekday.ts`(단위 12). 일괄 생성이 재사용.
+- [x] post_templates CRUD (팀/개인/global) → `src/publishing/post-templates.ts`(template.manage,
+      global=회장단만·사용 전원, renderTemplate 플레이스홀더). 단위(render 3)+통합. UI "양식 불러오기"만 남음.
+- [~] 직접 선예약 + 팀별 예약 큐 → `scheduled-posts.ts`에 event_id 연결·`cancelPost`(published 전 취소)·
+      markReady가 event 필수필드(일시/장소/정원) 검증. **예약 큐 화면(프론트)만 남음**.
+- [x] 일괄 생성 도우미 → `src/publishing/batch-generate.ts`(패턴+기간 → 템플릿 렌더 event+post 즉시 생성,
+      publish_at=봉사일−lead+발행시각 KST, 지난 회차 skip). 통합 테스트 통과.
+- [x] draft-generate 크론 → **미완성 점검** → `src/publishing/readiness-check.ts`(D-3/D-1, notice_check_log
+      중복 방지, D-1 격상, 팀장단 알림). `/api/cron/draft-generate` 라우트가 이걸 호출. 구 draft-generation 제거.
+- [x] recurring_rules(생성 프리셋) CRUD → `recurring-rules.ts` 새 필드(template_id/notice_lead_days/publish_time).
+      DoD(F1 전체): 파일럿 팀이 템플릿→선예약(또는 일괄 생성)→필드 완성→카페 발행까지 end-to-end (UI 붙이면 완성)
 ### 1D. 챗봇 v1
 - [ ] LLM 클라이언트: **Gemini 3.1 Flash-Lite(유료 티어)** 생성 + 최신 임베딩 모델.
       **구형 2.0 계열 모델명 사용 금지**. 모델 ID는 `GEMINI_MODEL`·`GEMINI_EMBEDDING_MODEL`
@@ -169,15 +166,13 @@
 8. **F9 조회 보호**: 실패 메시지 단일화, IP당 분당 5회, 실패 10회 시 IP 1시간 차단, 시도 로그 기록.
 
 ## 질문 (에이전트가 스펙 불명확 시 여기에 기록)
-### F1 수동 선예약 재개정(2026-07-23) 판단 지점 — 구현 착수 전 확정 필요
-1. **event ↔ scheduled_post 연결 방향**: 현재 `events.scheduled_post_id → scheduled_posts`. 예약 폼 통합·
-   미완성 점검(post→event 필드 조회)을 위해 `scheduled_posts.event_id` 를 추가할지, 기존 역방향을 유지할지?
-   예약 1건 생성 시 event+post 를 함께 만드는가(1:1 강제)?
-2. **일괄 생성 도우미의 날짜 의미**: 패턴(매월 N번째 X요일 HH:MM)이 정하는 날짜가 **봉사 날짜(event_date)**인가
-   **공지 발행 시각(publish_at)**인가? 둘이 다르면 publish_at 은 어떻게 산출(예: event_date - N일)? 팀장단 입력 vs 자동?
-3. **post_templates '공용' 표현**: owner_type 에 'global/shared' 신설 vs (team 소유 + is_shared 플래그)?
-   공용 템플릿 편집은 회장단만인가 팀장단도 가능한가?
-4. **recurring_rules 정리 범위**: template_md 를 post_templates 참조로 이관? 일괄 생성 프리셋에 불필요한
-   필드(예: draft_lead_days) 정리 여부?
-5. **미완성 점검 기준**: D-3 = publish_at - 3일(draft_lead_days 재사용?) 기준? 같은 예약에 매일 중복
-   알림 방지(하루 1회/1회성) 규칙?
+### F1 수동 선예약 재개정(2026-07-23) 판단 지점 — 확정·구현 완료
+1. **연결 방향**: `scheduled_posts.event_id`(post→event 다대일)로 통일, `events.scheduled_post_id` 제거(0004).
+   봉사 공지 예약 = event+post 동시 생성. event 없는 일반 공지(event_id=null)도 같은 큐 사용.
+2. **패턴=봉사 날짜(event_date)**. publish_at = 봉사일 − notice_lead_days(기본 7) + publish_time(기본 20:00, KST).
+   산출 publish_at 이 이미 지났으면 그 회차 skip(결과에 표시).
+3. **owner_type에 global 신설**(0004). global 편집=회장단만, 사용=전원. 팀/개인 템플릿은 소유권 규칙.
+4. **recurring_rules**: template_md → template_id(post_templates 참조), draft_lead_days 제거,
+   notice_lead_days(7)·publish_time(20:00) 추가(0004/0005). 실체=생성 프리셋(테이블명은 유지 — 리네임 회피).
+5. **미완성 점검**: publish_at − 3일 고정. 중복 방지 = notice_check_log(post_id+알림일 유니크). D-1 격상 알림
+   ("내일 발행 보류 예정"). 발행 시각 미완성이면 status≠scheduled 라 자동 보류.

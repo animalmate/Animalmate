@@ -27,7 +27,7 @@ const NEW_EMAIL = 'auth-newbie@example.invalid';
 
 function captureMailer(): { mailer: Mailer; sent: OtpMail[] } {
   const sent: OtpMail[] = [];
-  return { mailer: { async sendOtp(m) { sent.push(m); } }, sent };
+  return { mailer: { async send() {}, async sendOtp(m) { sent.push(m); } }, sent };
 }
 
 suite('인증 — 가입코드 + 이메일 OTP', () => {

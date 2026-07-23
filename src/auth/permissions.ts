@@ -38,7 +38,8 @@ export type Action =
   | { kind: 'post.create' }
   | { kind: 'post.modify'; owner: Ownership } // 수정/삭제
   | { kind: 'document.modify'; owner: Ownership } // 수정/삭제
-  | { kind: 'recurring.manage'; owner: Ownership } // 반복 규칙 CRUD(팀 소유)
+  | { kind: 'recurring.manage'; owner: Ownership } // 반복 규칙/프리셋 CRUD(팀 소유)
+  | { kind: 'template.manage'; owner: Ownership } // 발행 템플릿 CRUD(팀/개인 소유; global 은 별도 처리)
   | { kind: 'membership.manage' } // 운영진 임명/해제
   | { kind: 'term.transition' } // 학기 전환
   | { kind: 'board.registry' } // 게시판 레지스트리
@@ -95,7 +96,8 @@ export function authorize(actor: Actor, action: Action): Decision {
     // 운영진은 소유자(본인/소속팀)일 때만.
     case 'post.modify':
     case 'document.modify':
-    case 'recurring.manage': {
+    case 'recurring.manage':
+    case 'template.manage': {
       if (!isStaffPlus(actor.role)) return deny('role_insufficient');
       if (isPrivileged(actor.role)) {
         return ownsResource(actor, action.owner) ? ALLOW : ALLOW_OVERRIDE;

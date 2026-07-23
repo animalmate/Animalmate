@@ -5,7 +5,7 @@
 ## enum 정의
 - `role`: member(부원) | staff(운영진) | board(회장단) | sysadmin(시스템관리자)
 - `board_position`: president(회장) | vice_president(부회장) | treasurer(총무)   ← 회장단 3인 직책
-- `owner_type`: personal | team
+- `owner_type`: personal | team | global   ← global 은 공용 템플릿용(owner_id=null, 회장단 편집·전원 사용)
 - `visibility`: member | staff | board          ← RAG 문서 공개 범위(질문자 역할 이하만 검색)
 - `post_status`: draft → ready → scheduled → published | failed
 - `event_status`: draft → published → done | canceled   ← 공지 발행 회차 상태(신청 제거로 단순화, 마이그레이션 0002 적용)
@@ -29,27 +29,30 @@
 ### 카페 연동
 - `boards` (menuid PK, name, purpose, bot_can_write bool, is_active)   ← 게시판 레지스트리
 - `naver_tokens` (id, refresh_token_encrypted, last_refreshed_at, status[ok|error])
-- `scheduled_posts` (id, owner_type, owner_id, author_user_id, board_menuid,
+- `scheduled_posts` (id, owner_type, owner_id, author_user_id, board_menuid, event_id?,
   title, content_md, image_urls[], publish_at, status, cafe_article_url?,
   fail_reason?, retry_count, approved_by?, created_at, updated_at)
+  - event_id: 봉사 회차 연결(0004). 일반 공지는 null. published 전까지 수정·취소.
 
 ### 봉사 워크플로 (F1 수동 선예약 중심, 2026-07-23 개정)
-- `post_templates` (id, owner_type, owner_id, name, title_template, body_template,
-  updated_by, updated_at, created_at)   ← 발행 양식(구현 예정)
-  - 제목/본문에 `{{날짜}} {{장소}} {{집합시간}} {{정원}}` 플레이스홀더. 팀 소유 또는 공용.
-    회장단·팀장단 CRUD(소유권 규칙은 게시물과 동일). "공용" 표현 방식은 질문 참조.
-- `recurring_rules` (id, team_id, label, month_week[1..4|last], weekday, time,
-  board_menuid, template_md, draft_lead_days default 3, is_active)
-  - **역할 축소(개정)**: 크론 자동 생성 제거. 이제 **일괄 생성 도우미의 저장된 입력값**(반복 패턴
-    프리셋)으로만 쓴다. template_md 는 post_templates 참조로 이관 검토(질문).
-- `events` (id, team_id, rule_id?, title, event_date, meet_time, place,
-  capacity, status, scheduled_post_id?, created_at)
-  - **봉사 회차 = 예약 폼과 통합**: 일시(event_date/meet_time)·장소·정원은 event 에 저장되어
-    챗봇 상태 질의("이번 주 봉사 어디야")의 **원천**이 된다. 필수 필드(event_date, place, capacity)
-    미완성 시 발행 불가(F1 안전장치). scheduled_post 와 1:1 연결(연결 방향은 질문 참조).
-  - **스코프 피벗(2026-07-23)**: 신청/확정/오픈채팅 제거 → `applications`·`confirm_mode`·
-    `openchat_url/code` 폐기(0001). 신청=카페 댓글(현행), 수합=팀장단 수동.
-  - 발행 D-3 미완성 점검(과거 draft-generate 크론을 점검용으로 전환). 자동 회차 생성은 폐기.
+- `post_templates` (id, owner_type[personal|team|global], owner_id?, name, title_template, body_template,
+  updated_by, updated_at, created_at)   ← 발행 양식(구현됨, 0004)
+  - 제목/본문에 `{{날짜}} {{장소}} {{집합시간}} {{정원}}` 플레이스홀더. **global**(owner_id=null)=회장단만
+    편집·전원 사용. team/personal=소유권 규칙(template.manage). 렌더 시 값 없는 키는 그대로 둔다.
+- `recurring_rules` (id, team_id, label, month_week[1..4|last], weekday, time(봉사 집합시간),
+  board_menuid, template_id?, notice_lead_days default 7, publish_time default 20:00, is_active)   ← 0004/0005
+  - **역할 = 일괄 생성 도우미의 저장된 프리셋**(크론 자동 생성 아님). template_md→template_id 이관,
+    draft_lead_days 제거. 테이블명은 리네임 마이그레이션 회피 위해 유지(실체 = generation preset).
+- `events` (id, team_id, rule_id?, title, event_date, meet_time, place, capacity, status, created_at)
+  - **봉사 회차 = 예약 폼과 통합**: 일시(event_date/meet_time)·장소·정원이 event 에 저장되어
+    챗봇 상태 질의("이번 주 봉사 어디야")의 **원천**. 필수 필드(event_date, place, capacity) 미완성 시
+    발행 불가(F1 안전장치, markReady 가 검증). scheduled_posts.event_id 로 연결(post→event 다대일).
+  - **스코프 피벗(2026-07-23)**: 신청/확정/오픈채팅 제거(0001). `events.scheduled_post_id` 제거(0004,
+    연결은 scheduled_posts.event_id 로 통일). 신청=카페 댓글, 수합=팀장단 수동.
+- `notice_check_log` (id, scheduled_post_id, notice_date, created_at, UNIQUE(scheduled_post_id, notice_date))   ← 0004
+  - 미완성 점검 알림 중복 방지. 발행 D-3/D-1 미완성(draft) 예약에 하루 1회만 알림.
+- `scheduled_posts`: **event_id 추가(0004)** — 봉사 회차 연결(일반 공지는 null, 같은 발행 큐 공용).
+  published 전까지 수정·취소(cancelPost) 가능.
 
 ### RAG/챗봇
 - `documents` (id, title, content_md, visibility, owner_type, owner_id,

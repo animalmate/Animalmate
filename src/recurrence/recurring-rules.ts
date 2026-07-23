@@ -20,8 +20,9 @@ export interface CreateRuleInput {
   weekday: Weekday;
   time: string; // 'HH:MM' 또는 'HH:MM:SS'
   boardMenuid: number;
-  templateMd: string;
-  draftLeadDays?: number; // 기본 3
+  templateId?: string | null; // post_templates 참조
+  noticeLeadDays?: number; // 봉사일 - N일 = 발행일 (기본 7)
+  publishTime?: string; // 발행 시각 'HH:MM' (기본 20:00)
   isActive?: boolean;
 }
 
@@ -62,8 +63,9 @@ export async function createRule(db: DB, actor: Actor, input: CreateRuleInput): 
       weekday: input.weekday,
       time: input.time,
       boardMenuid: input.boardMenuid,
-      templateMd: input.templateMd,
-      draftLeadDays: input.draftLeadDays ?? 3,
+      templateId: input.templateId ?? null,
+      noticeLeadDays: input.noticeLeadDays ?? 7,
+      publishTime: input.publishTime ?? '20:00',
       isActive: input.isActive ?? true,
     })
     .returning();
@@ -85,8 +87,9 @@ export async function updateRule(db: DB, actor: Actor, id: string, patch: Update
   if (patch.weekday !== undefined) set.weekday = patch.weekday;
   if (patch.time !== undefined) set.time = patch.time;
   if (patch.boardMenuid !== undefined) set.boardMenuid = patch.boardMenuid;
-  if (patch.templateMd !== undefined) set.templateMd = patch.templateMd;
-  if (patch.draftLeadDays !== undefined) set.draftLeadDays = patch.draftLeadDays;
+  if (patch.templateId !== undefined) set.templateId = patch.templateId;
+  if (patch.noticeLeadDays !== undefined) set.noticeLeadDays = patch.noticeLeadDays;
+  if (patch.publishTime !== undefined) set.publishTime = patch.publishTime;
   if (patch.isActive !== undefined) set.isActive = patch.isActive;
 
   const [row] = await db.update(recurringRules).set(set).where(eq(recurringRules.id, id)).returning();
