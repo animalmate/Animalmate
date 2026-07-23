@@ -51,6 +51,7 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     user_not_found: '해당 이메일의 가입 회원이 없습니다. 먼저 가입해야 지정할 수 있습니다.',
     user_inactive: '활성 멤버십이 없는 회원입니다.',
     missing_user: '대상 회원이 지정되지 않았습니다.',
+    duplicate_menuid: '이미 등록된 menuid 입니다. 기존 게시판을 수정하세요.',
   };
   return (code && map[code]) || fallback;
 }

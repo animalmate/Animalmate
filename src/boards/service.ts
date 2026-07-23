@@ -29,6 +29,15 @@ export interface CreateBoardInput {
 
 export type UpdateBoardPatch = Partial<Omit<CreateBoardInput, 'menuid'>>;
 
+/** 이미 등록된 menuid 로 생성 시도. 라우트에서 409 로 매핑. */
+export class BoardExistsError extends Error {
+  readonly status = 409;
+  constructor(readonly menuid: number) {
+    super(`board already exists: menuid=${menuid}`);
+    this.name = 'BoardExistsError';
+  }
+}
+
 const REGISTRY = { kind: 'board.registry' } as const;
 
 /** 게시판 목록(기본: 전체, activeOnly=true 면 활성만). menuid 오름차순. */
@@ -46,6 +55,7 @@ export async function getBoard(db: DB, menuid: number): Promise<Board | null> {
 /** 게시판 생성(회장단 전용). 권한 검사 → 삽입 → audit. */
 export async function createBoard(db: DB, actor: Actor, input: CreateBoardInput): Promise<Board> {
   requireAuthorized(actor, REGISTRY);
+  if (await getBoard(db, input.menuid)) throw new BoardExistsError(input.menuid);
   const [row] = await db
     .insert(boards)
     .values({
