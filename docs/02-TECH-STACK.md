@@ -14,7 +14,7 @@
 | ORM | Drizzle | 서버리스 친화, 마이그레이션 파일 기반 |
 | LLM(생성) | **Gemini 3.1 Flash-Lite (유료 티어)** | 유료 티어로 확정. 프롬프트 캐싱으로 비용 절감. 하드 한도+알림 필수. **구형 2.0 계열 모델명 사용 금지**(코드·프롬프트·문서 전부 3.x 계열만). 코드는 `GEMINI_MODEL` 환경변수로 읽음(기본값 하드코딩 금지) |
 | LLM(임베딩) | Gemini 최신 임베딩 모델 | 구형 2.0 계열 금지. 코드는 `GEMINI_EMBEDDING_MODEL` 환경변수로 읽음. 정확한 ID는 Phase 1에서 콘솔 확인 후 핀 고정 |
-| 이메일 | Resend Free (100통/일) | 초대·알림·핸드오프. **Supabase Auth의 SMTP로도 연결(필수)** |
+| 이메일 | **Gmail SMTP(공용 계정 앱 비밀번호)** | 가입코드·알림·핸드오프. **Supabase Auth 커스텀 SMTP + 앱 알림 공용**. 무료 Gmail ~500통/일 한도(300명 규모 감내, 학기초 버스트만 유의) |
 | 모니터링 | UptimeRobot Free(5분 핑) + Sentry Free | 가동 감시 + keep-alive 겸용. 알림 = 공용 메일 |
 | 백업 | GitHub Actions 주 1회 pg_dump | 무료 티어는 자동 백업 없음 → 자체 백업 |
 
@@ -51,7 +51,8 @@ Supabase pg_cron (분 단위) ──pg_net HTTP──▶ /api/cron/* (CRON_SECRE
    암호화 → 비공개 저장소(또는 비공개 아티팩트)에 보관. 암호화 키는 비밀번호 금고에.
    **평문 덤프를 공개 리포에 올리지 않는다(PII).** 학기 1회 복원 리허설.
 4. **Supabase 기본 인증 메일 한도**: 기본 SMTP는 시간당 수 건 수준이라 300명 매직링크 운영
-   불가 → Auth 설정에서 커스텀 SMTP(Resend)를 반드시 연결.
+   불가 → Auth 설정에서 커스텀 SMTP(**Gmail 공용 계정 앱 비밀번호**)를 반드시 연결. Gmail 일일 한도
+   (~500통) 내에서 운영하되, 학기초 대량 가입 시 발송 분산·재시도 고려.
 5. Supabase Free 용량 참고: DB 500MB / Storage 1GB / MAU 5만 / Edge 호출 50만/월 —
    300명 규모에 충분. 이미지 원본은 카페에 있으므로 Storage는 발행용 임시 저장 + 총무 영수증
    이미지(F8, 비공개 버킷)만.

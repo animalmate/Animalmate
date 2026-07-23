@@ -38,7 +38,7 @@
       TODO: doc_chunks.embedding 차원(768)은 GEMINI_EMBEDDING_MODEL 확정(1D) 후 재확인.
 - [ ] 인증: 이메일 매직링크 로그인 / **학기별 가입코드** 가입 플로우(카페 공지로 코드 배포, 회장단 재발급)
       DoD: 유효한 학기 가입코드 없이는 가입 불가
-      → 대기(Resend 가입·SMTP 연결은 사람 몫). 준비 절차·필요 값은 README "인증 준비"에 정리함.
+      → 대기(공용 Gmail 앱 비밀번호 발급·Supabase SMTP 연결은 사람 몫). 준비 절차·필요 값은 README "인증 준비"에 정리함.
       스키마 확정: `join_codes`(code, semester_label, is_active, created_by, created_at) — 활성 코드 항상 1개,
       재발급=기존 비활성화+신규+audit. invites 대체(드롭 여부는 착수 시). 인증 착수 시 마이그레이션.
 - [x] 권한 미들웨어: role + membership active + 소유권 검사 공통화 + audit 기록
@@ -57,7 +57,8 @@
       /api/cron/publish + 인증 준비됨. 남음: 앱 배포 후 cron.schedule 잡 등록(README SQL)로 도달 로그 확인.
 - [ ] /api/health(경량 DB 조회) + UptimeRobot 5분 모니터 등록
       DoD: 무료 티어 7일 일시정지 방지 링크 가동 + 다운 알림이 공용 메일로 수신됨
-- [ ] Supabase Auth 커스텀 SMTP를 Resend로 연결 (기본 메일 한도로는 매직링크 운영 불가)
+- [ ] Supabase Auth 커스텀 SMTP를 **Gmail(공용 계정 앱 비밀번호)**로 연결 (기본 메일 한도로는 운영 불가)
+      + 앱 알림 발송 모듈(nodemailer, Gmail SMTP): 팀장단 초안 알림·발행 실패 알림·핸드오프. 공용 SMTP_* env.
 ### 1B. 카페 발행
 - [x] boards 레지스트리 CRUD (회장단 전용)
       → 2026-07-23 완료. `src/boards/service.ts`(list/get/create/update/delete). 쓰기=board.registry
@@ -92,7 +93,7 @@
 - [~] 회차(event) 초안 자동 생성 크론(D-3) + 팀장단 알림 메일
       → 로직·라우트 완료: `src/recurrence/draft-generation.ts`(D-lead 판정 순수함수 + events 초안
       생성, 멱등, cron.draft_generate 요약 audit) + `src/app/api/cron/draft-generate/route.ts`(CRON_SECRET).
-      단위 7(월 경계·last·월말·lead 0). 남음: pg_cron 잡 등록(매일) + **팀장단 알림 메일(Resend 연결 후)**.
+      단위 7(월 경계·last·월말·lead 0). 남음: pg_cron 잡 등록(매일) + **팀장단 알림 메일(Gmail SMTP 연결 후)**.
 - [ ] 회차 편집 화면: 필수 필드(일시/장소/정원) 입력, 미완성 시 발행 보류 배지 →
       확정 시 scheduled_posts 생성(발행은 1B 발행 워커 재사용). ※ 오픈채팅/참여코드 없음
       DoD: 파일럿 팀 실제 회차 1건이 초안 생성→필드 완성→카페 발행까지 end-to-end 성공
