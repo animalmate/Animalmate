@@ -52,6 +52,10 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     user_inactive: '활성 멤버십이 없는 회원입니다.',
     missing_user: '대상 회원이 지정되지 않았습니다.',
     duplicate_menuid: '이미 등록된 menuid 입니다. 기존 게시판을 수정하세요.',
+    missing_team: '봉사 공지는 팀을 선택해야 합니다.',
+    missing_title: '제목을 입력해 주세요.',
+    missing_board: '게시판을 선택해 주세요.',
+    no_occurrences: '발행 시각(또는 봉사 일자)을 최소 1개 입력하세요.',
   };
   return (code && map[code]) || fallback;
 }
