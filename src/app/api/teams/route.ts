@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { teams } from '@/db/schema';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus } from '@/auth/permissions';
+import { isStaffPlus, isPrivileged } from '@/auth/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,5 +16,7 @@ export async function GET(): Promise<Response> {
     .from(teams)
     .where(eq(teams.isActive, true))
     .orderBy(asc(teams.name));
-  return NextResponse.json({ teams: rows });
+  // 팀장(비회장단)은 소속 팀만 — 자기 팀만 예약·템플릿을 만들 수 있으므로 드롭다운도 소속 팀만 보인다.
+  const scoped = isPrivileged(actor.role) ? rows : rows.filter((r) => actor.teams.some((t) => t.teamId === r.id));
+  return NextResponse.json({ teams: scoped });
 }
