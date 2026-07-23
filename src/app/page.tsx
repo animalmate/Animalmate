@@ -1,4 +1,7 @@
+import { eq } from 'drizzle-orm';
 import { requireActor } from '@/auth/current-user';
+import { db } from '@/db/client';
+import { users } from '@/db/schema';
 import { ConsoleShell } from '@/components/console-shell';
 import { Banner, Card } from '@/components/ui';
 import { Icon } from '@/components/icon';
@@ -28,6 +31,8 @@ export default async function HomePage() {
   const actor = await requireActor();
   const staff = isStaffPlus(actor.role);
   const shortcuts = [...(staff ? STAFF_SHORTCUTS : []), ...(isPrivileged(actor.role) ? BOARD_SHORTCUTS : [])];
+  const [me] = await db.select({ name: users.name }).from(users).where(eq(users.id, actor.userId)).limit(1);
+  const name = me?.name?.trim() || '회원';
 
   return (
     <ConsoleShell actor={actor}>
@@ -39,7 +44,7 @@ export default async function HomePage() {
         ) : null}
 
         <div>
-          <h1 className="text-[28px] font-bold text-ink-900">콘솔</h1>
+          <h1 className="text-[28px] font-bold text-ink-900">안녕하세요, {name}님</h1>
           <p className="mt-1.5 text-[15px] text-ink-500">
             {staff ? '오늘도 아이들을 위해 한 걸음 — 무엇부터 할까요?' : '동아리 소식은 네이버 카페에서 확인할 수 있어요.'}
           </p>
