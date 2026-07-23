@@ -75,11 +75,20 @@ export const memberships = pgTable('memberships', {
   status: membershipStatusEnum('status').notNull().default('active'),
 });
 
+/** 팀장단 1인(공지에 삽입되는 연락처). 개인정보 — 런타임 입력이며 코드/시드에 넣지 않는다(규칙 #4). */
+export interface TeamLeader {
+  label: string; // 팀장 / 부팀장 등
+  name: string;
+  phone: string;
+}
+
 export const teams = pgTable('teams', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   kind: teamKindEnum('kind').notNull(),
   isActive: boolean('is_active').notNull().default(true),
+  // 매 학기 교체되는 팀장단 명단(공지 {{팀장단}} 자동 삽입용).
+  leaders: jsonb('leaders').$type<TeamLeader[]>().notNull().default(sql`'[]'::jsonb`),
 });
 
 export const teamMembers = pgTable(

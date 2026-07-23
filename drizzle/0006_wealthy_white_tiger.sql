@@ -1,0 +1,1 @@
+ALTER TABLE "teams" ADD COLUMN "leaders" jsonb DEFAULT '[]'::jsonb NOT NULL;

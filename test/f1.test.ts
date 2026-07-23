@@ -71,8 +71,8 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
     const tpl = await createTemplate(db, board, {
       ownerType: 'global',
       name: 'F1 봉사 양식',
-      titleTemplate: '{{날짜}} 봉사 공지',
-      bodyTemplate: '집합 {{집합시간}}, 장소 {{장소}}, 정원 {{정원}}',
+      titleTemplate: '{{간결_날짜}} 봉사 공지',
+      bodyTemplate: '{{전체_날짜}} 집합 {{집합시간}}, 장소 {{장소}}, 정원 {{정원}}',
     });
     templateId = tpl.id;
     expect(tpl.ownerType).toBe('global');
@@ -100,9 +100,10 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
 
     const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, res.created[0]!.postId!)))[0]!;
     expect(post.eventId).toBe(res.created[0]!.eventId);
-    expect(post.title).toBe('2026-03-01 봉사 공지'); // {{날짜}} 렌더
-    expect(post.contentMd).toContain('집합 14:00'); // {{집합시간}} 렌더, {{장소}}는 미치환
-    expect(post.contentMd).toContain('{{장소}}');
+    expect(post.title).toBe('03/01 봉사 공지'); // {{간결_날짜}} 렌더
+    expect(post.contentMd).toContain('2026년 3월 1일 일요일'); // {{전체_날짜}} 렌더
+    expect(post.contentMd).toContain('집합 14:00'); // {{집합시간}} 렌더
+    expect(post.contentMd).toContain('{{장소}}'); // 미치환(개별 수정에서 채움)
   });
 
   it('미완성 점검: D-3 draft 예약 → 팀장단 알림 + 중복 방지', async () => {

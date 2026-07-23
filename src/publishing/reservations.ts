@@ -3,7 +3,8 @@
 
 import { and, asc, eq } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { scheduledPosts, events } from '@/db/schema';
+import { scheduledPosts, events, teams } from '@/db/schema';
+import { dateVars, leadersBlock, kstDateStr } from './placeholders';
 import type { Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
@@ -100,14 +101,9 @@ export interface Occurrence {
   meetTime?: string | null;
 }
 
-function kstDateStr(d: Date): string {
-  const k = new Date(d.getTime() + 9 * 3600 * 1000);
-  return `${k.getUTCFullYear()}-${String(k.getUTCMonth() + 1).padStart(2, '0')}-${String(k.getUTCDate()).padStart(2, '0')}`;
-}
-
 /**
  * 발행 시각/봉사 일자를 여러 개 지정해 예약 N건을 한 번에 만든다. 각 건은 이후 개별 수정 가능.
- * 제목/본문의 {{날짜}}{{집합시간}} 플레이스홀더는 각 건의 값으로 자동 치환한다(빈 값이면 그대로 둠).
+ * 제목/본문의 {{간결_날짜}}{{전체_날짜}}{{집합시간}}{{팀장단}} 을 각 건 값으로 자동 치환(빈 값이면 그대로 둠).
  * {{장소}}{{정원}}은 채우지 않고 남겨 개별 수정에서 입력하게 한다.
  */
 export async function createReservationsMulti(
@@ -116,14 +112,22 @@ export async function createReservationsMulti(
   shared: SharedFields,
   occurrences: Occurrence[]
 ): Promise<string[]> {
+  // 봉사 공지면 팀장단 명단을 한 번만 조회.
+  let leaders = '';
+  if (shared.kind === 'volunteer' && shared.teamId) {
+    const [team] = await db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, shared.teamId)).limit(1);
+    leaders = leadersBlock(team?.leaders);
+  }
+
   const ids: string[] = [];
   for (const occ of occurrences) {
     const vars: Record<string, string> = {};
     if (shared.kind === 'volunteer') {
-      if (occ.eventDate) vars['날짜'] = occ.eventDate;
+      Object.assign(vars, dateVars(occ.eventDate));
       if (occ.meetTime) vars['집합시간'] = occ.meetTime;
+      if (leaders) vars['팀장단'] = leaders;
     } else if (occ.publishAt) {
-      vars['날짜'] = kstDateStr(occ.publishAt);
+      Object.assign(vars, dateVars(kstDateStr(occ.publishAt)));
     }
     const title = renderTemplate(shared.title, vars);
     const contentMd = renderTemplate(shared.contentMd, vars);

@@ -1,20 +1,24 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { setTeamActive, deleteTeam, TeamInUseError } from '@/org/teams';
+import { setTeamActive, setTeamLeaders, deleteTeam, TeamInUseError } from '@/org/teams';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// 활성/비활성 토글.
+// 활성/비활성 토글 또는 팀장단 명단 갱신.
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { id } = await ctx.params;
   try {
-    const { isActive } = await req.json();
-    const team = await setTeamActive(db, actor, id, Boolean(isActive));
+    const b = await req.json();
+    if (Array.isArray(b.leaders)) {
+      const team = await setTeamLeaders(db, actor, id, b.leaders);
+      return NextResponse.json({ team });
+    }
+    const team = await setTeamActive(db, actor, id, Boolean(b.isActive));
     return NextResponse.json({ team });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });

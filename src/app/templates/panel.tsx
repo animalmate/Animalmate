@@ -64,10 +64,13 @@ export function TemplatesPanel() {
       <Card className="space-y-3">
         <div className="font-medium">새 양식</div>
         <InfoText>
-          제목·본문에 <code className="rounded bg-gray-100 px-1">{'{{날짜}}'}</code>{' '}
-          <code className="rounded bg-gray-100 px-1">{'{{장소}}'}</code>{' '}
+          플레이스홀더(생성 시 자동 치환):{' '}
+          <code className="rounded bg-gray-100 px-1">{'{{간결_날짜}}'}</code>(07/23){' '}
+          <code className="rounded bg-gray-100 px-1">{'{{전체_날짜}}'}</code>(2026년 7월 23일 목요일){' '}
           <code className="rounded bg-gray-100 px-1">{'{{집합시간}}'}</code>{' '}
-          <code className="rounded bg-gray-100 px-1">{'{{정원}}'}</code> 를 넣으면 생성 시 채워집니다.
+          <code className="rounded bg-gray-100 px-1">{'{{팀장단}}'}</code>(팀별 명단).{' '}
+          <code className="rounded bg-gray-100 px-1">{'{{장소}}'}</code>{' '}
+          <code className="rounded bg-gray-100 px-1">{'{{정원}}'}</code> 은 각 예약 수정에서 채웁니다.
         </InfoText>
         <Field label="소유">
           <Select value={ownerType} onChange={(e) => setOwnerType(e.target.value)}>
@@ -92,10 +95,10 @@ export function TemplatesPanel() {
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="정기 봉사 공지" />
         </Field>
         <Field label="제목 양식">
-          <Input value={titleTemplate} onChange={(e) => setTitleTemplate(e.target.value)} placeholder="{{날짜}} 정기 봉사 안내" />
+          <Input value={titleTemplate} onChange={(e) => setTitleTemplate(e.target.value)} placeholder="{{간결_날짜}} 정기 봉사 안내" />
         </Field>
         <Field label="본문 양식">
-          <Textarea rows={5} value={bodyTemplate} onChange={(e) => setBodyTemplate(e.target.value)} placeholder={'집합 {{집합시간}} / 장소 {{장소}} / 정원 {{정원}}'} />
+          <Textarea rows={5} value={bodyTemplate} onChange={(e) => setBodyTemplate(e.target.value)} placeholder={'{{전체_날짜}} 봉사\n집합 {{집합시간}} / 장소 {{장소}} / 정원 {{정원}}\n\n문의:\n{{팀장단}}'} />
         </Field>
         <ErrorText>{error}</ErrorText>
         <Button disabled={busy || !name || !titleTemplate || (ownerType === 'team' && !teamId)} onClick={create}>

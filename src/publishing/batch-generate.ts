@@ -8,7 +8,8 @@
 
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { events, scheduledPosts } from '@/db/schema';
+import { events, scheduledPosts, teams } from '@/db/schema';
+import { dateVars, leadersBlock } from './placeholders';
 import type { Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
@@ -87,6 +88,8 @@ export async function batchGenerate(
   requireAuthorized(actor, { kind: 'recurring.manage', owner: { ownerType: 'team', ownerId: preset.teamId } });
 
   const template = preset.templateId ? await getTemplate(db, preset.templateId) : null;
+  const [team] = await db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, preset.teamId)).limit(1);
+  const leaders = leadersBlock(team?.leaders);
   const result: BatchResult = { created: [], skipped: [] };
 
   for (const { year, month } of monthsInRange(range.startYear, range.startMonth, range.endYear, range.endMonth)) {
@@ -102,7 +105,8 @@ export async function batchGenerate(
       continue;
     }
 
-    const vars = { 날짜: eventDate, 집합시간: preset.meetTime };
+    const vars: Record<string, string> = { ...dateVars(eventDate), 집합시간: preset.meetTime };
+    if (leaders) vars['팀장단'] = leaders;
     const title = template ? renderTemplate(template.titleTemplate, vars) : `${eventDate} 봉사 공지`;
     const content = template ? renderTemplate(template.bodyTemplate, vars) : '';
 

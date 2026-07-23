@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select } from '@/components/ui';
 
+interface Leader { label: string; name: string; phone: string }
 interface Team {
   id: string;
   name: string;
   kind: string;
   isActive: boolean;
+  leaders: Leader[];
 }
 
 const KIND_LABEL: Record<string, string> = { activity: '활동팀', functional: '기능팀' };
@@ -37,13 +39,10 @@ export function TeamsPanel() {
     void load();
   }
 
-  async function toggle(t: Team) {
+  async function patch(id: string, body: unknown) {
     setError('');
-    await fetch(`/api/admin/teams/${t.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: !t.isActive }),
-    });
+    const res = await fetch(`/api/admin/teams/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(errorMessage(d.error, d.message)); return; }
     void load();
   }
 
@@ -53,9 +52,7 @@ export function TeamsPanel() {
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       if (d.error === 'team_in_use') {
-        setError(
-          `삭제 불가: 이 팀에 회차 ${d.counts?.events ?? 0} · 프리셋 ${d.counts?.presets ?? 0} · 예약 ${d.counts?.reservations ?? 0}건이 있습니다. 대신 "비활성화"하세요.`
-        );
+        setError(`삭제 불가: 이 팀에 회차 ${d.counts?.events ?? 0} · 프리셋 ${d.counts?.presets ?? 0} · 예약 ${d.counts?.reservations ?? 0}건이 있습니다. 대신 "비활성화"하세요.`);
         return;
       }
       setError(errorMessage(d.error, d.message));
@@ -69,9 +66,7 @@ export function TeamsPanel() {
       <h1 className="text-lg font-bold">조직(팀)</h1>
       <Card className="space-y-3">
         <div className="font-medium">팀 추가</div>
-        <Field label="팀 이름">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="1팀 / 홍보팀 ..." />
-        </Field>
+        <Field label="팀 이름"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="1팀 / 홍보팀 ..." /></Field>
         <Field label="종류">
           <Select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="activity">활동팀(봉사)</option>
@@ -79,33 +74,50 @@ export function TeamsPanel() {
           </Select>
         </Field>
         <ErrorText>{error}</ErrorText>
-        <Button disabled={busy || !name} onClick={create}>
-          {busy ? '추가 중…' : '추가'}
-        </Button>
+        <Button disabled={busy || !name} onClick={create}>{busy ? '추가 중…' : '추가'}</Button>
       </Card>
 
-      <Card>
-        <div className="mb-2 font-medium">팀 목록</div>
-        {teams.length === 0 ? (
-          <InfoText>아직 팀이 없습니다.</InfoText>
-        ) : (
-          <ul className="divide-y divide-gray-100 text-sm">
-            {teams.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-2 py-2">
-                <span>
-                  {t.name} <span className="text-xs text-gray-500">({KIND_LABEL[t.kind] ?? t.kind})</span>
-                  {!t.isActive ? <span className="ml-1 text-xs text-gray-400">· 비활성</span> : null}
-                </span>
-                <span className="flex gap-2">
-                  <SecondaryButton onClick={() => toggle(t)}>{t.isActive ? '비활성화' : '활성화'}</SecondaryButton>
-                  <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <InfoText>회차·예약이 있는 팀은 삭제 대신 비활성화됩니다(기록 보존).</InfoText>
-      </Card>
+      {teams.map((t) => (
+        <Card key={t.id} className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium">
+              {t.name} <span className="text-xs text-gray-500">({KIND_LABEL[t.kind] ?? t.kind})</span>
+              {!t.isActive ? <span className="ml-1 text-xs text-gray-400">· 비활성</span> : null}
+            </span>
+            <span className="flex gap-2">
+              <SecondaryButton onClick={() => patch(t.id, { isActive: !t.isActive })}>{t.isActive ? '비활성화' : '활성화'}</SecondaryButton>
+              <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
+            </span>
+          </div>
+          <LeadersEditor team={t} onSave={(leaders) => patch(t.id, { leaders })} />
+        </Card>
+      ))}
+      <InfoText>회차·예약이 있는 팀은 삭제 대신 비활성화됩니다(기록 보존). 팀장단은 공지 {'{{팀장단}}'}에 자동 삽입됩니다.</InfoText>
+    </div>
+  );
+}
+
+function LeadersEditor({ team, onSave }: { team: Team; onSave: (leaders: Leader[]) => void }) {
+  const [rows, setRows] = useState<Leader[]>(team.leaders.length ? team.leaders : [{ label: '팀장', name: '', phone: '' }]);
+  const set = (i: number, k: keyof Leader, v: string) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  const add = () => setRows((rs) => [...rs, { label: '부팀장', name: '', phone: '' }]);
+  const del = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="space-y-2 rounded-md bg-gray-50 p-3">
+      <div className="text-sm font-medium text-gray-700">팀장단 (매 학기 갱신 · 공지 자동 삽입)</div>
+      {rows.map((r, i) => (
+        <div key={i} className="grid grid-cols-[5rem_1fr_9rem_auto] items-center gap-2">
+          <Input value={r.label} onChange={(e) => set(i, 'label', e.target.value)} placeholder="팀장" />
+          <Input value={r.name} onChange={(e) => set(i, 'name', e.target.value)} placeholder="이름" />
+          <Input value={r.phone} onChange={(e) => set(i, 'phone', e.target.value)} placeholder="010-0000-0000" />
+          <button className="text-xs text-red-600 underline" onClick={() => del(i)}>삭제</button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <SecondaryButton onClick={add}>+ 추가</SecondaryButton>
+        <Button onClick={() => onSave(rows)}>팀장단 저장</Button>
+      </div>
     </div>
   );
 }
