@@ -222,6 +222,7 @@ export interface ReservationRow {
   cafeArticleUrl: string | null;
   ownerType: string;
   ownerId: string;
+  failReason: string | null; // failed 일 때 실패 사유
   event: { eventDate: string | null; meetTime: string | null; place: string | null; capacity: number | null } | null;
   missing: string[]; // draft 일 때 부족한 필수 필드
 }
@@ -273,6 +274,7 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
     cafeArticleUrl: post.cafeArticleUrl,
     ownerType: post.ownerType,
     ownerId: post.ownerId,
+    failReason: post.failReason ?? null,
     event: event
       ? { eventDate: event.eventDate, meetTime: event.meetTime, place: event.place, capacity: event.capacity }
       : null,

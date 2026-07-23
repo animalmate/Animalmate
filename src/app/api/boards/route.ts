@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
-import { listBoards, createBoard } from '@/boards/service';
+import { listBoards, createBoard, BoardExistsError } from '@/boards/service';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
@@ -28,6 +28,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ board });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    if (e instanceof BoardExistsError) return NextResponse.json({ error: 'duplicate_menuid' }, { status: 409 });
     return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }

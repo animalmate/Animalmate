@@ -10,6 +10,7 @@ interface Reservation {
   boardMenuid: number;
   publishAt: string | null;
   cafeArticleUrl: string | null;
+  failReason: string | null;
   event: { eventDate: string | null; place: string | null; capacity: number | null } | null;
   missing: string[];
 }
@@ -77,6 +78,11 @@ export function ReservationsPanel() {
                 {r.status === 'draft' && r.missing.length > 0 ? (
                   <div className="text-sm text-yellow-700">미완성: {r.missing.join(', ')}</div>
                 ) : null}
+                {r.status === 'failed' ? (
+                  <div className="rounded-md bg-red-50 p-2 text-sm text-red-700">
+                    발행 실패{r.failReason ? `: ${r.failReason}` : ''}. 원인 확인 후 "재시도"로 발행 대기 큐에 다시 넣으세요.
+                  </div>
+                ) : null}
                 {r.status === 'published' ? (
                   <div className="rounded-md bg-gray-50 p-2 text-sm">
                     발행 완료 —{' '}
@@ -100,6 +106,9 @@ export function ReservationsPanel() {
                     ) : null}
                     {r.status === 'ready' ? (
                       <SecondaryButton onClick={() => act(r.id, 'schedule')}>발행 대기로</SecondaryButton>
+                    ) : null}
+                    {r.status === 'failed' ? (
+                      <SecondaryButton onClick={() => act(r.id, 'schedule')}>재시도(발행 대기)</SecondaryButton>
                     ) : null}
                     <SecondaryButton onClick={() => act(r.id, 'cancel')}>취소</SecondaryButton>
                   </div>
