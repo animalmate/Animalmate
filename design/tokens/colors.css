@@ -1,0 +1,86 @@
+:root {
+  /* ── 브랜드 원색 (로고 추출) ─────────────────────── */
+  /* 하늘(엠블럼 배경 블루) */
+  --blue-50:  #F1F6FC;
+  --blue-100: #DFEAF8;
+  --blue-200: #BDD5F0;
+  --blue-300: #94B9E6;
+  --blue-400: #6E9CDC;
+  --blue-500: #5588D2;   /* 로고 블루 */
+  --blue-600: #3E6FB9;
+  --blue-700: #345C99;
+  --blue-800: #2C4B7C;
+  --blue-900: #253D64;
+
+  /* 강아지 코랄 */
+  --coral-50:  #FEF2F2;
+  --coral-100: #FDE3E4;
+  --coral-300: #F7A2A6;
+  --coral-500: #EE5A60;  /* 로고 레드 */
+  --coral-600: #D8434B;
+  --coral-700: #B23239;
+
+  /* 고양이 앰버 */
+  --amber-50:  #FDF6E7;
+  --amber-100: #FAEBC8;
+  --amber-300: #F6CB6F;
+  --amber-500: #F0A72A;  /* 로고 옐로 */
+  --amber-600: #C97F0A;
+  --amber-700: #8F5C05;
+
+  /* 크림(엠블럼 아이보리) & 잉크(웜 그레이) */
+  --cream-25:  #FDFBF7;
+  --cream-50:  #FAF6EE;  /* 앱 배경 */
+  --cream-100: #F4EDDF;
+  --cream-200: #EADFC9;
+  --ink-100: #EFEAE0;
+  --ink-200: #DDD6C8;
+  --ink-300: #BFB7A6;
+  --ink-400: #99917F;
+  --ink-500: #7B7263;
+  --ink-700: #4E4739;
+  --ink-900: #2E2921;
+
+  /* ── 시맨틱 별칭 ─────────────────────────────── */
+  --color-primary: var(--blue-500);
+  --color-primary-hover: var(--blue-600);
+  --color-primary-active: var(--blue-700);
+  --color-primary-soft: var(--blue-50);
+  --color-accent: var(--coral-500);
+
+  --surface-page: var(--cream-50);
+  --surface-card: #FFFFFF;
+  --surface-sunken: var(--cream-100);
+  --border-default: var(--ink-200);
+  --border-strong: var(--ink-300);
+
+  --text-title: var(--ink-900);
+  --text-body: var(--ink-700);
+  --text-muted: var(--ink-500);
+  --text-faint: var(--ink-400);
+  --text-on-primary: #FFFFFF;
+  --text-link: var(--blue-600);
+
+  /* 상태색 */
+  --success-600: #2F8A57;
+  --success-100: #DFF2E6;
+  --success-700: #226A42;
+  --warning-600: var(--amber-600);
+  --warning-100: var(--amber-100);
+  --warning-700: var(--amber-700);
+  --error-600: #D8434B;
+  --error-100: var(--coral-100);
+  --error-700: var(--coral-700);
+  --info-600: var(--blue-600);
+  --info-100: var(--blue-100);
+  --info-700: var(--blue-800);
+
+  /* 예약 상태 배지 5종 */
+  --status-draft-bg: var(--ink-100);      --status-draft-fg: var(--ink-500);
+  --status-ready-bg: var(--blue-100);     --status-ready-fg: var(--blue-700);
+  --status-scheduled-bg: var(--amber-100);--status-scheduled-fg: var(--amber-700);
+  --status-published-bg: var(--success-100); --status-published-fg: var(--success-700);
+  --status-failed-bg: var(--coral-100);   --status-failed-fg: var(--coral-700);
+
+  --focus-ring: 0 0 0 3px rgba(85, 136, 210, 0.35);
+}

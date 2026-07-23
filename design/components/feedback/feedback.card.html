@@ -1,0 +1,40 @@
+<!-- @dsCard group="Components" viewport="700x520" name="피드백" subtitle="모달·토스트·배너·빈 상태·스켈레톤" -->
+<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = (()=>{for(const k of Object.getOwnPropertyNames(window)){try{const v=window[k];if(v&&typeof v==="object"&&v.Button&&v.StatusBadge)return v}catch(e){}}return {};})();
+const { ConfirmDialog, Toast, Banner, EmptyState, Skeleton, Button, Icon } = NS;
+function Demo(){
+  return <div style={{padding:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,alignItems:"start"}}>
+    <div style={{position:"relative",height:230,borderRadius:16,overflow:"hidden"}}>
+      <ConfirmDialog danger title="기존 코드를 무효화할까요?"
+        description="재발급하면 지금 쓰는 가입코드로는 더 이상 가입할 수 없어요."
+        confirmLabel="재발급" onConfirm={()=>{}} onCancel={()=>{}}
+        style={{position:"absolute"}}/>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <Toast kind="success">예약이 저장됐어요</Toast>
+      <Toast kind="error" onClose={()=>{}}>권한이 없어요. 운영진에게 문의해 주세요.</Toast>
+      <Toast kind="info">발행까지 2시간 남았어요</Toast>
+      <Skeleton variant="card" height={56} count={2}/>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <Banner kind="info" icon="mail" title="메일이 안 보이나요?">네이버 메일은 인증 메일이 스팸함으로 갈 수 있어요.</Banner>
+      <Banner kind="warning" title="아직 비어 있는 항목이 있어요">일시 · 장소 · 정원을 채우면 완성 처리할 수 있어요.</Banner>
+      <Banner kind="error" title="삭제할 수 없어요">회차가 남아 있는 팀이에요. 대신 비활성화해 주세요.</Banner>
+    </div>
+    <div style={{border:"1px solid var(--border-default)",borderRadius:16,background:"var(--surface-card)"}}>
+      <EmptyState icon="megaphone" title="아직 예약이 없어요"
+        description="첫 공지를 예약하면 지정 시각에 카페로 자동 발행돼요."
+        action={<Button size="sm" icon={<Icon name="plus" size={16}/>}>새 예약</Button>}
+        style={{padding:"28px 20px"}}/>
+    </div>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script></body></html>

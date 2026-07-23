@@ -83,7 +83,7 @@ export function EditReservationForm({ id }: { id: string }) {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">예약 수정</h1>
+      <h1 className="text-[22px] font-bold text-ink-900">예약 수정</h1>
       <Card className="space-y-3">
         <Field label="제목">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -95,8 +95,8 @@ export function EditReservationForm({ id }: { id: string }) {
           <Input type="datetime-local" value={publishLocal} onChange={(e) => setPublishLocal(e.target.value)} />
         </Field>
         {hasEvent ? (
-          <div className="space-y-3 rounded-md bg-gray-50 p-3">
-            <div className="text-sm font-medium text-gray-700">봉사 회차 정보</div>
+          <div className="space-y-3 rounded-md bg-cream-100 p-3">
+            <div className="text-sm font-medium text-ink-700">봉사 회차 정보</div>
             <Field label="봉사 일자">
               <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
             </Field>

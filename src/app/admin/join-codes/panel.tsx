@@ -36,13 +36,13 @@ export function JoinCodesPanel() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">가입코드</h1>
+      <h1 className="text-[22px] font-bold text-ink-900">가입코드</h1>
       <Card>
-        <div className="text-sm text-gray-500">현재 활성 코드</div>
+        <div className="text-sm text-ink-500">현재 활성 코드</div>
         {active ? (
           <div className="mt-1">
             <span className="font-mono text-lg font-bold">{active.code}</span>
-            <span className="ml-2 text-sm text-gray-500">({active.semesterLabel})</span>
+            <span className="ml-2 text-sm text-ink-500">({active.semesterLabel})</span>
           </div>
         ) : (
           <InfoText>아직 발급된 코드가 없습니다.</InfoText>

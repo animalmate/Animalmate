@@ -65,7 +65,7 @@ export function TeamsPanel() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">조직(팀)</h1>
+      <h1 className="text-[22px] font-bold text-ink-900">조직(팀)</h1>
       <Card className="space-y-3">
         <div className="font-medium">팀 추가</div>
         <Field label="팀 이름"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="1팀 / 홍보팀 ..." /></Field>
@@ -83,8 +83,8 @@ export function TeamsPanel() {
         <Card key={t.id} className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium">
-              {t.name} <span className="text-xs text-gray-500">({KIND_LABEL[t.kind] ?? t.kind})</span>
-              {!t.isActive ? <span className="ml-1 text-xs text-gray-400">· 비활성</span> : null}
+              {t.name} <span className="text-xs text-ink-500">({KIND_LABEL[t.kind] ?? t.kind})</span>
+              {!t.isActive ? <span className="ml-1 text-xs text-ink-400">· 비활성</span> : null}
             </span>
             <span className="flex gap-2">
               <SecondaryButton onClick={() => patch(t.id, { isActive: !t.isActive })}>{t.isActive ? '비활성화' : '활성화'}</SecondaryButton>
@@ -128,20 +128,20 @@ function TeamLeadersManager({ team, onError, onChanged }: { team: Team; onError:
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-gray-200 p-3">
-      <div className="text-sm font-medium text-gray-700">팀장(관리 담당) — 이메일로 지정</div>
+    <div className="space-y-2 rounded-md border border-ink-200 p-3">
+      <div className="text-sm font-medium text-ink-700">팀장(관리 담당) — 이메일로 지정</div>
       <InfoText>지정된 팀장은 이 팀의 템플릿·예약만 관리할 수 있습니다(가입 완료된 회원만 지정 가능).</InfoText>
       {team.members.length > 0 ? (
-        <ul className="divide-y divide-gray-100 text-sm">
+        <ul className="divide-y divide-ink-100 text-sm">
           {team.members.map((m) => (
             <li key={m.userId} className="flex items-center justify-between py-1.5">
-              <span>{m.name} <span className="text-xs text-gray-500">{m.email} · {m.position === 'leader' ? '팀장' : '팀원'}</span></span>
-              <button className="text-xs text-red-600 underline" onClick={() => remove(m)}>해제</button>
+              <span>{m.name} <span className="text-xs text-ink-500">{m.email} · {m.position === 'leader' ? '팀장' : '팀원'}</span></span>
+              <button className="text-xs text-coral-600 underline" onClick={() => remove(m)}>해제</button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500">아직 지정된 팀장이 없습니다.</p>
+        <p className="text-sm text-ink-500">아직 지정된 팀장이 없습니다.</p>
       )}
       <div className="grid grid-cols-[1fr_auto] gap-2">
         <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="leader@example.com" autoComplete="off" />
@@ -158,14 +158,14 @@ function LeadersEditor({ team, onSave }: { team: Team; onSave: (leaders: Leader[
   const del = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
 
   return (
-    <div className="space-y-2 rounded-md bg-gray-50 p-3">
-      <div className="text-sm font-medium text-gray-700">팀장단 (매 학기 갱신 · 공지 자동 삽입)</div>
+    <div className="space-y-2 rounded-md bg-cream-100 p-3">
+      <div className="text-sm font-medium text-ink-700">팀장단 (매 학기 갱신 · 공지 자동 삽입)</div>
       {rows.map((r, i) => (
         <div key={i} className="grid grid-cols-[5rem_1fr_9rem_auto] items-center gap-2">
           <Input value={r.label} onChange={(e) => set(i, 'label', e.target.value)} placeholder="팀장" />
           <Input value={r.name} onChange={(e) => set(i, 'name', e.target.value)} placeholder="이름" />
           <Input value={r.phone} onChange={(e) => set(i, 'phone', e.target.value)} placeholder="010-0000-0000" />
-          <button className="text-xs text-red-600 underline" onClick={() => del(i)}>삭제</button>
+          <button className="text-xs text-coral-600 underline" onClick={() => del(i)}>삭제</button>
         </div>
       ))}
       <div className="flex gap-2">

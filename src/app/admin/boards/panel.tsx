@@ -54,7 +54,7 @@ export function BoardsPanel() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">게시판 레지스트리</h1>
+      <h1 className="text-[22px] font-bold text-ink-900">게시판 레지스트리</h1>
       <Card className="space-y-3">
         <div className="font-medium">게시판 추가</div>
         <Field label="menuid" hint="카페 게시판 URL 의 menus/ 뒤 숫자">
@@ -76,14 +76,14 @@ export function BoardsPanel() {
       <Card>
         <div className="mb-2 font-medium">등록된 게시판</div>
         {boards.length === 0 ? (
-          <p className="text-sm text-gray-500">아직 없습니다.</p>
+          <p className="text-sm text-ink-500">아직 없습니다.</p>
         ) : (
-          <ul className="divide-y divide-gray-100 text-sm">
+          <ul className="divide-y divide-ink-100 text-sm">
             {boards.map((b) => (
               <li key={b.menuid} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span>
-                  <span className="font-mono text-gray-500">{b.menuid}</span> · {b.name}
-                  <span className="ml-2 text-xs text-gray-500">
+                  <span className="font-mono text-ink-500">{b.menuid}</span> · {b.name}
+                  <span className="ml-2 text-xs text-ink-500">
                     {b.botCanWrite ? '봇쓰기' : '봇불가'} · {b.isActive ? '활성' : '비활성'}
                   </span>
                 </span>

@@ -62,7 +62,7 @@ export function BatchForm() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">일괄 생성</h1>
+      <h1 className="text-[22px] font-bold text-ink-900">일괄 생성</h1>
       <Card className="space-y-3">
         <Field label="팀">
           <Select value={f.teamId} onChange={set('teamId')}>
@@ -113,7 +113,7 @@ export function BatchForm() {
       {preview ? (
         <Card className="space-y-2">
           <div className="font-medium">생성 예정 {preview.created.length}건</div>
-          <ul className="text-sm text-gray-700">
+          <ul className="text-sm text-ink-700">
             {preview.created.map((c, i) => (
               <li key={i}>봉사 {c.eventDate} · 발행 {new Date(c.publishAt).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })}</li>
             ))}

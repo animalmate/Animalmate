@@ -1,3 +1,23 @@
+/* 애니멀메이트 — Pretendard 웹폰트 + 상태색 변수 + 접근성 기본값(design/handoff/globals.css). */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    /* 예약 상태 배지 5종 (StatusBadge에서 사용) */
+    --status-draft-bg: #EFEAE0;      --status-draft-fg: #7B7263;
+    --status-ready-bg: #DFEAF8;      --status-ready-fg: #345C99;
+    --status-scheduled-bg: #FAEBC8;  --status-scheduled-fg: #8F5C05;
+    --status-published-bg: #DFF2E6;  --status-published-fg: #226A42;
+    --status-failed-bg: #FDE3E4;     --status-failed-fg: #B23239;
+  }
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-cream-50 text-ink-700 font-sans; word-break: keep-all; }
+  /* 접근성: 포커스 링 (AA) */
+  :focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(85, 136, 210, .35); }
+  a { @apply text-blue-600; }
+  a:hover { @apply text-blue-700 underline; }
+}

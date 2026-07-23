@@ -1,0 +1,16 @@
+body {
+  margin: 0;
+  font: var(--text-body);
+  color: var(--text-body);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+}
+a { color: var(--text-link); text-decoration: none; }
+a:hover { color: var(--blue-700); text-decoration: underline; }
+* { box-sizing: border-box; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+@keyframes am-spin { to { transform: rotate(360deg); } }
+@keyframes am-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes am-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

@@ -1,0 +1,34 @@
+<!-- @dsCard group="Components" viewport="700x330" name="디스플레이" subtitle="상태 배지·역할 배지·카드·코드 칩·아이콘" -->
+<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = (()=>{for(const k of Object.getOwnPropertyNames(window)){try{const v=window[k];if(v&&typeof v==="object"&&v.Button&&v.StatusBadge)return v}catch(e){}}return {};})();
+const { StatusBadge, RoleBadge, Card, CodeChip, Icon, Button } = NS;
+const ICONS=["plus","x","check","copy","chevronDown","chevronRight","calendar","clock","users","link","external","logout","menu","home","doc","board","key","alert","info","trash","edit","mail","refresh","filter","megaphone","layers"];
+function Demo(){
+  return <div style={{padding:16,display:"flex",flexDirection:"column",gap:14}}>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+      {["draft","ready","scheduled","published","failed"].map(s=><StatusBadge key={s} status={s}/>)}
+      <span style={{width:12}}/>
+      {["member","staff","board","sysadmin"].map(r=><RoleBadge key={r} role={r}/>)}
+    </div>
+    <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+      <Card title="이번 주 토요일 보호소 봉사" action={<StatusBadge status="scheduled"/>} style={{flex:1}}>
+        <p style={{margin:0,font:"var(--text-body)",color:"var(--text-muted)"}}>8월 1일(토) 18:00 발행 · 봉사 공지</p>
+      </Card>
+      <Card style={{flex:1}}>
+        <p style={{margin:0,font:"var(--text-body)"}}>본문에 <CodeChip hint="07/23">{"{{간결_날짜}}"}</CodeChip> 와 <CodeChip>{"{{집합시간}}"}</CodeChip> 를 쓸 수 있어요.</p>
+      </Card>
+    </div>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",color:"var(--text-muted)"}}>
+      {ICONS.map(n=><span key={n} title={n} style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface-sunken)",borderRadius:8}}><Icon name={n} size={17}/></span>)}
+    </div>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script></body></html>

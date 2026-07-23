@@ -43,7 +43,11 @@ export default function SignupPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
-      <h1 className="mb-4 text-xl font-bold">가입</h1>
+      <div className="mb-6 flex flex-col items-center text-center">
+        <img src="/logo.png" alt="애니멀메이트" className="h-16 w-16 rounded-full" />
+        <h1 className="mt-3 text-[22px] font-bold text-ink-900">가입</h1>
+        <p className="mt-1 text-[13px] text-ink-500">동아리 가입코드와 이메일 인증으로 가입해요.</p>
+      </div>
       <Card className="space-y-4">
         {step === 'form' ? (
           <>

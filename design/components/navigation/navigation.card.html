@@ -1,0 +1,31 @@
+<!-- @dsCard group="Components" viewport="700x300" name="내비게이션" subtitle="상단 네비 — 데스크톱 / 모바일 드로어" -->
+<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = (()=>{for(const k of Object.getOwnPropertyNames(window)){try{const v=window[k];if(v&&typeof v==="object"&&v.Button&&v.StatusBadge)return v}catch(e){}}return {};})();
+const { NavBar } = NS;
+function Demo(){
+  return <div style={{display:"flex",flexDirection:"column",gap:14,padding:14}}>
+    <div style={{border:"1px solid var(--border-default)",borderRadius:12,overflow:"hidden"}}>
+      <NavBar role="board" active="queue" logoSrc="../../assets/logo-emblem.jpg"/>
+    </div>
+    <div style={{display:"flex",gap:14}}>
+      <div style={{width:360,border:"1px solid var(--border-default)",borderRadius:12,overflow:"hidden"}}>
+        <NavBar role="staff" active="templates" mobile logoSrc="../../assets/logo-emblem.jpg"/>
+        <div style={{height:110,background:"var(--surface-page)"}}/>
+      </div>
+      <div style={{flex:1,font:"var(--text-caption)",color:"var(--text-muted)",lineHeight:1.7}}>
+        데스크톱: 로고 + 인라인 메뉴 + 역할 배지 + 로그아웃.<br/>
+        모바일: 햄버거 → 풀폭 드로어(52px 행). 메뉴 수가 역할별 0~6개로 가변이라 하단 탭 대신 드로어 채택.<br/>
+        부원(member)은 메뉴 없이 로고 + 배지만.
+      </div>
+    </div>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script></body></html>

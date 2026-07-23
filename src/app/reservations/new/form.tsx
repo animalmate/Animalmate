@@ -86,7 +86,7 @@ export function NewReservationForm() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">새 예약</h1>
+      <h1 className="text-[22px] font-bold text-ink-900">새 예약</h1>
       <Card className="space-y-3">
         <Field label="종류">
           <Select value={kind} onChange={(e) => setKind(e.target.value as 'general' | 'volunteer')}>
@@ -140,11 +140,11 @@ export function NewReservationForm() {
         </Field>
 
         <div className="space-y-2">
-          <div className="text-sm font-medium text-gray-700">
+          <div className="text-sm font-medium text-ink-700">
             발행 일정 (여러 개 추가하면 각각 별도 예약으로 생성됩니다)
           </div>
           {rows.map((r, i) => (
-            <div key={i} className="space-y-2 rounded-md border border-gray-200 p-2">
+            <div key={i} className="space-y-2 rounded-md border border-ink-200 p-2">
               {kind === 'volunteer' ? (
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="봉사 일자">
@@ -159,7 +159,7 @@ export function NewReservationForm() {
                 <Input type="datetime-local" value={r.publishLocal} onChange={(e) => setRow(i, 'publishLocal', e.target.value)} />
               </Field>
               {rows.length > 1 ? (
-                <button className="text-xs text-red-600 underline" onClick={() => removeRow(i)}>
+                <button className="text-xs text-coral-600 underline" onClick={() => removeRow(i)}>
                   이 일정 삭제
                 </button>
               ) : null}

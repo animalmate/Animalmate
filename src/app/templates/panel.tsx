@@ -103,17 +103,17 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">템플릿</h1>
+      <h1 className="text-[22px] font-bold text-ink-900">템플릿</h1>
       <Card className="space-y-3">
         <div className="font-medium">{editingId ? '양식 수정' : '새 양식'}</div>
         <InfoText>
           플레이스홀더(생성 시 자동 치환):{' '}
-          <code className="rounded bg-gray-100 px-1">{'{{간결_날짜}}'}</code>(07/23){' '}
-          <code className="rounded bg-gray-100 px-1">{'{{전체_날짜}}'}</code>(2026년 7월 23일 목요일){' '}
-          <code className="rounded bg-gray-100 px-1">{'{{집합시간}}'}</code>{' '}
-          <code className="rounded bg-gray-100 px-1">{'{{팀장단}}'}</code>(팀별 명단).{' '}
-          <code className="rounded bg-gray-100 px-1">{'{{장소}}'}</code>{' '}
-          <code className="rounded bg-gray-100 px-1">{'{{정원}}'}</code> 은 각 예약 수정에서 채웁니다.
+          <code className="rounded bg-cream-100 px-1">{'{{간결_날짜}}'}</code>(07/23){' '}
+          <code className="rounded bg-cream-100 px-1">{'{{전체_날짜}}'}</code>(2026년 7월 23일 목요일){' '}
+          <code className="rounded bg-cream-100 px-1">{'{{집합시간}}'}</code>{' '}
+          <code className="rounded bg-cream-100 px-1">{'{{팀장단}}'}</code>(팀별 명단).{' '}
+          <code className="rounded bg-cream-100 px-1">{'{{장소}}'}</code>{' '}
+          <code className="rounded bg-cream-100 px-1">{'{{정원}}'}</code> 은 각 예약 수정에서 채웁니다.
         </InfoText>
         <Field label="소유">
           <Select value={ownerType} onChange={(e) => setOwnerType(e.target.value)} disabled={editingId !== null}>
@@ -155,16 +155,16 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
       <Card>
         <div className="mb-2 font-medium">양식 목록</div>
         {templates.length === 0 ? (
-          <p className="text-sm text-gray-500">아직 없습니다.</p>
+          <p className="text-sm text-ink-500">아직 없습니다.</p>
         ) : (
-          <ul className="divide-y divide-gray-100 text-sm">
+          <ul className="divide-y divide-ink-100 text-sm">
             {templates.map((t) => (
               <li key={t.id} className="flex items-start justify-between gap-2 py-2">
                 <div className="min-w-0">
                   <div className="font-medium">
-                    {t.name} <span className="text-xs text-gray-500">({ownerText(t)})</span>
+                    {t.name} <span className="text-xs text-ink-500">({ownerText(t)})</span>
                   </div>
-                  <div className="truncate text-gray-500">{t.titleTemplate}</div>
+                  <div className="truncate text-ink-500">{t.titleTemplate}</div>
                 </div>
                 {isBoard || t.ownerType !== 'global' ? (
                   <span className="flex shrink-0 gap-2">
@@ -172,7 +172,7 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
                     <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
                   </span>
                 ) : (
-                  <span className="shrink-0 text-xs text-gray-400">공용(읽기)</span>
+                  <span className="shrink-0 text-xs text-ink-400">공용(읽기)</span>
                 )}
               </li>
             ))}
