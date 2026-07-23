@@ -87,6 +87,35 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
     expect(audits[0]!.actorUserId).toBeNull();
   });
 
+  it('재시도 소진 후 실패(failed) → 운영진 알림 메일 발송(규칙 #5)', async () => {
+    const id = await makeDuePost();
+    // 이미 재시도 2회(MAX) 소진 상태로 세팅 → 이번 오류로 failed 확정.
+    await db.update(scheduledPosts).set({ retryCount: 2 }).where(eq(scheduledPosts.id, id));
+    const errorRes: CafeWriteResult = {
+      ok: false,
+      status: 403,
+      raw: { message: { error: { code: 'AP003', message: '카페스탭 등급 필요' } } },
+    };
+    const sent: { to: string | string[]; subject: string }[] = [];
+    const summary = await runPublishWorker(db, {
+      dryRun: true,
+      sleep: async () => {},
+      cafeWrite: async () => errorRes,
+      alertEmails: async () => ['ops@example.invalid'],
+      mailer: {
+        send: async (m) => { sent.push({ to: m.to, subject: m.subject }); },
+        sendOtp: async () => {},
+      },
+    });
+
+    expect(summary.failed).toBeGreaterThanOrEqual(1);
+    const post = await getPost(db, id);
+    expect(post!.status).toBe('failed');
+    expect(sent.length).toBe(1); // 실패 알림 1건(묶음)
+    expect(sent[0]!.to).toEqual(['ops@example.invalid']);
+    expect(sent[0]!.subject).toContain('발행 실패');
+  });
+
   it('code 999 주입 → failed 아님, scheduled 유지, 요약 waited 집계', async () => {
     const id = await makeDuePost();
     const rateLimited: CafeWriteResult = {
