@@ -12,6 +12,7 @@ import { scheduledPosts, events, teamMembers, users, noticeCheckLog } from '@/db
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import type { Mailer } from '@/auth/mailer';
 import { dryMailer } from '@/auth/mailer';
+import { boardEmails } from '@/auth/operators';
 
 const KST_MS = 9 * 3600 * 1000;
 
@@ -44,6 +45,7 @@ export interface ReadinessDeps {
 }
 
 // 팀 소유 예약의 팀장단 이메일, 개인 소유는 작성자 이메일.
+// 팀장단(team_members)이 배정되지 않았으면 회장단으로 폴백(알림이 아무에게도 안 가는 것을 방지).
 async function recipientsFor(db: Db, post: typeof scheduledPosts.$inferSelect): Promise<string[]> {
   if (post.ownerType === 'team') {
     const rows = await db
@@ -51,7 +53,8 @@ async function recipientsFor(db: Db, post: typeof scheduledPosts.$inferSelect): 
       .from(teamMembers)
       .innerJoin(users, eq(users.id, teamMembers.userId))
       .where(and(eq(teamMembers.teamId, post.ownerId), eq(teamMembers.position, 'leader')));
-    return rows.map((r) => r.email);
+    if (rows.length > 0) return rows.map((r) => r.email);
+    return boardEmails(db); // 팀장단 미배정 폴백
   }
   const [author] = await db.select({ email: users.email }).from(users).where(eq(users.id, post.authorUserId)).limit(1);
   return author ? [author.email] : [];

@@ -37,8 +37,16 @@ export async function getTemplate(db: Database, id: string): Promise<PostTemplat
   return row ?? null;
 }
 
-/** 사용자가 "양식 불러오기"로 쓸 수 있는 템플릿: global + 소속 팀 + 본인 개인. */
+/**
+ * 사용자가 "양식 불러오기"로 쓸 수 있는 템플릿.
+ * - 회장단/시스템관리자: 전체(팀 템플릿을 팀 대신 중앙에서 만들고 관리하므로 소속과 무관하게 모두 보인다).
+ * - 그 외 운영진: global + 본인 개인 + 소속 팀.
+ * (team_members 배정 UI가 없어 일반 운영진의 팀 소속은 비어 있을 수 있음 — 팀 템플릿은 회장단이 관리한다.)
+ */
 export async function listUsableTemplates(db: Database, actor: Actor): Promise<PostTemplate[]> {
+  if (isPrivileged(actor.role)) {
+    return db.select().from(postTemplates).orderBy(asc(postTemplates.name));
+  }
   const teamIds = actor.teams.map((t) => t.teamId);
   const conds = [
     eq(postTemplates.ownerType, 'global'),

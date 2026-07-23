@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
 import { listUsableTemplates, createTemplate, type TemplateOwnerType } from '@/publishing/post-templates';
+import { listAllTeams } from '@/org/teams';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
@@ -11,7 +12,18 @@ export const dynamic = 'force-dynamic';
 export async function GET(): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  return NextResponse.json({ templates: await listUsableTemplates(db, actor) });
+  const [rows, teams] = await Promise.all([listUsableTemplates(db, actor), listAllTeams(db)]);
+  const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  const templates = rows.map((t) => ({
+    id: t.id,
+    ownerType: t.ownerType,
+    ownerId: t.ownerId,
+    teamName: t.ownerType === 'team' && t.ownerId ? (teamName.get(t.ownerId) ?? null) : null,
+    name: t.name,
+    titleTemplate: t.titleTemplate,
+    bodyTemplate: t.bodyTemplate,
+  }));
+  return NextResponse.json({ templates });
 }
 
 export async function POST(req: Request): Promise<Response> {
