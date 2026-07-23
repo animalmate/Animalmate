@@ -57,7 +57,11 @@
       DoD: 무료 티어 7일 일시정지 방지 링크 가동 + 다운 알림이 공용 메일로 수신됨
 - [ ] Supabase Auth 커스텀 SMTP를 Resend로 연결 (기본 메일 한도로는 매직링크 운영 불가)
 ### 1B. 카페 발행
-- [ ] boards 레지스트리 CRUD (회장단 전용)
+- [x] boards 레지스트리 CRUD (회장단 전용)
+      → 2026-07-23 완료. `src/boards/service.ts`(list/get/create/update/delete). 쓰기=board.registry
+      권한(회장단만)+audit(board.create/update/delete), 삭제=소프트(is_active=false, FK·이력 보존).
+      통합테스트 `test/boards.service.test.ts` 6케이스(부원 거부, 회장단 CRUD, audit, activeOnly).
+      인증 붙으면 app/api/boards 라우트로 얇게 래핑 예정.
 - [ ] naver_tokens 암호화 저장 + 자동 갱신 잡 + 상태 대시보드 위젯
 - [ ] scheduled_posts 작성 화면(제목/본문/이미지/게시판/발행시각) + 상태머신
 - [ ] 발행 워커(pg_cron 매분 → API): due 소량(≤5건) 처리, 재시도 2회, 실패 알림 메일

@@ -9,4 +9,7 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },
+  resolve: {
+    alias: { '@': new URL('./src', import.meta.url).pathname },
+  },
 });
