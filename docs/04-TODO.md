@@ -62,7 +62,12 @@
       권한(회장단만)+audit(board.create/update/delete), 삭제=소프트(is_active=false, FK·이력 보존).
       통합테스트 `test/boards.service.test.ts` 6케이스(부원 거부, 회장단 CRUD, audit, activeOnly).
       인증 붙으면 app/api/boards 라우트로 얇게 래핑 예정.
-- [ ] naver_tokens 암호화 저장 + 자동 갱신 잡 + 상태 대시보드 위젯
+- [~] naver_tokens 암호화 저장 + 자동 갱신 잡 + 상태 대시보드 위젯
+      → 2026-07-23 코어 완료: `src/crypto/token-cipher.ts`(AES-256-GCM, TOKEN_ENCRYPTION_KEY) +
+      `src/naver/oauth.ts`(refresh) + `src/naver/token-service.ts`(store/refreshAndStore, 실패 시
+      status=error+NaverTokenError, refresh token 회전 반영). 테스트: 암호화 단위 8 + 서비스 통합 2.
+      남음: 자동 갱신 크론 배선(pg_cron 단계) + 상태 대시보드 위젯(인증/프론트) + 최초 토큰 부트스트랩
+      (TOKEN_ENCRYPTION_KEY 생성 후 .env 저장 → storeRefreshToken 으로 .env의 refresh token 이관).
 - [ ] scheduled_posts 작성 화면(제목/본문/이미지/게시판/발행시각) + 상태머신
 - [ ] 발행 워커(pg_cron 매분 → API): due 소량(≤5건) 처리, 재시도 2회, 실패 알림 메일
       DoD: 예약 3건이 지정 시각 ±2분 내 카페에 게시되고 URL 저장됨
