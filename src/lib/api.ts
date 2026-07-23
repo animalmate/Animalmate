@@ -2,7 +2,7 @@
 export interface ApiResult<T = unknown> {
   ok: boolean;
   status: number;
-  data: T & { error?: string; retryAfter?: number };
+  data: T & { error?: string; retryAfter?: number; message?: string };
 }
 
 async function parse<T>(res: Response): Promise<ApiResult<T>> {

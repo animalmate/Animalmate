@@ -98,7 +98,7 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
     expect(res.created[0]!.eventDate).toBe('2026-03-01');
     expect(res.skipped.filter((s) => s.reason === 'publish_past').length).toBe(2);
 
-    const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, res.created[0]!.postId)))[0]!;
+    const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, res.created[0]!.postId!)))[0]!;
     expect(post.eventId).toBe(res.created[0]!.eventId);
     expect(post.title).toBe('2026-03-01 봉사 공지'); // {{날짜}} 렌더
     expect(post.contentMd).toContain('집합 14:00'); // {{집합시간}} 렌더, {{장소}}는 미치환

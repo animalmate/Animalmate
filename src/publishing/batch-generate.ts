@@ -68,19 +68,21 @@ export interface BatchRange {
 }
 
 export interface BatchResult {
-  created: { eventId: string; postId: string; eventDate: string; publishAt: string }[];
+  created: { eventId: string | null; postId: string | null; eventDate: string; publishAt: string }[];
   skipped: { year: number; month: number; reason: 'no_occurrence' | 'publish_past' }[];
 }
 
 /**
- * 프리셋+기간으로 초안 N건을 즉시 생성한다(팀장단/회장단). event+post 를 함께 만든다.
+ * 프리셋+기간으로 초안 N건을 생성한다(팀장단/회장단). event+post 를 함께 만든다.
+ * dryRun 이면 실제 삽입 없이 생성 예정 목록만 계산(미리보기).
  */
 export async function batchGenerate(
   db: Db,
   actor: Actor,
   preset: BatchPreset,
   range: BatchRange,
-  now: Date = new Date()
+  now: Date = new Date(),
+  dryRun = false
 ): Promise<BatchResult> {
   requireAuthorized(actor, { kind: 'recurring.manage', owner: { ownerType: 'team', ownerId: preset.teamId } });
 
@@ -103,6 +105,11 @@ export async function batchGenerate(
     const vars = { 날짜: eventDate, 집합시간: preset.meetTime };
     const title = template ? renderTemplate(template.titleTemplate, vars) : `${eventDate} 봉사 공지`;
     const content = template ? renderTemplate(template.bodyTemplate, vars) : '';
+
+    if (dryRun) {
+      result.created.push({ eventId: null, postId: null, eventDate, publishAt: publishAt.toISOString() });
+      continue;
+    }
 
     const created = await db.transaction(async (tx) => {
       const [ev] = await tx
