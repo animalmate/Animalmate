@@ -89,14 +89,15 @@ Supabase pg_cron (분 단위) ──pg_net HTTP──▶ /api/cron/* (CRON_SECRE
 ```
 NEXT_PUBLIC_APP_URL=
 SUPABASE_URL= / SUPABASE_ANON_KEY= / SUPABASE_SERVICE_ROLE_KEY=   # service role은 서버 전용
-GEMINI_API_KEY=                   # 서버 전용 (Gemini)
-GEMINI_MODEL=                     # 생성 모델 ID. 기본값 하드코딩 금지 — Phase 1에서 콘솔 확인 후 핀 고정
-GEMINI_EMBEDDING_MODEL=           # 임베딩 모델 ID. Gemini 최신 임베딩 모델
+GEMINI_API_KEY= / GEMINI_MODEL= / GEMINI_EMBEDDING_MODEL=   # 서버 전용. 챗봇(1D) 착수 시 추가
 NAVER_CLIENT_ID= / NAVER_CLIENT_SECRET= / NAVER_CAFE_CLUB_ID=
-TOKEN_ENCRYPTION_KEY=             # refresh token 암호화
-RESEND_API_KEY=
+NAVER_PUBLISH_DRY_RUN=true        # 'false' 일 때만 실제 카페 발행
+TOKEN_ENCRYPTION_KEY=             # naver_tokens 암호화/복호화
 CRON_SECRET=                      # pg_net 호출 헤더와 일치해야 함
-BACKUP_ENCRYPTION_KEY=            # GitHub Actions 시크릿에만 (백업 암호화)
+SESSION_SECRET=                   # 세션 JWT 서명 + 이메일 OTP HMAC
+SMTP_HOST= / SMTP_PORT= / SMTP_USER= / SMTP_PASS= / SMTP_FROM=   # Gmail 공용 계정 발송
+# NAVER_REFRESH_TOKEN 은 최초 부트스트랩 후 DB(naver_tokens)로 이관 → 앱/Vercel 미등록.
+# BACKUP_ENCRYPTION_KEY 는 앱 변수 아님 — GitHub Actions 시크릿 전용(백업 암호화).
 ```
 
 ## 7. 계정·이관 원칙 (요약 — 상세는 자산 대장)

@@ -149,10 +149,11 @@ $$);
 
 1. GitHub 리포 public 전환(시크릿 스크럽 통과 상태).
 2. Vercel에서 Import → Next.js 자동 감지.
-3. 환경변수 등록: `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_*`, `GEMINI_*`, `NAVER_*`,
-   `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`, `SESSION_SECRET`, `SMTP_*`,
+3. 환경변수 등록: `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_*`, `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`/
+   `NAVER_CAFE_CLUB_ID`, `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`, `SESSION_SECRET`, `SMTP_*`,
    `NAVER_PUBLISH_DRY_RUN=true`, `NEXT_PUBLIC_APP_URL`.
-   (제외: `NAVER_REFRESH_TOKEN` — DB `naver_tokens`로 이관됨.)
+   - **제외**: `NAVER_REFRESH_TOKEN`(DB `naver_tokens`로 이관됨), `BACKUP_ENCRYPTION_KEY`(GitHub Actions 시크릿 전용).
+   - **`GEMINI_API_KEY`/`GEMINI_MODEL`/`GEMINI_EMBEDDING_MODEL`은 챗봇(1D) 구현 시점에 추가**(그 전까진 불필요).
 4. 배포 후 `/api/health`가 `{ok:true,db:"up"}`인지 확인.
 5. `NEXT_PUBLIC_APP_URL`을 실제 도메인으로 갱신 후 재배포, pg_cron SQL의 `<APP_URL>`도 갱신.
 6. UptimeRobot 5분 모니터를 `/api/health`에 등록.
