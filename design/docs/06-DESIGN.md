@@ -87,3 +87,11 @@ Auth(로그인·가입 2단계), Home(역할별 바로가기), Queue(예약 큐)
 
 ## 6. 자산
 `assets/logo-emblem-circle.png`(검정 테두리 제거·투명 원형 — **UI에는 이걸 사용**), `assets/logo-emblem.jpg`(원본 사각), `assets/logo-shapes.png`(장식용 젤리 마크). 로고를 직접 다시 그리지 말 것.
+
+## 7. 장식: 커서 따라다니는 강아지 (`src/components/cursor-dog.tsx`)
+로그인·가입·홈(전 역할)에만 붙는 장식용 강아지. 운영진 콘솔·예약 큐 등 작업 화면엔 넣지 않는다.
+- **구현**: 단일 클라이언트 컴포넌트, SVG + `requestAnimationFrame`만(외부 라이브러리·캔버스 금지). 뷰포트 하단을 지면 삼아 커서 X를 좌우로 추종, 커서 Y로 상태(idle·run·jump·lookup·reach) 전환.
+- **가드레일(수정 시 유지)**: `@media (pointer:fine)`에서만 마운트(터치 기기는 토글조차 없음), `prefers-reduced-motion:reduce`면 루프 정지·정지 배치, 컨테이너 `pointer-events:none`+`z-index:-1`(콘텐츠 아래), `transform` 속성만 조작, 탭 비활성 시 rAF 정지. 색상은 하드코딩(테마 토큰으로 치환 금지 — 다크모드에서도 동일).
+- **토글**: 우측 하단 🐾 버튼, `localStorage['am:cursor-dog']` 저장, 기본 on.
+- **주의**: `z-index:-1`이 콘텐츠 아래에 보이려면 상위에 불투명 배경이 없어야 한다. 이 때문에 `ConsoleShell` 루트의 중복 `bg-cream-50`을 제거하고 배경을 `body`(globals)로 일원화했다. 홈에 장식을 붙이는 전제이므로 되돌리지 말 것.
+- `/recruit`(미구현)에도 대상. 생기면 `<CursorDog />` 한 줄만 추가하면 된다.
