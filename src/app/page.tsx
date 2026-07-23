@@ -22,7 +22,7 @@ const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations/batch', label: '일괄 생성', desc: '정기 봉사를 한 번에 예약해요', icon: 'layers' },
 ];
 const BOARD_SHORTCUTS: Shortcut[] = [
-  { href: '/admin/teams', label: '조직', desc: '팀과 팀장단을 관리해요', icon: 'users' },
+  { href: '/admin/teams', label: '팀', desc: '팀과 팀장단을 관리해요', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', desc: '학기별 가입코드를 발급해요', icon: 'key' },
   { href: '/admin/boards', label: '게시판', desc: '카페 게시판을 연결해요', icon: 'board' },
 ];

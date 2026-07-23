@@ -18,7 +18,7 @@ const STAFF_MENU: NavItem[] = [
 ];
 const BOARD_MENU: NavItem[] = [
   ...STAFF_MENU,
-  { href: '/admin/teams', label: '조직', icon: 'users' },
+  { href: '/admin/teams', label: '팀', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', icon: 'key' },
   { href: '/admin/boards', label: '게시판', icon: 'board' },
 ];
