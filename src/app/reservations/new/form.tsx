@@ -2,11 +2,18 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, InfoText, Input, Select, Textarea } from '@/components/ui';
+import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select, Textarea } from '@/components/ui';
 
 interface Board { menuid: number; name: string; botCanWrite: boolean }
 interface Team { id: string; name: string }
 interface Template { id: string; name: string; titleTemplate: string; bodyTemplate: string }
+
+interface Row {
+  publishLocal: string; // 발행 시각 datetime-local
+  eventDate: string; // 봉사 일자
+  meetTime: string; // 집합 시간
+}
+const emptyRow = (): Row => ({ publishLocal: '', eventDate: '', meetTime: '' });
 
 export function NewReservationForm() {
   const router = useRouter();
@@ -19,12 +26,7 @@ export function NewReservationForm() {
   const [boardMenuid, setBoardMenuid] = useState('');
   const [title, setTitle] = useState('');
   const [contentMd, setContentMd] = useState('');
-  const [publishLocal, setPublishLocal] = useState('');
-  // 봉사 event 필드
-  const [eventDate, setEventDate] = useState('');
-  const [meetTime, setMeetTime] = useState('');
-  const [place, setPlace] = useState('');
-  const [capacity, setCapacity] = useState('');
+  const [rows, setRows] = useState<Row[]>([emptyRow()]);
 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -49,15 +51,31 @@ export function NewReservationForm() {
     setContentMd(tpl.bodyTemplate);
   }
 
+  const setRow = (i: number, k: keyof Row, v: string) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  const addRow = () => setRows((rs) => [...rs, emptyRow()]);
+  const removeRow = (i: number) => setRows((rs) => (rs.length === 1 ? rs : rs.filter((_, idx) => idx !== i)));
+
   async function submit() {
     setError('');
+    // 발행 시각이 하나라도 있는 행만 유효로 취급.
+    const occurrences = rows
+      .filter((r) => r.publishLocal || (kind === 'volunteer' && r.eventDate))
+      .map((r) => ({
+        publishAt: r.publishLocal ? new Date(r.publishLocal).toISOString() : null,
+        eventDate: kind === 'volunteer' ? r.eventDate || null : null,
+        meetTime: kind === 'volunteer' ? r.meetTime || null : null,
+      }));
+    if (occurrences.length === 0) return setError('발행 시각(또는 봉사 일자)을 최소 1개 입력하세요.');
     setBusy(true);
-    const publishAt = publishLocal ? new Date(publishLocal).toISOString() : null;
-    const body =
-      kind === 'volunteer'
-        ? { kind, teamId, boardMenuid: Number(boardMenuid), title, contentMd, publishAt, eventDate, meetTime, place, capacity }
-        : { kind, boardMenuid: Number(boardMenuid), title, contentMd, publishAt };
-    const r = await apiPost<{ id: string }>('/api/reservations', body);
+    const r = await apiPost<{ ids: string[] }>('/api/reservations', {
+      kind,
+      teamId: kind === 'volunteer' ? teamId : undefined,
+      boardMenuid: Number(boardMenuid),
+      title,
+      contentMd,
+      occurrences,
+    });
     setBusy(false);
     if (!r.ok) return setError(errorMessage(r.data.error, r.data.message as string));
     router.push('/reservations');
@@ -118,35 +136,46 @@ export function NewReservationForm() {
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
         <Field label="본문">
-          <Textarea rows={5} value={contentMd} onChange={(e) => setContentMd(e.target.value)} />
-        </Field>
-        <Field label="발행 시각">
-          <Input type="datetime-local" value={publishLocal} onChange={(e) => setPublishLocal(e.target.value)} />
+          <Textarea rows={4} value={contentMd} onChange={(e) => setContentMd(e.target.value)} />
         </Field>
 
-        {kind === 'volunteer' ? (
-          <div className="space-y-3 rounded-md bg-gray-50 p-3">
-            <InfoText>봉사 회차 정보(챗봇 상태 질의의 원천). 발행 전까지 채우면 됩니다.</InfoText>
-            <Field label="봉사 일자">
-              <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-            </Field>
-            <Field label="집합 시간">
-              <Input type="time" value={meetTime} onChange={(e) => setMeetTime(e.target.value)} />
-            </Field>
-            <Field label="장소">
-              <Input value={place} onChange={(e) => setPlace(e.target.value)} />
-            </Field>
-            <Field label="정원">
-              <Input inputMode="numeric" value={capacity} onChange={(e) => setCapacity(e.target.value.replace(/\D/g, ''))} />
-            </Field>
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-gray-700">
+            발행 일정 (여러 개 추가하면 각각 별도 예약으로 생성됩니다)
           </div>
-        ) : null}
+          {rows.map((r, i) => (
+            <div key={i} className="space-y-2 rounded-md border border-gray-200 p-2">
+              {kind === 'volunteer' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="봉사 일자">
+                    <Input type="date" value={r.eventDate} onChange={(e) => setRow(i, 'eventDate', e.target.value)} />
+                  </Field>
+                  <Field label="집합 시간">
+                    <Input type="time" value={r.meetTime} onChange={(e) => setRow(i, 'meetTime', e.target.value)} />
+                  </Field>
+                </div>
+              ) : null}
+              <Field label="발행 시각">
+                <Input type="datetime-local" value={r.publishLocal} onChange={(e) => setRow(i, 'publishLocal', e.target.value)} />
+              </Field>
+              {rows.length > 1 ? (
+                <button className="text-xs text-red-600 underline" onClick={() => removeRow(i)}>
+                  이 일정 삭제
+                </button>
+              ) : null}
+            </div>
+          ))}
+          <SecondaryButton onClick={addRow}>+ 일정 추가</SecondaryButton>
+          {kind === 'volunteer' ? (
+            <InfoText>장소·정원은 생성 후 각 예약을 개별 수정해서 채우면 됩니다.</InfoText>
+          ) : null}
+        </div>
 
         <ErrorText>{error}</ErrorText>
         <Button disabled={busy || !canSubmit} onClick={submit}>
-          {busy ? '저장 중…' : '예약 저장(작성중)'}
+          {busy ? '생성 중…' : '예약 생성(작성중)'}
         </Button>
-        <InfoText>저장 후 예약 큐에서 "완성 처리 → 발행 대기"로 넘기면 발행됩니다.</InfoText>
+        <InfoText>생성 후 예약 큐에서 각 건을 개별 수정·완성 처리하세요.</InfoText>
       </Card>
     </div>
   );

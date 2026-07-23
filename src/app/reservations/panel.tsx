@@ -92,7 +92,9 @@ export function ReservationsPanel() {
                 ) : null}
                 {r.status !== 'published' ? (
                   <div className="flex flex-wrap gap-2 pt-1">
-                    <a href={`/reservations/new?copy=${r.id}`} className="hidden" />
+                    <a href={`/reservations/${r.id}/edit`}>
+                      <SecondaryButton>수정</SecondaryButton>
+                    </a>
                     {r.status === 'draft' ? (
                       <SecondaryButton onClick={() => act(r.id, 'ready')}>완성 처리</SecondaryButton>
                     ) : null}

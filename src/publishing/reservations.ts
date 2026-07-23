@@ -85,6 +85,111 @@ export async function createReservation(db: Db, actor: Actor, input: CreateReser
   });
 }
 
+// ── 다건 생성 ──────────────────────────────────────────────────────────
+export interface SharedFields {
+  kind: 'general' | 'volunteer';
+  teamId?: string;
+  boardMenuid: number;
+  title: string;
+  contentMd: string;
+}
+export interface Occurrence {
+  publishAt: Date | null;
+  eventDate?: string | null; // 봉사 공지일 때
+  meetTime?: string | null;
+}
+
+/** 발행 시각/봉사 일자를 여러 개 지정해 예약 N건을 한 번에 만든다. 각 건은 이후 개별 수정 가능. */
+export async function createReservationsMulti(
+  db: Db,
+  actor: Actor,
+  shared: SharedFields,
+  occurrences: Occurrence[]
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (const occ of occurrences) {
+    const input: CreateReservationInput =
+      shared.kind === 'volunteer'
+        ? {
+            kind: 'volunteer',
+            teamId: String(shared.teamId),
+            boardMenuid: shared.boardMenuid,
+            title: shared.title,
+            contentMd: shared.contentMd,
+            publishAt: occ.publishAt ?? null,
+            eventDate: occ.eventDate ?? null,
+            meetTime: occ.meetTime ?? null,
+            place: null,
+            capacity: null,
+          }
+        : {
+            kind: 'general',
+            boardMenuid: shared.boardMenuid,
+            title: shared.title,
+            contentMd: shared.contentMd,
+            publishAt: occ.publishAt ?? null,
+          };
+    const post = await createReservation(db, actor, input);
+    ids.push(post.id);
+  }
+  return ids;
+}
+
+// ── 개별 조회/수정 ─────────────────────────────────────────────────────
+export interface ReservationDetail {
+  post: ScheduledPost;
+  event: typeof events.$inferSelect | null;
+}
+
+export async function getReservation(db: Db, id: string): Promise<ReservationDetail | null> {
+  const [post] = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, id)).limit(1);
+  if (!post) return null;
+  let event: typeof events.$inferSelect | null = null;
+  if (post.eventId) {
+    const [ev] = await db.select().from(events).where(eq(events.id, post.eventId)).limit(1);
+    event = ev ?? null;
+  }
+  return { post, event };
+}
+
+export interface UpdateReservationPatch {
+  title?: string;
+  contentMd?: string;
+  publishAt?: Date | null;
+  eventDate?: string | null;
+  meetTime?: string | null;
+  place?: string | null;
+  capacity?: number | null;
+}
+
+/** 예약 개별 수정(published 전까지). 소유자/회장단. post + 연결 event 필드 갱신. */
+export async function updateReservation(db: Db, actor: Actor, id: string, patch: UpdateReservationPatch): Promise<void> {
+  const [post] = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, id)).limit(1);
+  if (!post) throw new Error(`scheduled_post not found: ${id}`);
+  requireAuthorized(actor, { kind: 'post.modify', owner: { ownerType: post.ownerType, ownerId: post.ownerId } });
+  if (post.status === 'published') throw new Error('발행된 예약은 수정할 수 없습니다.');
+
+  const postSet: Partial<ScheduledPost> = { updatedAt: new Date() };
+  if (patch.title !== undefined) postSet.title = patch.title;
+  if (patch.contentMd !== undefined) postSet.contentMd = patch.contentMd;
+  if (patch.publishAt !== undefined) postSet.publishAt = patch.publishAt;
+  await db.update(scheduledPosts).set(postSet).where(eq(scheduledPosts.id, id));
+
+  if (post.eventId) {
+    const evSet: Partial<typeof events.$inferSelect> = {};
+    if (patch.eventDate !== undefined) evSet.eventDate = patch.eventDate;
+    if (patch.meetTime !== undefined) evSet.meetTime = patch.meetTime;
+    if (patch.place !== undefined) evSet.place = patch.place;
+    if (patch.capacity !== undefined) evSet.capacity = patch.capacity;
+    if (Object.keys(evSet).length > 0) await db.update(events).set(evSet).where(eq(events.id, post.eventId));
+  }
+
+  await recordAudit(
+    db,
+    buildAuditEntry({ actorUserId: actor.userId, action: 'post.update', targetTable: 'scheduled_posts', targetId: id, after: patch })
+  );
+}
+
 export interface ReservationRow {
   id: string;
   title: string;

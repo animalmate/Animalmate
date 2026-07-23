@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
-import { listReservations, createReservation, type CreateReservationInput } from '@/publishing/reservations';
+import { listReservations, createReservationsMulti, type Occurrence, type SharedFields } from '@/publishing/reservations';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
@@ -20,30 +20,25 @@ export async function POST(req: Request): Promise<Response> {
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   try {
     const b = await req.json();
-    const publishAt = b.publishAt ? new Date(b.publishAt) : null;
-    const input: CreateReservationInput =
-      b.kind === 'volunteer'
-        ? {
-            kind: 'volunteer',
-            teamId: String(b.teamId),
-            boardMenuid: Number(b.boardMenuid),
-            title: String(b.title),
-            contentMd: String(b.contentMd ?? ''),
-            publishAt,
-            eventDate: b.eventDate || null,
-            meetTime: b.meetTime || null,
-            place: b.place || null,
-            capacity: b.capacity != null && b.capacity !== '' ? Number(b.capacity) : null,
-          }
-        : {
-            kind: 'general',
-            boardMenuid: Number(b.boardMenuid),
-            title: String(b.title),
-            contentMd: String(b.contentMd ?? ''),
-            publishAt,
-          };
-    const post = await createReservation(db, actor, input);
-    return NextResponse.json({ id: post.id });
+    const shared: SharedFields = {
+      kind: b.kind === 'volunteer' ? 'volunteer' : 'general',
+      teamId: b.teamId ? String(b.teamId) : undefined,
+      boardMenuid: Number(b.boardMenuid),
+      title: String(b.title),
+      contentMd: String(b.contentMd ?? ''),
+    };
+    const rawOcc: unknown[] = Array.isArray(b.occurrences) ? b.occurrences : [];
+    const occurrences: Occurrence[] = rawOcc.map((o) => {
+      const oo = o as { publishAt?: string; eventDate?: string; meetTime?: string };
+      return {
+        publishAt: oo.publishAt ? new Date(oo.publishAt) : null,
+        eventDate: oo.eventDate || null,
+        meetTime: oo.meetTime || null,
+      };
+    });
+    if (occurrences.length === 0) return NextResponse.json({ error: 'no_occurrences' }, { status: 400 });
+    const ids = await createReservationsMulti(db, actor, shared, occurrences);
+    return NextResponse.json({ ids });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });

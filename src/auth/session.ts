@@ -5,7 +5,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Role } from './permissions';
 
 export const SESSION_COOKIE = 'am_session';
-export const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 90; // 90일
+export const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 180; // 180일(한 학기 + 방학)
 
 export interface SessionPayload {
   sub: string; // user id
