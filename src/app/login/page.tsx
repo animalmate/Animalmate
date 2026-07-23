@@ -41,7 +41,11 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
-      <h1 className="mb-4 text-xl font-bold">로그인</h1>
+      <div className="mb-6 flex flex-col items-center text-center">
+        <img src="/logo.png" alt="애니멀메이트" className="h-16 w-16 rounded-full" />
+        <h1 className="mt-3 text-[22px] font-bold text-ink-900">로그인</h1>
+        <p className="mt-1 text-[13px] text-ink-500">이메일로 인증 코드를 받아 로그인해요.</p>
+      </div>
       <Card className="space-y-4">
         {step === 'email' ? (
           <>
@@ -71,7 +75,7 @@ export default function LoginPage() {
             <InfoText>
               {email} 으로 6자리 코드를 보냈습니다. 메일이 안 보이면 <b>스팸함(특히 네이버 메일)</b>을 확인하세요.
             </InfoText>
-            <Field label="인증 코드 (6자리)">
+            <Field label="인증 코드 (6자리)" hint="기기당 한 번만 인증">
               <Input
                 inputMode="numeric"
                 maxLength={6}
