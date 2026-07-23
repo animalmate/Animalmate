@@ -11,20 +11,31 @@
 - [ ] 네이버 개발자센터 앱 등록(조직 계정 소유), 봇 계정 OAuth 동의, 앱 멤버 등록
       실행: `node scripts/naver-token.mjs` (앱에 Callback URL http://localhost:3000/callback 등록 필요.
       브라우저 동의 → refresh token 1회 출력 → .env NAVER_REFRESH_TOKEN + 금고에 저장)
-- [ ] **글쓰기 API 실호출 검증**: 텍스트 / 이미지 multipart / 게시판(menuid) 지정 각 1회 성공
+- [x] **글쓰기 API 실호출 검증**: 텍스트 / 이미지 multipart / 게시판(menuid) 지정 각 1회 성공
       DoD: 테스트 게시판에 실제 글 3건 게시 + 응답의 글 URL 확보
       실행: `node scripts/verify-cafe-write.mjs` (시작 시 refresh token 자동 갱신 → 3케이스,
       재시도 없음. 출력 끝의 GO/NO-GO 한 줄을 05-ASSET-REGISTRY 검증 표에 기록. 게시글은 수동 삭제)
-- [ ] refresh token 갱신 플로우 검증 (만료 유도 후 자동 갱신 성공)
+      → 2026-07-23 [GO] 3/3 성공(menuid 68). 게시글 3건(32987/32988/32989) 수동 삭제 필요.
+      ⚠ 연속 게시 시 code 999 레이트리밋 → 발행 워커는 건별 지연 필요(스크립트 기본 20초).
+- [x] refresh token 갱신 플로우 검증 (만료 유도 후 자동 갱신 성공)
+      → verify 실행 시작 시 refresh→access 갱신 성공 확인(2026-07-23).
 - [ ] 개발자센터 콘솔에서 일일 호출 한도 수치 확인·기록
 - [ ] 회장단 미팅: 승인·예산(연 5만원 내) 확정, 카페 매니저 계정 명의 확인,
       봇 계정 카페 가입 승인 + 대상 게시판 쓰기 권한(등급) 부여
-- [ ] 전체 게시판 menuid 수집 → 초기 boards 데이터 작성
+      → 2026-07-23 확인: 실공지 게시판(예 menuid 12)은 `카페스탭 등급 전용`. 봇 일반 등급으론 못 씀.
+      **매니저가 봇 계정을 카페스탭으로 임명** 필요 → 임명 후 실발행 게시판별 봇 쓰기 재검증.
+- [x] 전체 게시판 menuid 수집 → 초기 boards 데이터 작성
+      → 2026-07-23 19개 게시판 수집, 05-ASSET-REGISTRY 게시판 레지스트리에 기록.
+      단, menuid 68(테스트) 외 게시판의 봇 쓰기 가능 여부는 실발행 전 게시판별 확인 필요.
 - [ ] GO/NO-GO: API 검증 실패 항목이 있으면 폴백(반자동 복붙 발행) 채택 여부 결정·기록
 
 ## Phase 1 — 파일럿: 1개 팀 핵심 루프 (9월 ~ 10월 중순)
 ### 1A. 기반
-- [ ] Next.js + Supabase 프로젝트 셋업, 마이그레이션으로 03 스키마 생성
+- [x] Next.js + Supabase 프로젝트 셋업, 마이그레이션으로 03 스키마 생성
+      → 2026-07-23 완료. Next.js 15(App Router)+TS strict, Drizzle+postgres.js.
+      `drizzle/0000_*.sql` 적용: 15개 테이블 + pgvector 확장 + **전 테이블 RLS 활성화**(규칙 #8).
+      런타임=트랜잭션풀러(6543), 마이그레이션=세션풀러(5432, DIRECT_URL). 검증: 15/15 테이블·RLS·vector OK.
+      TODO: doc_chunks.embedding 차원(768)은 GEMINI_EMBEDDING_MODEL 확정(1D) 후 재확인.
 - [ ] 인증: 이메일 매직링크 로그인 / 초대 토큰 가입 플로우
       DoD: 초대받지 않은 이메일은 가입 불가
 - [ ] 권한 미들웨어: role + membership active + 소유권 검사 공통화 + audit 기록

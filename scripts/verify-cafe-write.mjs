@@ -49,13 +49,27 @@ function stamp() {
   return new Date().toISOString().replace('T', ' ').slice(0, 19);
 }
 
-// HTTP 상태 → 원인 해석(운영진이 바로 조치할 수 있도록).
-function interpret(status) {
+// 응답(status + 네이버 error code/message) → 원인 해석(운영진이 바로 조치할 수 있도록).
+// 네이버는 실패를 HTTP 403 으로 뭉뚱그려 주고, 실제 원인은 본문 error.code 에 있다.
+function interpret(status, raw) {
+  const err = raw?.message?.error ?? raw?.error;
+  const code = err?.code;
+  const msg = err?.message;
+  if (code === '999' || /연속으로 등록할 수 없/.test(msg || ''))
+    return '연속 게시 방지(레이트리밋) — 권한 아님. 케이스 간 지연 후 재시도하면 됨';
+  if (code === 'AP003' || /등급이 되시면/.test(msg || ''))
+    return '게시판 쓰기 등급 부족(카페스탭 등 임명 필요)';
+  if (msg) return `네이버: ${msg}${code ? ` (code ${code})` : ''}`;
   if (status === 401) return '토큰 문제(만료/무효) — refresh token 재발급 필요할 수 있음';
   if (status === 403) return '카페 미가입 / 등급 부족 / 대상 게시판 쓰기 권한 없음';
   if (status === 404) return 'clubid 또는 menuid 오류';
   return '기타 오류 — 아래 응답 원문 확인';
 }
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// 케이스 간 지연(연속 게시 방지 회피). 재시도가 아니라 서로 다른 케이스 사이 간격이므로
+// "정확히 3회, 재시도 없음" 규칙과 무관. NAVER_CASE_DELAY_MS 로 조절(기본 20초).
+const CASE_DELAY_MS = Number(process.env.NAVER_CASE_DELAY_MS ?? 20000);
 
 async function run() {
   const env = requireEnv([
@@ -120,7 +134,13 @@ async function run() {
   console.log('※ 테스트 게시판에서만 실행하세요. 게시된 글은 사람이 직접 삭제해야 합니다(삭제 API 없음).\n');
 
   const results = [];
-  for (const c of cases) {
+  for (let i = 0; i < cases.length; i++) {
+    const c = cases[i];
+    if (i > 0 && CASE_DELAY_MS > 0) {
+      // 연속 게시 방지 회피: 다음 케이스 전 대기.
+      console.log(`   (연속 게시 방지 대기 ${Math.round(CASE_DELAY_MS / 1000)}초 …)`);
+      await sleep(CASE_DELAY_MS);
+    }
     process.stdout.write(`${c.name} … `);
     try {
       const r = await c.fn();
@@ -128,9 +148,9 @@ async function run() {
         console.log(`성공 [HTTP ${r.status}] → ${r.articleUrl}`);
         results.push({ name: c.name, ok: true, status: r.status, url: r.articleUrl });
       } else {
-        console.log(`실패 [HTTP ${r.status}] — ${interpret(r.status)}`);
+        console.log(`실패 [HTTP ${r.status}] — ${interpret(r.status, r.raw)}`);
         console.log('   응답:', JSON.stringify(r.raw));
-        results.push({ name: c.name, ok: false, status: r.status });
+        results.push({ name: c.name, ok: false, status: r.status, raw: r.raw });
       }
     } catch (e) {
       console.log(`예외 — ${e.message}`);
@@ -144,7 +164,7 @@ async function run() {
   console.log('─'.repeat(52));
   for (const r of results) {
     const mark = r.ok ? '✅' : '❌';
-    const tail = r.ok ? `  ${r.url}` : `  (${interpret(r.status)})`;
+    const tail = r.ok ? `  ${r.url}` : `  (${interpret(r.status, r.raw)})`;
     console.log(`  ${mark} ${r.name.padEnd(9)} HTTP ${String(r.status || '-').padStart(3)}${tail}`);
   }
   console.log('─'.repeat(52));

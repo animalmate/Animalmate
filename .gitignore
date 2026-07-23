@@ -22,6 +22,8 @@ dist/
 build/
 out/
 coverage/
+*.tsbuildinfo
+next-env.d.ts
 
 # 로그 / 임시
 *.log
