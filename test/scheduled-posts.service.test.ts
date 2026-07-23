@@ -98,7 +98,7 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
     await markReady(db, staff, d.id);
     const scheduled = await schedulePost(db, staff, d.id);
 
-    const after = await applyPublishResult(db, scheduled, { kind: 'rate_limited' });
+    const after = (await applyPublishResult(db, scheduled, { kind: 'rate_limited' }))!;
     expect(after.status).toBe('scheduled');
     expect(after.status).not.toBe('failed');
     expect(after.retryCount).toBe(0);
@@ -111,10 +111,10 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
     await markReady(db, staff, d.id);
     const scheduled = await schedulePost(db, staff, d.id);
 
-    const after = await applyPublishResult(db, scheduled, {
+    const after = (await applyPublishResult(db, scheduled, {
       kind: 'success',
       articleUrl: 'https://cafe.naver.com/animalmate2010/99999',
-    });
+    }))!;
     expect(after.status).toBe('published');
     expect(after.cafeArticleUrl).toBe('https://cafe.naver.com/animalmate2010/99999');
 

@@ -4,7 +4,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
-import { boards, users, teams, teamMembers, scheduledPosts, events, postTemplates, noticeCheckLog, auditLogs } from '@/db/schema';
+import { boards, users, teams, teamMembers, memberships, scheduledPosts, events, postTemplates, noticeCheckLog, auditLogs } from '@/db/schema';
 import { createTemplate } from '@/publishing/post-templates';
 import { batchGenerate, type BatchPreset } from '@/publishing/batch-generate';
 import { runReadinessCheck } from '@/publishing/readiness-check';
@@ -18,7 +18,9 @@ const suite = DIRECT_URL ? describe : describe.skip;
 
 const MENUID = 990072;
 const LEADER_EMAIL = 'f1-leader@example.invalid';
+const BOARD_EMAIL = 'f1-board@example.invalid';
 const TEAM_NAME = 'F1테스트팀_zzz';
+const NOLEADER_TEAM = 'F1무팀장팀_zzz';
 
 function captureMailer(): { mailer: Mailer; sent: GenericMail[] } {
   const sent: GenericMail[] = [];
@@ -40,8 +42,18 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
       await db.delete(postTemplates).where(eq(postTemplates.ownerId, teamId));
     }
     await db.delete(postTemplates).where(eq(postTemplates.name, 'F1 봉사 양식'));
+    const noLeader = await db.select({ id: teams.id }).from(teams).where(eq(teams.name, NOLEADER_TEAM));
+    for (const t of noLeader) {
+      await db.delete(events).where(eq(events.teamId, t.id));
+      await db.delete(teams).where(eq(teams.id, t.id));
+    }
     await db.delete(teams).where(eq(teams.name, TEAM_NAME));
     await db.delete(boards).where(eq(boards.menuid, MENUID));
+    const bu = await db.select({ id: users.id }).from(users).where(eq(users.email, BOARD_EMAIL));
+    for (const u of bu) {
+      await db.delete(memberships).where(eq(memberships.userId, u.id));
+      await db.delete(users).where(eq(users.id, u.id));
+    }
     await db.delete(users).where(eq(users.email, LEADER_EMAIL));
   }
 
@@ -131,5 +143,34 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
     expect(s2.alertsSent).toBe(0);
 
     await db.delete(scheduledPosts).where(eq(scheduledPosts.id, draft.id));
+  });
+
+  it('미완성 점검: 팀장단 미배정 팀 → 회장단 폴백 알림', async () => {
+    const [t2] = await db.insert(teams).values({ name: NOLEADER_TEAM, kind: 'activity' }).returning();
+    const [bu] = await db.insert(users).values({ email: BOARD_EMAIL, name: '회장' }).returning();
+    await db.insert(memberships).values({ userId: bu!.id, role: 'board', termStart: '2026-01-01', termEnd: '2030-01-01', status: 'active' });
+
+    const now = new Date('2026-06-01T00:00:00Z');
+    const publishAt = new Date('2026-06-04T11:00:00Z'); // KST 기준 D-3
+    const boardActor: Actor = { userId: bu!.id, role: 'board', membershipActive: true, teams: [] };
+    const draft = await createDraft(db, boardActor, {
+      ownerType: 'team',
+      ownerId: t2!.id, // 팀장단(team_members) 없음
+      boardMenuid: MENUID,
+      title: '폴백 공지',
+      contentMd: '내용',
+      publishAt,
+    });
+
+    const { mailer, sent } = captureMailer();
+    const s = await runReadinessCheck(db, { mailer, now });
+    expect(s.alertsSent).toBeGreaterThanOrEqual(1);
+    // 팀장단이 없으므로 회장단(BOARD_EMAIL 포함)으로 폴백.
+    expect(sent.some((m) => (Array.isArray(m.to) ? m.to.includes(BOARD_EMAIL) : m.to === BOARD_EMAIL))).toBe(true);
+
+    await db.delete(scheduledPosts).where(eq(scheduledPosts.id, draft.id));
+    await db.delete(memberships).where(eq(memberships.userId, bu!.id));
+    await db.delete(users).where(eq(users.id, bu!.id));
+    await db.delete(teams).where(eq(teams.id, t2!.id));
   });
 });

@@ -12,7 +12,7 @@ import type { Actor } from '@/auth/permissions';
 const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const suite = DIRECT_URL ? describe : describe.skip;
 
-const MENUID = 990072;
+const MENUID = 990082;
 const EMAIL = 'resv-create-test@example.invalid';
 const TEAM_A = 'RC-TEST-A팀';
 const TEAM_B = 'RC-TEST-B팀';
@@ -38,6 +38,12 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
   beforeAll(async () => {
     sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
+    // 이전 크래시 잔여 데이터 방지(멱등).
+    await db.delete(scheduledPosts).where(eq(scheduledPosts.boardMenuid, MENUID));
+    await db.delete(boards).where(eq(boards.menuid, MENUID));
+    await db.delete(users).where(eq(users.email, EMAIL));
+    const oldTeams = await db.select({ id: teams.id }).from(teams).where(inArray(teams.name, [TEAM_A, TEAM_B]));
+    for (const t of oldTeams) await db.delete(teams).where(eq(teams.id, t.id));
     const [a] = await db.insert(teams).values({ name: TEAM_A, kind: 'activity' }).returning();
     const [b] = await db.insert(teams).values({ name: TEAM_B, kind: 'activity' }).returning();
     teamAId = a!.id;
