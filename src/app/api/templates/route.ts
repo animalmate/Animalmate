@@ -32,12 +32,17 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const t = await req.json();
     const ownerType = t.ownerType as TemplateOwnerType;
+    const name = String(t.name ?? '').trim();
+    const titleTemplate = String(t.titleTemplate ?? '').trim();
+    if (!name) return NextResponse.json({ error: 'missing_name' }, { status: 400 });
+    if (!titleTemplate) return NextResponse.json({ error: 'missing_title' }, { status: 400 });
+    if (ownerType === 'team' && !t.ownerId) return NextResponse.json({ error: 'missing_team' }, { status: 400 });
     const tpl = await createTemplate(db, actor, {
       ownerType,
       ownerId: ownerType === 'personal' ? actor.userId : ownerType === 'team' ? t.ownerId : null,
-      name: String(t.name),
-      titleTemplate: String(t.titleTemplate),
-      bodyTemplate: String(t.bodyTemplate),
+      name,
+      titleTemplate,
+      bodyTemplate: String(t.bodyTemplate ?? ''),
     });
     return NextResponse.json({ template: tpl });
   } catch (e) {
