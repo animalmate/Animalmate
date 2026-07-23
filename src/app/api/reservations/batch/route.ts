@@ -14,6 +14,8 @@ export async function POST(req: Request): Promise<Response> {
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   try {
     const b = await req.json();
+    if (!b.teamId) return NextResponse.json({ error: 'missing_team' }, { status: 400 });
+    if (!Number.isInteger(Number(b.boardMenuid))) return NextResponse.json({ error: 'missing_board' }, { status: 400 });
     const preset: BatchPreset = {
       teamId: String(b.teamId),
       monthWeek: b.monthWeek,
