@@ -38,10 +38,17 @@
       TODO: doc_chunks.embedding 차원(768)은 GEMINI_EMBEDDING_MODEL 확정(1D) 후 재확인.
 - [ ] 인증: 이메일 매직링크 로그인 / 초대 토큰 가입 플로우
       DoD: 초대받지 않은 이메일은 가입 불가
-- [ ] 권한 미들웨어: role + membership active + 소유권 검사 공통화 + audit 기록
+      → 대기(Resend 가입·SMTP 연결은 사람 몫). 준비 절차·필요 값은 README "인증 준비"에 정리함.
+- [x] 권한 미들웨어: role + membership active + 소유권 검사 공통화 + audit 기록
       DoD: 권한 검사 단위 테스트 통과(부원이 운영진 API 호출 시 403 등 6케이스)
-- [ ] 전 테이블 RLS 활성화(정책 미부여 = 기본 거부), 데이터 접근은 서버 경유로 통일
+      → 2026-07-23 완료. `src/auth/permissions.ts`(순수 authorize) + `guard.ts`(PermissionError 403,
+      guardWrite=검사+audit) + `audit.ts`(buildAuditEntry/recordAudit, override는 [override] 표기).
+      단위테스트 23케이스 통과(부원 403, 소유권 not_owner, 회장단 override, 임기만료 거부 등).
+- [x] 전 테이블 RLS 활성화(정책 미부여 = 기본 거부), 데이터 접근은 서버 경유로 통일
       DoD: anon key로 각 테이블 직접 조회/쓰기가 전부 거부됨을 테스트로 증명
+      → 2026-07-23 완료. 마이그레이션에서 전 테이블 RLS 활성화. `test/rls.security.test.ts`가
+      pg_tables 로 테이블을 런타임 수집(새 테이블 자동 포함) → rowsecurity=true + anon SELECT 0행
+      + anon INSERT 거부 검증(46통과). RLS 누락 시 실패하는 역검증도 확인. CI(`.github/workflows/ci.yml`)에서 상시 실행.
 - [ ] Supabase pg_cron + pg_net 셋업: 분 단위 스케줄이 CRON_SECRET 헤더로 /api/cron/* 호출
       (Vercel Cron 사용 금지 — 00 규칙) DoD: 매분 잡이 테스트 엔드포인트에 도달 로그 확인
 - [ ] /api/health(경량 DB 조회) + UptimeRobot 5분 모니터 등록
@@ -55,6 +62,8 @@
       DoD: 예약 3건이 지정 시각 ±2분 내 카페에 게시되고 URL 저장됨
 ### 1C. 봉사 루프
 - [ ] recurring_rules CRUD (팀 소유) + "매월 N번째 X요일" 날짜 계산 유틸(테스트 필수)
+      → 날짜 계산 유틸 완료(2026-07-23): `src/recurrence/month-weekday.ts` + 테스트 12케이스
+      (경계: 다섯째 주 없는 달→null, last, 월말). CRUD 는 미착수.
 - [ ] 회차 초안 자동 생성 크론(D-3) + 팀장단 알림 메일
 - [ ] 이벤트 편집 화면: 필수 필드 + 오픈채팅 링크·참여코드 입력, 미완성 시 발행 보류 배지
 - [ ] 신청 폼(부원) + 실시간 현황판(팀장단) + 자동 마감 크론

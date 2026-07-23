@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 타입체크
+        run: npm run typecheck
+      - name: 단위 테스트(순수 로직)
+        run: npm test
+      # RLS 기본 거부 증명(규칙 #8). 실제 Supabase 를 대상으로 anon key 로 전 테이블 접근 거부를
+      # 검증한다. public 스키마 테이블을 런타임에 수집하므로 새 테이블 누락도 자동 감지.
+      # 아래 시크릿은 GitHub 리포 Settings > Secrets and variables > Actions 에 등록해야 한다.
+      - name: RLS 보안 테스트
+        run: npm run test:rls
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
