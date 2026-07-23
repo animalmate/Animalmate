@@ -5,6 +5,7 @@ import { users } from '@/db/schema';
 import { ConsoleShell } from '@/components/console-shell';
 import { Banner, Card } from '@/components/ui';
 import { Icon } from '@/components/icon';
+import { CursorDog } from '@/components/cursor-dog';
 import { isStaffPlus, isPrivileged } from '@/auth/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,7 @@ export default async function HomePage() {
 
   return (
     <ConsoleShell actor={actor}>
+      <CursorDog />
       <div className="space-y-5">
         {!actor.membershipActive ? (
           <Banner kind="warning" title="이번 학기 멤버십이 아직 활성화되지 않았어요">

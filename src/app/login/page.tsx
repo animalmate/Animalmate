@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { apiPost, errorMessage } from '@/lib/api';
 import { useCooldown } from '@/lib/use-cooldown';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton } from '@/components/ui';
+import { CursorDog } from '@/components/cursor-dog';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,7 +41,9 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
+    <>
+      <CursorDog />
+      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
       <div className="mb-6 flex flex-col items-center text-center">
         <img src="/logo.png" alt="애니멀메이트" className="h-16 w-16 rounded-full" />
         <h1 className="mt-3 text-[22px] font-bold text-ink-900">로그인</h1>
@@ -94,6 +97,7 @@ export default function LoginPage() {
           </>
         )}
       </Card>
-    </main>
+      </main>
+    </>
   );
 }
