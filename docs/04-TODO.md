@@ -51,8 +51,10 @@
       → 2026-07-23 완료. 마이그레이션에서 전 테이블 RLS 활성화. `test/rls.security.test.ts`가
       pg_tables 로 테이블을 런타임 수집(새 테이블 자동 포함) → rowsecurity=true + anon SELECT 0행
       + anon INSERT 거부 검증(46통과). RLS 누락 시 실패하는 역검증도 확인. CI(`.github/workflows/ci.yml`)에서 상시 실행.
-- [ ] Supabase pg_cron + pg_net 셋업: 분 단위 스케줄이 CRON_SECRET 헤더로 /api/cron/* 호출
+- [~] Supabase pg_cron + pg_net 셋업: 분 단위 스케줄이 CRON_SECRET 헤더로 /api/cron/* 호출
       (Vercel Cron 사용 금지 — 00 규칙) DoD: 매분 잡이 테스트 엔드포인트에 도달 로그 확인
+      → 2026-07-23 pg_cron/pg_net 확장 활성화 완료(사용자). CRON_SECRET 발급·.env 저장. 첫 엔드포인트
+      /api/cron/publish + 인증 준비됨. 남음: 앱 배포 후 cron.schedule 잡 등록(README SQL)로 도달 로그 확인.
 - [ ] /api/health(경량 DB 조회) + UptimeRobot 5분 모니터 등록
       DoD: 무료 티어 7일 일시정지 방지 링크 가동 + 다운 알림이 공용 메일로 수신됨
 - [ ] Supabase Auth 커스텀 SMTP를 Resend로 연결 (기본 메일 한도로는 매직링크 운영 불가)
@@ -78,8 +80,11 @@
       단위 12 + 통합 6. 남음: 작성 UI(인증/프론트).
 - [ ] 발행 워커(pg_cron 매분 → API): due 소량(≤5건) 처리, 건별 30초 간격, code 999는 대기 후 재시도,
       그 외 재시도 2회, 실패 알림 메일. DoD: 예약 3건이 지정 시각 ±2분 내 카페에 게시되고 URL 저장됨
-      → 코어 로직(fetchDuePosts/applyPublishResult/cafe-write) 준비됨. **cron 배선+CRON_SECRET+실카페(menuid 68)
-      는 사용자 인프라 준비 후.** 준비 신호 전까지 cafe-write dryRun 유지.
+      → 2026-07-23 라우트+워커 완료: `src/app/api/cron/publish/route.ts`(CRON_SECRET 검증→워커→JSON 요약)
+      + `src/publishing/publish-worker.ts`(due≤5, 실게시 건별 30초, code 999 대기재시도, **처리 요약을
+      응답+audit(cron.publish)에 기록**) + `src/http/cron-auth.ts`(상수시간 비교). 인증 단위 5+워커 통합 2.
+      토큰 부트스트랩 완료(naver_tokens에 암호화 저장, .env NAVER_REFRESH_TOKEN 제거). pg_cron 확장 활성화됨.
+      **남음: 앱 배포 후 pg_cron 잡 등록(README SQL) + 실게시는 NAVER_PUBLISH_DRY_RUN=false 전환(사용자 신호).**
 ### 1C. 반복 공지 발행 (F1 — 스코프 피벗으로 재작성. 신청/확정/카톡 제거)
 - [ ] recurring_rules CRUD (팀 소유) + "매월 N번째 X요일" 날짜 계산 유틸(테스트 필수)
       → 날짜 계산 유틸 완료(2026-07-23): `src/recurrence/month-weekday.ts` + 테스트 12케이스
