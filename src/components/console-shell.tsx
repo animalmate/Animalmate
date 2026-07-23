@@ -5,7 +5,7 @@ import { ConsoleNav } from './console-nav';
 
 export function ConsoleShell({ actor, children }: { actor: Actor; children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-cream-50">
+    <div className="flex min-h-screen flex-col">
       <ConsoleNav role={actor.role} />
       <main className="mx-auto w-full max-w-[1000px] px-4 pb-14 pt-6 sm:px-6">{children}</main>
     </div>
