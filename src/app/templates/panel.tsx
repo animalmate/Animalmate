@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, InfoText, Input, Select, Textarea } from '@/components/ui';
+import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select, Textarea } from '@/components/ui';
 
 interface Template {
   id: string;
   ownerType: string;
+  ownerId: string | null;
+  teamName: string | null;
   name: string;
   titleTemplate: string;
   bodyTemplate: string;
@@ -17,9 +19,15 @@ interface Team {
 
 const OWNER_LABEL: Record<string, string> = { personal: '개인', team: '팀', global: '공용' };
 
+function ownerText(t: Template): string {
+  if (t.ownerType === 'team') return `팀 · ${t.teamName ?? '알 수 없음'}`;
+  return OWNER_LABEL[t.ownerType] ?? t.ownerType;
+}
+
 export function TemplatesPanel() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [ownerType, setOwnerType] = useState('personal');
   const [teamId, setTeamId] = useState('');
   const [name, setName] = useState('');
@@ -40,29 +48,64 @@ export function TemplatesPanel() {
     void load();
   }, []);
 
-  async function create() {
-    setError('');
-    setBusy(true);
-    const r = await apiPost('/api/templates', {
-      ownerType,
-      ownerId: ownerType === 'team' ? teamId : undefined,
-      name: name.trim(),
-      titleTemplate: titleTemplate.trim(),
-      bodyTemplate: bodyTemplate.trim(),
-    });
-    setBusy(false);
-    if (!r.ok) return setError(errorMessage(r.data.error, r.data.message));
+  function resetForm() {
+    setEditingId(null);
+    setOwnerType('personal');
+    setTeamId('');
     setName('');
     setTitleTemplate('');
     setBodyTemplate('');
+  }
+
+  function startEdit(t: Template) {
+    setEditingId(t.id);
+    setOwnerType(t.ownerType);
+    setTeamId(t.ownerType === 'team' ? (t.ownerId ?? '') : '');
+    setName(t.name);
+    setTitleTemplate(t.titleTemplate);
+    setBodyTemplate(t.bodyTemplate);
+    setError('');
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function save() {
+    setError('');
+    setBusy(true);
+    const r = editingId
+      ? await apiPost(`/api/templates/${editingId}`, { name: name.trim(), titleTemplate: titleTemplate.trim(), bodyTemplate: bodyTemplate.trim() }, 'PATCH')
+      : await apiPost('/api/templates', {
+          ownerType,
+          ownerId: ownerType === 'team' ? teamId : undefined,
+          name: name.trim(),
+          titleTemplate: titleTemplate.trim(),
+          bodyTemplate: bodyTemplate.trim(),
+        });
+    setBusy(false);
+    if (!r.ok) return setError(errorMessage(r.data.error, r.data.message));
+    resetForm();
     void load();
   }
+
+  async function remove(t: Template) {
+    if (typeof window !== 'undefined' && !window.confirm(`"${t.name}" 양식을 삭제할까요?`)) return;
+    setError('');
+    const res = await fetch(`/api/templates/${t.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(errorMessage(d.error, d.message));
+      return;
+    }
+    if (editingId === t.id) resetForm();
+    void load();
+  }
+
+  const canSave = !!name.trim() && !!titleTemplate.trim() && (editingId !== null || ownerType !== 'team' || !!teamId);
 
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold">템플릿</h1>
       <Card className="space-y-3">
-        <div className="font-medium">새 양식</div>
+        <div className="font-medium">{editingId ? '양식 수정' : '새 양식'}</div>
         <InfoText>
           플레이스홀더(생성 시 자동 치환):{' '}
           <code className="rounded bg-gray-100 px-1">{'{{간결_날짜}}'}</code>(07/23){' '}
@@ -73,7 +116,7 @@ export function TemplatesPanel() {
           <code className="rounded bg-gray-100 px-1">{'{{정원}}'}</code> 은 각 예약 수정에서 채웁니다.
         </InfoText>
         <Field label="소유">
-          <Select value={ownerType} onChange={(e) => setOwnerType(e.target.value)}>
+          <Select value={ownerType} onChange={(e) => setOwnerType(e.target.value)} disabled={editingId !== null}>
             <option value="personal">개인</option>
             <option value="team">팀</option>
             <option value="global">공용(회장단만)</option>
@@ -81,7 +124,7 @@ export function TemplatesPanel() {
         </Field>
         {ownerType === 'team' ? (
           <Field label="팀">
-            <Select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+            <Select value={teamId} onChange={(e) => setTeamId(e.target.value)} disabled={editingId !== null}>
               <option value="">선택</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -101,23 +144,32 @@ export function TemplatesPanel() {
           <Textarea rows={5} value={bodyTemplate} onChange={(e) => setBodyTemplate(e.target.value)} placeholder={'{{전체_날짜}} 봉사\n집합 {{집합시간}} / 장소 {{장소}} / 정원 {{정원}}\n\n문의:\n{{팀장단}}'} />
         </Field>
         <ErrorText>{error}</ErrorText>
-        <Button disabled={busy || !name || !titleTemplate || (ownerType === 'team' && !teamId)} onClick={create}>
-          {busy ? '저장 중…' : '저장'}
-        </Button>
+        <div className="flex gap-2">
+          <Button disabled={busy || !canSave} onClick={save}>
+            {busy ? '저장 중…' : editingId ? '수정 저장' : '저장'}
+          </Button>
+          {editingId ? <SecondaryButton onClick={resetForm}>취소</SecondaryButton> : null}
+        </div>
       </Card>
 
       <Card>
-        <div className="mb-2 font-medium">내 양식</div>
+        <div className="mb-2 font-medium">양식 목록</div>
         {templates.length === 0 ? (
           <p className="text-sm text-gray-500">아직 없습니다.</p>
         ) : (
           <ul className="divide-y divide-gray-100 text-sm">
             {templates.map((t) => (
-              <li key={t.id} className="py-2">
-                <div className="font-medium">
-                  {t.name} <span className="text-xs text-gray-500">({OWNER_LABEL[t.ownerType] ?? t.ownerType})</span>
+              <li key={t.id} className="flex items-start justify-between gap-2 py-2">
+                <div className="min-w-0">
+                  <div className="font-medium">
+                    {t.name} <span className="text-xs text-gray-500">({ownerText(t)})</span>
+                  </div>
+                  <div className="truncate text-gray-500">{t.titleTemplate}</div>
                 </div>
-                <div className="text-gray-500">{t.titleTemplate}</div>
+                <span className="flex shrink-0 gap-2">
+                  <SecondaryButton onClick={() => startEdit(t)}>수정</SecondaryButton>
+                  <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
+                </span>
               </li>
             ))}
           </ul>

@@ -15,9 +15,13 @@ async function parse<T>(res: Response): Promise<ApiResult<T>> {
   return { ok: res.ok, status: res.status, data: (data ?? {}) as ApiResult<T>['data'] };
 }
 
-export async function apiPost<T = unknown>(path: string, body: unknown): Promise<ApiResult<T>> {
+export async function apiPost<T = unknown>(
+  path: string,
+  body: unknown,
+  method: 'POST' | 'PATCH' | 'PUT' = 'POST'
+): Promise<ApiResult<T>> {
   const res = await fetch(path, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
@@ -43,6 +47,10 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     forbidden: '권한이 없습니다.',
     unauthorized: '로그인이 필요합니다.',
     server_misconfigured: '서버 설정 오류입니다. 운영진에게 문의해 주세요.',
+    team_not_found: '팀을 찾을 수 없습니다.',
+    user_not_found: '해당 이메일의 가입 회원이 없습니다. 먼저 가입해야 지정할 수 있습니다.',
+    user_inactive: '활성 멤버십이 없는 회원입니다.',
+    missing_user: '대상 회원이 지정되지 않았습니다.',
   };
   return (code && map[code]) || fallback;
 }

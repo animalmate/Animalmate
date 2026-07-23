@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, Input } from '@/components/ui';
+import { Button, Card, ErrorText, Field, Input, SecondaryButton } from '@/components/ui';
 
 interface Board {
   menuid: number;
@@ -37,6 +37,21 @@ export function BoardsPanel() {
     void load();
   }
 
+  async function patch(menuid: number, body: Record<string, unknown>) {
+    setError('');
+    const res = await fetch(`/api/boards/${menuid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(errorMessage(d.error, d.message)); return; }
+    void load();
+  }
+
+  async function remove(b: Board) {
+    if (typeof window !== 'undefined' && !window.confirm(`게시판 "${b.name}"(${b.menuid})을 비활성화할까요?`)) return;
+    setError('');
+    const res = await fetch(`/api/boards/${b.menuid}`, { method: 'DELETE' });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setError(errorMessage(d.error, d.message)); return; }
+    void load();
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold">게시판 레지스트리</h1>
@@ -65,12 +80,21 @@ export function BoardsPanel() {
         ) : (
           <ul className="divide-y divide-gray-100 text-sm">
             {boards.map((b) => (
-              <li key={b.menuid} className="flex items-center justify-between py-2">
+              <li key={b.menuid} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span>
                   <span className="font-mono text-gray-500">{b.menuid}</span> · {b.name}
+                  <span className="ml-2 text-xs text-gray-500">
+                    {b.botCanWrite ? '봇쓰기' : '봇불가'} · {b.isActive ? '활성' : '비활성'}
+                  </span>
                 </span>
-                <span className="text-xs text-gray-500">
-                  {b.botCanWrite ? '봇쓰기' : '봇불가'} · {b.isActive ? '활성' : '비활성'}
+                <span className="flex gap-2">
+                  <SecondaryButton onClick={() => patch(b.menuid, { botCanWrite: !b.botCanWrite })}>
+                    {b.botCanWrite ? '봇쓰기 끄기' : '봇쓰기 켜기'}
+                  </SecondaryButton>
+                  <SecondaryButton onClick={() => patch(b.menuid, { isActive: !b.isActive })}>
+                    {b.isActive ? '비활성화' : '활성화'}
+                  </SecondaryButton>
+                  {b.isActive ? <SecondaryButton onClick={() => remove(b)}>삭제</SecondaryButton> : null}
                 </span>
               </li>
             ))}
