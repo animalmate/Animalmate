@@ -19,6 +19,7 @@ const STAFF_MENU: NavItem[] = [
 const BOARD_MENU: NavItem[] = [
   ...STAFF_MENU,
   { href: '/admin/teams', label: '팀', icon: 'users' },
+  { href: '/admin/members', label: '회원', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', icon: 'key' },
   { href: '/admin/boards', label: '게시판', icon: 'board' },
 ];
@@ -35,6 +36,7 @@ function activeKey(pathname: string): string {
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';
   if (pathname.startsWith('/admin/teams')) return '/admin/teams';
+  if (pathname.startsWith('/admin/members')) return '/admin/members';
   if (pathname.startsWith('/admin/join-codes')) return '/admin/join-codes';
   if (pathname.startsWith('/admin/boards')) return '/admin/boards';
   return '/';
