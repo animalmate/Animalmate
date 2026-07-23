@@ -20,8 +20,10 @@ import {
   jsonb,
   vector,
   unique,
+  uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 // pgvector 임베딩 차원. GEMINI_EMBEDDING_MODEL 확정(Phase 1D) 후 정확한 값으로 핀 고정할 것.
 // 값이 바뀌면 doc_chunks.embedding 재생성 마이그레이션 필요(데이터 없을 때 진행 권장).
@@ -232,6 +234,41 @@ export const chatLogs = pgTable('chat_logs', {
   handedOff: boolean('handed_off').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── 인증(가입코드 + 이메일 OTP) ───────────────────────────────────────
+// 부원 가입 = 학기별 가입코드(활성 코드 항상 1개) + 이메일 6자리 OTP. 로그인 = 이메일 OTP.
+export const emailCodePurposeEnum = pgEnum('email_code_purpose', ['signup', 'login']);
+
+export const joinCodes = pgTable(
+  'join_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: text('code').notNull().unique(),
+    semesterLabel: text('semester_label').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  // 활성 코드는 항상 1개(부분 유니크 인덱스 — is_active=true 인 행이 최대 1개).
+  (t) => [uniqueIndex('join_codes_single_active').on(t.isActive).where(sql`${t.isActive}`)]
+);
+
+export const emailCodes = pgTable(
+  'email_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    codeHash: text('code_hash').notNull(), // OTP 평문 저장 금지 — 해시만
+    purpose: emailCodePurposeEnum('purpose').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    attempts: integer('attempts').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('email_codes_email_purpose_idx').on(t.email, t.purpose)]
+);
 
 // ── 운영 공통 ──────────────────────────────────────────────────────────
 export const auditLogs = pgTable('audit_logs', {

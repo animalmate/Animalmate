@@ -1,9 +1,8 @@
 // 감사 로그 — 모든 관리 행위/override 를 audit_logs 에 기록(규칙 #4, 03 접근 규칙 2).
 // buildAuditEntry 는 순수(테스트 가능), recordAudit 는 얇은 DB 삽입(db 를 주입받아 테스트 용이).
 
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { auditLogs } from '@/db/schema';
-import type * as schema from '@/db/schema';
+import type { Database } from '@/db/types';
 
 export interface AuditInput {
   actorUserId: string | null;
@@ -37,10 +36,7 @@ export function buildAuditEntry(input: AuditInput): AuditEntry {
   };
 }
 
-/** 감사 로그 1건 기록. db 는 서버(service role) 경유 drizzle 인스턴스. */
-export async function recordAudit(
-  db: PostgresJsDatabase<typeof schema>,
-  entry: AuditEntry
-): Promise<void> {
+/** 감사 로그 1건 기록. db 는 일반 연결 또는 트랜잭션(tx). */
+export async function recordAudit(db: Database, entry: AuditEntry): Promise<void> {
   await db.insert(auditLogs).values(entry);
 }

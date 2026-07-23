@@ -36,11 +36,13 @@
       `drizzle/0000_*.sql` 적용: 15개 테이블 + pgvector 확장 + **전 테이블 RLS 활성화**(규칙 #8).
       런타임=트랜잭션풀러(6543), 마이그레이션=세션풀러(5432, DIRECT_URL). 검증: 15/15 테이블·RLS·vector OK.
       TODO: doc_chunks.embedding 차원(768)은 GEMINI_EMBEDDING_MODEL 확정(1D) 후 재확인.
-- [ ] 인증: 이메일 매직링크 로그인 / **학기별 가입코드** 가입 플로우(카페 공지로 코드 배포, 회장단 재발급)
-      DoD: 유효한 학기 가입코드 없이는 가입 불가
-      → 대기(공용 Gmail 앱 비밀번호 발급·Supabase SMTP 연결은 사람 몫). 준비 절차·필요 값은 README "인증 준비"에 정리함.
-      스키마 확정: `join_codes`(code, semester_label, is_active, created_by, created_at) — 활성 코드 항상 1개,
-      재발급=기존 비활성화+신규+audit. invites 대체(드롭 여부는 착수 시). 인증 착수 시 마이그레이션.
+- [x] 인증: 이메일 OTP 로그인 / **학기별 가입코드** 가입 플로우(코드 수준 완료)
+      DoD: 유효한 학기 가입코드 없이는 가입 불가 ✓
+      → 2026-07-23 구현: 마이그레이션 0003(join_codes 활성 1개+email_codes OTP, 둘 다 RLS). 서비스
+      `src/auth/{join-codes,otp,session,auth-service,mailer,current-user}.ts` + API `src/app/api/auth/*`,
+      `/api/admin/join-codes`. 커스텀 HS256 JWT 쿠키 세션. 6자리 OTP(HMAC·만료10분·시도5회). 계정 열거 방지.
+      단위(세션/OTP 8) + 통합(가입코드·OTP·가입·로그인 8) + next build 통과.
+      **남음: 실메일 발송 테스트(SMTP 신호 후) — 코드는 SMTP_* 없으면 dry 메일러로 동작.**
 - [x] 권한 미들웨어: role + membership active + 소유권 검사 공통화 + audit 기록
       DoD: 권한 검사 단위 테스트 통과(부원이 운영진 API 호출 시 403 등 6케이스)
       → 2026-07-23 완료. `src/auth/permissions.ts`(순수 authorize) + `guard.ts`(PermissionError 403,

@@ -42,7 +42,8 @@ export type Action =
   | { kind: 'membership.manage' } // 운영진 임명/해제
   | { kind: 'term.transition' } // 학기 전환
   | { kind: 'board.registry' } // 게시판 레지스트리
-  | { kind: 'bot.token' }; // 봇 토큰 관리
+  | { kind: 'bot.token' } // 봇 토큰 관리
+  | { kind: 'joincode.manage' }; // 학기 가입코드 발급/재발급
 
 export type DenyReason = 'membership_inactive' | 'role_insufficient' | 'not_owner';
 
@@ -107,6 +108,7 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'term.transition':
     case 'board.registry':
     case 'bot.token':
+    case 'joincode.manage':
       return isPrivileged(actor.role) ? ALLOW : deny('role_insufficient');
   }
 }

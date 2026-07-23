@@ -17,12 +17,14 @@
   - 크론이 매일 term_end 경과 건을 expired로 강등. 회장단만 memberships를 변경 가능.
 - `teams` (id, name, kind[activity|functional], is_active)
 - `team_members` (team_id, user_id, position[leader|member])   ← 팀장단 = leader, 인원 가변
-- `join_codes` (id, code, semester_label, is_active, created_by, created_at)   ← 부원 가입코드(결정 2026-07-23)
-  - 학기별 가입코드. **활성 코드는 항상 1개**(is_active=true 유일). 카페 공지로 배포, 회장단 재발급.
-    재발급 = 기존 코드 is_active=false + 신규 발급, audit 기록. 이력은 비활성 행으로 남긴다.
-    가입 시 로그인 매직링크 + 유효 가입코드 대조. 운영진/회장단 임명은 회장단이 직접(memberships).
-  - 기존 `invites`(per-email 토큰)는 이 모델로 대체 → 인증 구현 시 invites 드롭 여부 확정.
-    인증 미착수(Gmail SMTP 대기)라 join_codes 마이그레이션은 인증 구현 시점에.
+- `join_codes` (id, code, semester_label, is_active, created_by, created_at)   ← 부원 가입코드(구현됨, 0003)
+  - 학기별 가입코드. **활성 코드는 항상 1개**(부분 유니크 인덱스 `where is_active`). 카페 공지로 배포, 회장단 재발급.
+    재발급 = 기존 is_active=false + 신규 발급(트랜잭션), audit 기록. 이력은 비활성 행으로 남긴다.
+    가입 시 유효 가입코드 대조 + 이메일 OTP. 운영진/회장단 임명은 회장단이 직접(memberships).
+  - 기존 `invites`(per-email 토큰)는 이 모델로 대체됨(현재 미사용 — 추후 드롭 여부 확정).
+- `email_codes` (id, email, code_hash, purpose[signup|login], expires_at, consumed_at, attempts, created_at)   ← 이메일 OTP(구현됨, 0003)
+  - 6자리 OTP. **평문 미저장(HMAC 해시만)**, 만료 10분, 시도 5회 제한, 성공 시 소비. 가입/로그인 공용.
+  - 세션은 커스텀 HS256 JWT(httpOnly 쿠키, SESSION_SECRET) — DB 세션 테이블 없음.
 
 ### 카페 연동
 - `boards` (menuid PK, name, purpose, bot_can_write bool, is_active)   ← 게시판 레지스트리
