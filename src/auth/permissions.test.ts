@@ -95,6 +95,15 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     expect(authorize(actor('staff'), { kind: 'board.registry' }).reason).toBe('role_insufficient');
     expect(authorize(actor('staff'), { kind: 'term.transition' }).reason).toBe('role_insufficient');
   });
+
+  it('14. 반복 규칙: 소속 팀장단은 허용, 비소속 운영진은 not_owner, 부원은 role_insufficient', () => {
+    const rule = { kind: 'recurring.manage', owner: { ownerType: 'team', ownerId: 't-1' } } as const;
+    const leader = actor('staff', { teams: [{ teamId: 't-1', position: 'leader' }] });
+    expect(authorize(leader, rule).allowed).toBe(true);
+    expect(authorize(actor('staff', { teams: [{ teamId: 't-2', position: 'leader' }] }), rule).reason).toBe('not_owner');
+    expect(authorize(actor('member'), rule).reason).toBe('role_insufficient');
+    expect(authorize(actor('board'), rule)).toMatchObject({ allowed: true, override: true });
+  });
 });
 
 describe('헬퍼', () => {

@@ -86,10 +86,13 @@
       토큰 부트스트랩 완료(naver_tokens에 암호화 저장, .env NAVER_REFRESH_TOKEN 제거). pg_cron 확장 활성화됨.
       **남음: 앱 배포 후 pg_cron 잡 등록(README SQL) + 실게시는 NAVER_PUBLISH_DRY_RUN=false 전환(사용자 신호).**
 ### 1C. 반복 공지 발행 (F1 — 스코프 피벗으로 재작성. 신청/확정/카톡 제거)
-- [ ] recurring_rules CRUD (팀 소유) + "매월 N번째 X요일" 날짜 계산 유틸(테스트 필수)
-      → 날짜 계산 유틸 완료(2026-07-23): `src/recurrence/month-weekday.ts` + 테스트 12케이스
-      (경계: 다섯째 주 없는 달→null, last, 월말). CRUD 는 미착수.
-- [ ] 회차(event) 초안 자동 생성 크론(D-3) + 팀장단 알림 메일
+- [x] recurring_rules CRUD (팀 소유) + "매월 N번째 X요일" 날짜 계산 유틸(테스트 필수)
+      → 날짜 유틸 `src/recurrence/month-weekday.ts`(단위 12) + CRUD `src/recurrence/recurring-rules.ts`
+      (팀장단/회장단만, recurring.manage 권한, 소프트 삭제, audit). 권한 단위 +1, CRUD 통합 5.
+- [~] 회차(event) 초안 자동 생성 크론(D-3) + 팀장단 알림 메일
+      → 로직·라우트 완료: `src/recurrence/draft-generation.ts`(D-lead 판정 순수함수 + events 초안
+      생성, 멱등, cron.draft_generate 요약 audit) + `src/app/api/cron/draft-generate/route.ts`(CRON_SECRET).
+      단위 7(월 경계·last·월말·lead 0). 남음: pg_cron 잡 등록(매일) + **팀장단 알림 메일(Resend 연결 후)**.
 - [ ] 회차 편집 화면: 필수 필드(일시/장소/정원) 입력, 미완성 시 발행 보류 배지 →
       확정 시 scheduled_posts 생성(발행은 1B 발행 워커 재사용). ※ 오픈채팅/참여코드 없음
       DoD: 파일럿 팀 실제 회차 1건이 초안 생성→필드 완성→카페 발행까지 end-to-end 성공
