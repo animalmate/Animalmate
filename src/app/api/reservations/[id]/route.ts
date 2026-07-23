@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus } from '@/auth/permissions';
+import { isStaffPlus, isPrivileged, ownsResource } from '@/auth/permissions';
 import { getReservation, updateReservation } from '@/publishing/reservations';
 import { PermissionError } from '@/auth/guard';
 
@@ -14,6 +14,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const detail = await getReservation(db, id);
   if (!detail) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // 비회장단은 소유(본인/소속 팀) 예약만 열람(자기 팀만 관리 원칙).
+  if (!isPrivileged(actor.role) && !ownsResource(actor, { ownerType: detail.post.ownerType, ownerId: detail.post.ownerId })) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
   return NextResponse.json(detail);
 }
 

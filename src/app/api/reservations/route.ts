@@ -12,7 +12,7 @@ export async function GET(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   const teamId = new URL(req.url).searchParams.get('teamId') ?? undefined;
-  return NextResponse.json({ reservations: await listReservations(db, { teamId }) });
+  return NextResponse.json({ reservations: await listReservations(db, { teamId, actor }) });
 }
 
 export async function POST(req: Request): Promise<Response> {

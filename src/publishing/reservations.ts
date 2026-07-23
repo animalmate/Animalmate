@@ -1,11 +1,11 @@
 // 예약(scheduled_post) 생성/조회 — 일반 공지(개인 소유) + 봉사 공지(팀 소유 + event 통합).
 // 예약 큐 화면·작성 폼의 서버 진입점. 권한은 post.create(운영진 이상).
 
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { scheduledPosts, events, teams } from '@/db/schema';
 import { dateVars, leadersBlock, kstDateStr } from './placeholders';
-import type { Actor } from '@/auth/permissions';
+import { isPrivileged, type Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { renderTemplate } from './post-templates';
@@ -240,13 +240,28 @@ function computeMissing(p: ScheduledPost, ev: typeof events.$inferSelect | null)
   return m;
 }
 
-/** 예약 큐: 발행일 순. teamId 지정 시 해당 팀 소유만. */
-export async function listReservations(db: Db, opts: { teamId?: string } = {}): Promise<ReservationRow[]> {
+/**
+ * 예약 큐: 발행일 순.
+ * - teamId 지정 시 해당 팀 소유만.
+ * - actor 가 회장단·시스템관리자가 아니면 자기 소속 팀 예약 + 본인 개인 예약만(자기 팀만 관리 원칙).
+ * - 회장단·시스템관리자(또는 actor 미지정)는 전체.
+ */
+export async function listReservations(db: Db, opts: { teamId?: string; actor?: Actor } = {}): Promise<ReservationRow[]> {
+  let where: SQL | undefined = undefined;
+  if (opts.actor && !isPrivileged(opts.actor.role)) {
+    // 비회장단: 자기 소속 팀 예약 + 본인 개인 예약만(teamId 쿼리로 남의 팀을 볼 수 없게 무시).
+    const teamIds = opts.actor.teams.map((t) => t.teamId);
+    const conds = [and(eq(scheduledPosts.ownerType, 'personal'), eq(scheduledPosts.ownerId, opts.actor.userId))];
+    if (teamIds.length) conds.push(and(eq(scheduledPosts.ownerType, 'team'), inArray(scheduledPosts.ownerId, teamIds)));
+    where = or(...conds);
+  } else if (opts.teamId) {
+    where = and(eq(scheduledPosts.ownerType, 'team'), eq(scheduledPosts.ownerId, opts.teamId));
+  }
   const rows = await db
     .select({ post: scheduledPosts, event: events })
     .from(scheduledPosts)
     .leftJoin(events, eq(events.id, scheduledPosts.eventId))
-    .where(opts.teamId ? and(eq(scheduledPosts.ownerType, 'team'), eq(scheduledPosts.ownerId, opts.teamId)) : undefined)
+    .where(where)
     .orderBy(asc(scheduledPosts.publishAt));
 
   return rows.map(({ post, event }) => ({
