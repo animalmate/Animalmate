@@ -21,6 +21,7 @@ function menuFor(role: Role): NavItem[] {
     { href: '/templates', label: '템플릿' },
   ];
   const boardOnly: NavItem[] = [
+    { href: '/admin/teams', label: '조직' },
     { href: '/admin/join-codes', label: '가입코드' },
     { href: '/admin/boards', label: '게시판' },
   ];

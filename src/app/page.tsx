@@ -34,6 +34,7 @@ export default async function HomePage() {
         )}
         {board ? (
           <>
+            <HomeLink href="/admin/teams" title="조직" desc="팀 추가·삭제·활성화" />
             <HomeLink href="/admin/join-codes" title="가입코드" desc="학기 가입코드 발급·재발급" />
             <HomeLink href="/admin/boards" title="게시판" desc="카페 게시판 레지스트리" />
           </>
