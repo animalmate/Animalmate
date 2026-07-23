@@ -16,12 +16,14 @@ const SECRET = process.env.SESSION_SECRET;
 const suite = BASE && DIRECT_URL && SECRET ? describe : describe.skip;
 
 const BOARD_EMAIL = 'e2e-board@example.invalid';
+const MEMBER_EMAIL = 'e2e-member@example.invalid';
 
 suite('인증 필요 HTTP E2E (템플릿 CRUD · 입력검증 · 권한 게이트)', () => {
   let sql: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let boardId: string;
   let cookie: string;
+  let memberCookie: string;
   const createdTemplateIds: string[] = [];
 
   const H = () => ({ 'Content-Type': 'application/json', Cookie: cookie });
@@ -31,7 +33,7 @@ suite('인증 필요 HTTP E2E (템플릿 CRUD · 입력검증 · 권한 게이�
       await db.delete(auditLogs).where(inArray(auditLogs.targetId, createdTemplateIds));
       await db.delete(postTemplates).where(inArray(postTemplates.id, createdTemplateIds));
     }
-    const us = await db.select({ id: users.id }).from(users).where(eq(users.email, BOARD_EMAIL));
+    const us = await db.select({ id: users.id }).from(users).where(inArray(users.email, [BOARD_EMAIL, MEMBER_EMAIL]));
     for (const u of us) {
       await db.delete(auditLogs).where(eq(auditLogs.actorUserId, u.id));
       await db.delete(memberships).where(eq(memberships.userId, u.id));
@@ -48,6 +50,10 @@ suite('인증 필요 HTTP E2E (템플릿 CRUD · 입력검증 · 권한 게이�
     boardId = b!.id;
     await db.insert(memberships).values({ userId: boardId, role: 'board', termStart: '2026-01-01', termEnd: '2030-01-01', status: 'active' });
     cookie = `${SESSION_COOKIE}=${signSession({ sub: boardId, role: 'board' }, SECRET!)}`;
+    const [m] = await db.insert(users).values({ email: MEMBER_EMAIL, name: 'E2E부원' }).returning();
+    await db.insert(memberships).values({ userId: m!.id, role: 'member', termStart: '2026-01-01', termEnd: '2030-01-01', status: 'active' });
+    // 부원 계정의 유효한 세션 쿠키(역할은 쿠키가 아니라 DB에서 재확인됨).
+    memberCookie = `${SESSION_COOKIE}=${signSession({ sub: m!.id, role: 'member' }, SECRET!)}`;
   });
 
   afterAll(async () => {
@@ -102,5 +108,36 @@ suite('인증 필요 HTTP E2E (템플릿 CRUD · 입력검증 · 권한 게이�
     const list = await (await fetch(`${BASE}/api/templates`, { headers: { Cookie: cookie } })).json();
     expect(list.templates.some((t: { id: string }) => t.id === id)).toBe(false);
     createdTemplateIds.shift();
+  });
+
+  // 회원 관리 접근 통제 — 부원/비로그인은 URL 로 직접 들어와도 막혀야 함.
+  it('쿠키 없이 GET /api/admin/members → 403', async () => {
+    expect((await fetch(`${BASE}/api/admin/members`)).status).toBe(403);
+  });
+
+  it('부원 쿠키로 GET /api/admin/members → 403 (유효 세션이어도 차단)', async () => {
+    const res = await fetch(`${BASE}/api/admin/members`, { headers: { Cookie: memberCookie } });
+    expect(res.status).toBe(403);
+  });
+
+  it('부원 쿠키로 PATCH 역할 변경 시도 → 403', async () => {
+    const res = await fetch(`${BASE}/api/admin/members/${boardId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: memberCookie },
+      body: JSON.stringify({ role: 'sysadmin' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('부원 쿠키로 /admin/members 페이지 → 홈으로 리다이렉트(200 렌더 아님)', async () => {
+    const res = await fetch(`${BASE}/admin/members`, { headers: { Cookie: memberCookie }, redirect: 'manual' });
+    expect([307, 302, 308]).toContain(res.status);
+  });
+
+  it('회장단 쿠키로 GET /api/admin/members → 200', async () => {
+    const res = await fetch(`${BASE}/api/admin/members`, { headers: { Cookie: cookie } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.members)).toBe(true);
   });
 });

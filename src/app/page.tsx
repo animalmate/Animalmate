@@ -23,6 +23,7 @@ const STAFF_SHORTCUTS: Shortcut[] = [
 ];
 const BOARD_SHORTCUTS: Shortcut[] = [
   { href: '/admin/teams', label: '팀', desc: '팀과 팀장단을 관리해요', icon: 'users' },
+  { href: '/admin/members', label: '회원 관리', desc: '가입 회원의 역할을 지정해요', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', desc: '학기별 가입코드를 발급해요', icon: 'key' },
   { href: '/admin/boards', label: '게시판', desc: '카페 게시판을 연결해요', icon: 'board' },
 ];

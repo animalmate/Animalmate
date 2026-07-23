@@ -56,6 +56,12 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     missing_title: '제목을 입력해 주세요.',
     missing_name: '양식 이름을 입력해 주세요.',
     missing_board: '게시판을 선택해 주세요.',
+    self_forbidden: '본인 계정은 여기서 변경할 수 없어요.',
+    sysadmin_only: '시스템관리자 역할은 시스템관리자만 변경할 수 있어요.',
+    last_sysadmin: '마지막 시스템관리자는 강등·비활성화할 수 없어요.',
+    no_membership: '활성 멤버십이 없는 회원이에요.',
+    not_found: '대상을 찾을 수 없어요.',
+    bad_role: '올바르지 않은 역할입니다.',
     no_occurrences: '발행 시각(또는 봉사 일자)을 최소 1개 입력하세요.',
   };
   return (code && map[code]) || fallback;
