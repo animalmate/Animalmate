@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Card, Button, SecondaryButton, DangerButton, Field, Input, Textarea, Select, ErrorText, Banner } from '@/components/ui';
 import { Icon } from '@/components/icon';
@@ -48,6 +48,19 @@ export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
   const [error, setError] = useState('');
   const [pii, setPii] = useState<PiiFinding[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // 파일 업로드(.md/.txt) — 본문을 파일에서 채운다. 제목이 비어 있으면 파일명으로 채운다.
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 같은 파일 다시 선택 가능하게
+    if (!file || !draft) return;
+    const text = await file.text();
+    const nameNoExt = file.name.replace(/\.(md|markdown|txt)$/i, '');
+    setDraft({ ...draft, contentMd: text, title: draft.title.trim() || nameNoExt });
+    setPii(null);
+    setError('');
+  }
 
   async function load() {
     const [d, t] = await Promise.all([apiGet<{ documents: DocRow[] }>('/api/documents'), apiGet<{ teams: Team[] }>('/api/teams')]);
@@ -155,7 +168,13 @@ export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
               </Select>
             </Field>
           </div>
-          <Field label="내용 (마크다운)" hint="헤딩(##)으로 나누면 챗봇이 더 잘 찾아요">
+          <Field label="내용 (마크다운)" hint="헤딩(##)으로 나누면 챗봇이 더 잘 찾아요. 직접 쓰거나 파일을 올려도 돼요.">
+            <div className="mb-2">
+              <input ref={fileRef} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={onFile} hidden />
+              <SecondaryButton type="button" onClick={() => fileRef.current?.click()}>
+                <Icon name="layers" size={15} /> 파일 올리기 (.md · .txt)
+              </SecondaryButton>
+            </div>
             <Textarea
               value={draft.contentMd}
               onChange={(e) => setDraft({ ...draft, contentMd: e.target.value })}
