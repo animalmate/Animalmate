@@ -137,6 +137,64 @@ suite('세션 무효화 + 전원 잠금 방지', () => {
     expect(roleLogs.every((l) => !l.action.includes('[high]'))).toBe(true);
   });
 
+  // 결정 13 — 비활성화·강등은 "지금 접근을 끊는다"는 뜻이므로 세션도 함께 끊는다.
+  // (쓰기는 membershipActive 로 이미 막히지만, 화면 열람이 남는 것이 의도와 어긋난다.)
+  it('비활성화하면 그 계정의 기존 세션이 즉시 무효가 된다', async () => {
+    const [before] = await db.select({ sv: users.sessionVersion }).from(users).where(eq(users.id, ids.staff!)).limit(1);
+    const token = signSession({ sub: ids.staff!, role: 'staff', sv: before!.sv }, SECRET);
+    const p = verifySession(token, SECRET)!;
+    expect(await loadActor(db, p.sub, p.sv)).not.toBeNull(); // 아직 살아 있다
+
+    await setMemberActive(db, boardA, ids.staff!, false);
+    expect(await loadActor(db, p.sub, p.sv)).toBeNull(); // 화면 열람까지 끊긴다
+
+    await setMemberActive(db, boardA, ids.staff!, true); // 원복
+  });
+
+  it('재활성화는 세션을 끊지 않는다(끊을 이유가 없다)', async () => {
+    const [before] = await db.select({ sv: users.sessionVersion }).from(users).where(eq(users.id, ids.staff!)).limit(1);
+    await setMemberActive(db, boardA, ids.staff!, true);
+    const [after] = await db.select({ sv: users.sessionVersion }).from(users).where(eq(users.id, ids.staff!)).limit(1);
+    expect(after!.sv).toBe(before!.sv);
+  });
+
+  it('강등하면 세션이 끊긴다 — 이전 역할로 발급된 토큰이 살아 있을 이유가 없다', async () => {
+    await setMemberRole(db, boardA, ids.staff!, 'staff'); // 기준 상태
+    const [before] = await db.select({ sv: users.sessionVersion }).from(users).where(eq(users.id, ids.staff!)).limit(1);
+    const token = signSession({ sub: ids.staff!, role: 'staff', sv: before!.sv }, SECRET);
+    const p = verifySession(token, SECRET)!;
+    expect(await loadActor(db, p.sub, p.sv)).not.toBeNull();
+
+    await setMemberRole(db, boardA, ids.staff!, 'member'); // staff → member = 강등
+    expect(await loadActor(db, p.sub, p.sv)).toBeNull();
+  });
+
+  it('승격은 세션을 끊지 않는다(로그인 중 승격돼도 다시 로그인할 필요 없다)', async () => {
+    const [before] = await db.select({ sv: users.sessionVersion }).from(users).where(eq(users.id, ids.staff!)).limit(1);
+    const token = signSession({ sub: ids.staff!, role: 'member', sv: before!.sv }, SECRET);
+    const p = verifySession(token, SECRET)!;
+
+    await setMemberRole(db, boardA, ids.staff!, 'staff'); // member → staff = 승격
+    const actor = await loadActor(db, p.sub, p.sv);
+    expect(actor).not.toBeNull();
+    expect(actor!.role).toBe('staff'); // 역할은 DB 기준이라 토큰 재발급 없이 바로 반영된다
+  });
+
+  it('세션을 끊었는지 여부가 audit 에 남는다', async () => {
+    const logs = await db
+      .select({ action: auditLogs.action, after: auditLogs.afterJson })
+      .from(auditLogs)
+      .where(eq(auditLogs.targetId, ids.staff!));
+    const demote = logs.find(
+      (l) => l.action.startsWith('membership.set_role') && (l.after as { role?: string })?.role === 'member'
+    );
+    expect((demote!.after as { sessionsRevoked?: boolean }).sessionsRevoked).toBe(true);
+    const promote = logs.find(
+      (l) => l.action.startsWith('membership.set_role') && (l.after as { role?: string })?.role === 'staff'
+    );
+    expect((promote!.after as { sessionsRevoked?: boolean }).sessionsRevoked).toBe(false);
+  });
+
   it('본인 계정은 여전히 스스로 바꿀 수 없다(자가 승격 방지)', async () => {
     await expect(setMemberRole(db, boardA, ids.boardA!, 'sysadmin')).rejects.toBeInstanceOf(MemberError);
     await expect(setMemberRole(db, boardA, ids.boardA!, 'sysadmin')).rejects.toMatchObject({

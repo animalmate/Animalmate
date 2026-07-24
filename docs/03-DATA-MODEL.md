@@ -14,7 +14,8 @@
 ### 조직/계정
 - `users` (id, email, name, session_version, created_at)
   - `session_version`: 세션 세대(0010). 발급된 JWT 에 이 값을 담고 요청마다 대조 — 값을 1 올리면
-    그 계정의 **모든 기기 세션이 즉시 무효**(회원 관리 > "모든 기기에서 로그아웃"). 세션 테이블 불필요.
+    그 계정의 **모든 기기 세션이 즉시 무효**. 세션 테이블 불필요. 올라가는 경우 3가지(07-DECISIONS 11·13):
+    ① 회원 관리 > "모든 기기에서 로그아웃" ② **비활성화** ③ **강등**(승격·재활성화는 올리지 않는다).
 - `memberships` (user_id, role, board_position?, term_start, term_end, status[active|expired])
   - 크론이 매일 term_end 경과 건을 expired로 강등. 회장단만 memberships를 변경 가능.
 - `teams` (id, name, kind[activity|functional], is_active, leaders jsonb)
