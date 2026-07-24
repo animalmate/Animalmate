@@ -11,7 +11,6 @@ import {
   schedulePost,
   fetchDuePosts,
   applyPublishResult,
-  getPost,
   NotReadyError,
 } from '@/publishing/scheduled-posts';
 import { PermissionError } from '@/auth/guard';

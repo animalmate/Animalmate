@@ -1,7 +1,7 @@
 // 발행 템플릿(post_templates) CRUD — 팀/개인 소유 + global(공용). 렌더링 유틸 포함.
 // 소유권: team/personal 은 template.manage(소유자/회장단), global 은 회장단만 편집·전원 사용.
 
-import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, or } from 'drizzle-orm';
 import { postTemplates } from '@/db/schema';
 import type { Db, Database } from '@/db/types';
 import type { Actor } from '@/auth/permissions';

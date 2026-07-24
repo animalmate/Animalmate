@@ -8,12 +8,6 @@ import type { Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 
-/** 설정값 조회. 없으면 fallback(코드 기본값). value_json 을 T 로 신뢰해 반환한다. */
-export async function getSetting<T>(db: Database, key: string, fallback: T): Promise<T> {
-  const [row] = await db.select({ v: appSettings.valueJson }).from(appSettings).where(eq(appSettings.key, key)).limit(1);
-  return row ? (row.v as T) : fallback;
-}
-
 /** 여러 키를 한 번에(쿼터 점검처럼 여러 값이 필요할 때 왕복 줄이기). */
 export async function getSettings(db: Database, keys: string[]): Promise<Record<string, unknown>> {
   if (keys.length === 0) return {};

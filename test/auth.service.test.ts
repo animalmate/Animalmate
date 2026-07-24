@@ -11,7 +11,6 @@ import {
   verifySignup,
   requestLogin,
   verifyLogin,
-  AuthError,
 } from '@/auth/auth-service';
 import { verifySession } from '@/auth/session';
 import { PermissionError } from '@/auth/guard';

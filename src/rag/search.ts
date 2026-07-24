@@ -5,7 +5,7 @@
 // 새어 나간다. 여기서는 역할이 볼 수 있는 visibility 값만 WHERE inArray 로 제한해, 애초에
 // 그 행들이 결과에 들어오지 않게 한다.
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { docChunks, documents } from '@/db/schema';
 import type { Actor } from '@/auth/permissions';
@@ -70,16 +70,11 @@ export async function searchChunks(db: Db, actor: Actor, question: string, k = T
     .filter((h) => h.similarity >= MIN_SIMILARITY);
 }
 
-/** 검색 결과를 챗봇 프롬프트에 넣을 "자료" 블록으로 만든다(출처 표시 + 인젝션 경계 명시). */
+/** 검색 결과를 챗봇 프롬프트에 넣을 "자료" 블록 + 중복 제거된 출처 문서명. */
 export function buildContextBlock(hits: SearchHit[]): { context: string; sources: string[] } {
   const sources = [...new Set(hits.map((h) => h.title))];
   const context = hits
     .map((h, i) => `[자료 ${i + 1} · 출처: ${h.title}]\n${h.content}`)
     .join('\n\n---\n\n');
   return { context, sources };
-}
-
-/** 조건에 맞는(같은 문서에서 온) 조각을 문서별로 묶어 안 그러면 중복되는 출처를 정리. */
-export function uniqueSources(hits: SearchHit[]): string[] {
-  return [...new Set(hits.map((h) => h.title))];
 }

@@ -6,9 +6,9 @@
 //  - 중복 방지: notice_check_log(post_id + 알림일 유니크).
 //  - 발행 시각 도달 시 미완성이면 애초에 status='scheduled' 가 아니므로 발행 큐에 없어 자동 보류됨.
 
-import { and, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { scheduledPosts, events, teamMembers, users, noticeCheckLog } from '@/db/schema';
+import { scheduledPosts, teamMembers, users, noticeCheckLog } from '@/db/schema';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import type { Mailer } from '@/auth/mailer';
 import { dryMailer } from '@/auth/mailer';

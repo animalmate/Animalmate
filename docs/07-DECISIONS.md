@@ -119,3 +119,14 @@
    "운영진 공개"(visibility=staff). 소유(owner)는 입력받지 않는다 — 전부 생성자(개발자/회장단) 소유로
    두고, board·sysadmin 은 소유와 무관하게 전체 문서를 편집·삭제할 수 있어(document.modify override)
    운영 자료 관리에 지장이 없다. 3단계 중 board 전용은 UI 에서 노출하지 않는다(운영이 2단계로 충분).
+
+## 2026-07-24 마무리 QA
+20. **챗봇 봉사 tool 은 "공지된 회차"만 노출**(`src/rag/tools.ts`). 발견한 누출 2건을 함께 막았다:
+   ①`event.status` 는 draft 에서 전이되지 않아 그 자체로는 공지 여부를 못 가른다. ②`cancelPost` 는
+   예약글만 지우고 event 는 남긴다(고아) — 그대로면 **취소된 봉사가 챗봇에 뜬다**. 해결: events 를
+   `scheduled_posts` 와 이너조인해 예약글 상태가 `scheduled`/`published` 일 때만 노출(초안·고아·미승인
+   자동 제외). 회귀 테스트 `test/chatbot-tools.security.test.ts`.
+21. **`noUnusedLocals`/`noUnusedParameters` 를 tsconfig 에 켰다**. 이게 꺼져 있어서 죽은 import 가
+   여러 파일에 쌓였다(제거함). 이제 `npm run typecheck`(=CI 게이트)가 미사용 import·변수를 막는다.
+   함수 파라미터는 `_` 접두사로 의도적 미사용 표시(기존 관례와 호환).
+   부수로 정리한 죽은 코드: `settings.getSetting`(미사용), `search.uniqueSources`(buildContextBlock 과 중복).

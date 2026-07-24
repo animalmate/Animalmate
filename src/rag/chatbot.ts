@@ -8,7 +8,7 @@
 import type { Db } from '@/db/types';
 import type { Actor } from '@/auth/permissions';
 import { generate as defaultGenerate, type GenContent, type GenerateResult } from './gemini';
-import { searchChunks, buildContextBlock, uniqueSources, type SearchHit } from './search';
+import { searchChunks, buildContextBlock, type SearchHit } from './search';
 import { CHATBOT_TOOLS, executeTool } from './tools';
 
 export const HANDOFF_MESSAGE =
@@ -96,5 +96,5 @@ export async function askChatbot(db: Db, actor: Actor, question: string, deps: A
     return { answer: HANDOFF_MESSAGE, sources: [], handedOff: true };
   }
 
-  return { answer, sources: uniqueSources(hits), handedOff: isHandoff(answer) };
+  return { answer, sources, handedOff: isHandoff(answer) };
 }

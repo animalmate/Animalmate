@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { teams, teamMembers, users, memberships, auditLogs } from '@/db/schema';
-import { setTeamRoster, TeamMemberError } from '@/org/team-members';
+import { setTeamRoster } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
 
