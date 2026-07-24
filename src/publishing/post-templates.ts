@@ -10,7 +10,7 @@ import { requireAuthorized, PermissionError } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 
 // 치환 로직은 순수 모듈에 있다(클라이언트 미리보기 공용). 기존 호출부 호환을 위해 재수출.
-export { renderTemplate, unresolvedKeys } from './template-render';
+export { renderTemplate, placeholderKeys } from './template-render';
 
 export type PostTemplate = typeof postTemplates.$inferSelect;
 export type TemplateOwnerType = 'personal' | 'team' | 'global';

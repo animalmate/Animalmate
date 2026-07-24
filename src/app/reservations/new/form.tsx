@@ -122,10 +122,10 @@ export function NewReservationForm() {
           <Field
             label="양식 불러오기"
             hint={
-              selectedTemplate && (selectedTemplate.defaultPlace || selectedTemplate.defaultCapacity != null)
-                ? `기본 ${selectedTemplate.defaultPlace ?? '장소 미지정'}${
-                    selectedTemplate.defaultCapacity != null ? ` · 정원 ${selectedTemplate.defaultCapacity}` : ''
-                  } 이 각 예약에 채워집니다.`
+              selectedTemplate?.defaultPlace || selectedTemplate?.defaultCapacity != null
+                ? `${selectedTemplate.defaultPlace ?? ''}${
+                    selectedTemplate.defaultCapacity != null ? ` · 기본 정원 ${selectedTemplate.defaultCapacity}명` : ''
+                  }`.replace(/^ · /, '')
                 : undefined
             }
           >
@@ -207,10 +207,7 @@ export function NewReservationForm() {
           ))}
           <SecondaryButton onClick={addRow}>+ 일정 추가</SecondaryButton>
           {kind === 'volunteer' ? (
-            <InfoText>
-              장소는 양식의 기본 장소로 채워집니다. 정원은 위에서 회차별로 지정하고(비우면 양식 기본값), 나중에 각 예약
-              수정에서도 바꿀 수 있어요 — 본문의 {'{{장소}} {{정원}}'} 은 발행 직전에 이 값으로 치환됩니다.
-            </InfoText>
+            <InfoText>정원을 비우면 양식의 기본 정원이 들어갑니다. 만든 뒤 각 예약에서 언제든 바꿀 수 있어요.</InfoText>
           ) : null}
         </div>
 

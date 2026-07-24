@@ -41,7 +41,11 @@
 ### 봉사 워크플로 (F1 수동 선예약 중심, 2026-07-23 개정)
 - `post_templates` (id, owner_type[personal|team|global], owner_id?, name, title_template, body_template,
   **default_place?, default_capacity?**, updated_by, updated_at, created_at)   ← 발행 양식(구현됨, 0004 / 0007)
-  - 제목/본문에 `{{간결_날짜}} {{전체_날짜}} {{집합시간}} {{팀장단}} {{장소}} {{정원}}` 플레이스홀더.
+  - 제목/본문에 `{{간결_날짜}} {{전체_날짜}} {{집합시간}} {{정원}} {{팀장단}}` 플레이스홀더
+    (안내 목록의 유일한 출처 = `src/publishing/placeholder-catalog.ts`).
+    **`{{장소}}`는 안내하지 않는다(2026-07-24)** — 양식을 장소별로 만들므로 본문에 "양주 쉼터"처럼 직접 적는다.
+    양식의 `default_place` 는 회차 기록용(events.place → 미완성 점검·챗봇 상태질의)이며,
+    예전 양식 호환을 위해 `{{장소}}` 치환 자체는 살려 둔다.
     **global**(owner_id=null)=회장단만 편집·전원 사용. team/personal=소유권 규칙(template.manage).
     렌더 시 값 없는 키는 그대로 둔다.
   - **default_place/default_capacity(0007)** = 장소별 양식의 고정 장소·정원(예: "양주 쉼터 봉사" 양식).

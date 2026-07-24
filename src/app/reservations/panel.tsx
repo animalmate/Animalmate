@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, InfoText, SecondaryButton, StatusBadge } from '@/components/ui';
+import { shortenValue } from '@/publishing/placeholder-catalog';
 
 interface Reservation {
   id: string;
@@ -13,7 +14,7 @@ interface Reservation {
   failReason: string | null;
   event: { eventDate: string | null; place: string | null; capacity: number | null } | null;
   missing: string[];
-  unresolved: string[];
+  placeholders: { key: string; value: string | null }[];
 }
 
 function fmt(iso: string | null): string {
@@ -80,9 +81,22 @@ export function ReservationsPanel() {
                 {r.status === 'draft' && r.missing.length > 0 ? (
                   <div className="text-sm text-warning-700">미완성: {r.missing.join(', ')}</div>
                 ) : null}
-                {r.unresolved.length > 0 ? (
-                  <div className="text-sm text-warning-700">
-                    본문 미치환: {r.unresolved.map((k) => `{{${k}}}`).join(', ')} — "수정"에서 값을 채우세요(그대로면 발행 보류).
+                {r.placeholders.length > 0 ? (
+                  <div className="rounded-md bg-cream-100 p-2">
+                    <div className="mb-1 text-xs text-ink-500">발행할 때 이렇게 바뀝니다</div>
+                    <ul className="space-y-0.5 text-[13px]">
+                      {r.placeholders.map((p) => (
+                        <li key={p.key} className="flex flex-wrap items-baseline gap-1">
+                          <code className="rounded bg-white px-1 text-ink-700">{`{{${p.key}}}`}</code>
+                          <span className="text-ink-400">→</span>
+                          {p.value ? (
+                            <span className="text-ink-900">{shortenValue(p.value)}</span>
+                          ) : (
+                            <span className="text-warning-700">비어 있음 — "수정"에서 채우세요(그대로면 발행 보류)</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 ) : null}
                 {r.status === 'failed' ? (

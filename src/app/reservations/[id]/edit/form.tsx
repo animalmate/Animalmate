@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation';
 import { apiGet, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
-import { renderTemplate, unresolvedKeys } from '@/publishing/template-render';
+import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
+import { shortenValue } from '@/publishing/placeholder-catalog';
 
 interface Detail {
   post: { id: string; title: string; contentMd: string; publishAt: string | null; status: string; eventId: string | null };
@@ -90,7 +91,8 @@ export function EditReservationForm({ id }: { id: string }) {
   }
   const previewTitle = renderTemplate(title, previewVars);
   const previewBody = renderTemplate(contentMd, previewVars);
-  const previewMissing = unresolvedKeys(previewTitle, previewBody);
+  // 이 글이 쓰는 값과 각각 무엇으로 바뀌는지(비어 있으면 발행이 보류된다).
+  const used = placeholderKeys(title, contentMd).map((key) => ({ key, value: previewVars[key] ?? null }));
 
   if (!loaded) return <InfoText>불러오는 중…</InfoText>;
   if (status === 'published')
@@ -138,18 +140,26 @@ export function EditReservationForm({ id }: { id: string }) {
 
       <Card className="space-y-2">
         <div className="font-medium">카페에 나갈 최종 본문</div>
-        <InfoText>
-          {'{{장소}} {{정원}}'} 같은 플레이스홀더는 발행 직전에 위 값으로 치환됩니다. 본문 글자를 직접 고칠 필요 없어요.
-        </InfoText>
+        <InfoText>위에서 값을 고치면 바로 반영됩니다. 본문 글자를 직접 고칠 필요 없어요.</InfoText>
+        {used.length > 0 ? (
+          <ul className="space-y-0.5 text-[13px]">
+            {used.map((u) => (
+              <li key={u.key} className="flex flex-wrap items-baseline gap-1">
+                <code className="rounded bg-cream-100 px-1 text-ink-700">{`{{${u.key}}}`}</code>
+                <span className="text-ink-400">→</span>
+                {u.value ? (
+                  <span className="text-ink-900">{shortenValue(u.value, 40)}</span>
+                ) : (
+                  <span className="text-warning-700">비어 있음 — 채우지 않으면 발행이 보류됩니다</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <div className="rounded-md bg-cream-100 p-3 text-sm">
           <div className="font-medium text-ink-900">{previewTitle}</div>
           <pre className="mt-2 whitespace-pre-wrap font-sans text-ink-700">{previewBody}</pre>
         </div>
-        {previewMissing.length > 0 ? (
-          <div className="text-sm text-warning-700">
-            채워지지 않은 항목: {previewMissing.map((k) => `{{${k}}}`).join(', ')} — 그대로 두면 발행이 보류됩니다.
-          </div>
-        ) : null}
       </Card>
     </div>
   );
