@@ -65,8 +65,13 @@ export function gmailMailer(env: NodeJS.ProcessEnv = process.env): Mailer {
   };
 }
 
-/** SMTP 설정이 있으면 Gmail, 없으면 dry. */
+/**
+ * SMTP 설정이 있으면 Gmail, 없으면 dry.
+ * **테스트 실행 중에는 항상 dry** — 통합 테스트가 메일러 주입을 빠뜨려도 실제 운영진에게
+ * 알림 메일이 나가지 않게 하는 안전장치(2026-07-24, 실제로 한 번 새어 나갔다).
+ */
 export function defaultMailer(env: NodeJS.ProcessEnv = process.env): Mailer {
+  if (env.NODE_ENV === 'test' || env.VITEST) return dryMailer;
   if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS) return gmailMailer(env);
   return dryMailer;
 }
