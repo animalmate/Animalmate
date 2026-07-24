@@ -188,7 +188,7 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
             여기 넣어 두면 예약을 만들 때 봉사 일자와 업로드 날짜만 고르면 됩니다. 회차마다 다르면 그때 고치면 돼요.
           </p>
           <div className="mt-2 grid grid-cols-2 gap-3">
-            <Field label="봉사 장소" hint="공지 본문에는 직접 적고, 이 값은 회차 기록용입니다">
+            <Field label="봉사 장소" hint="비우면 예약이 완성 처리되지 않아요(공지 본문에는 직접 적으세요)">
               <Input value={defaultPlace} onChange={(e) => setDefaultPlace(e.target.value)} placeholder="양주 쉼터" />
             </Field>
             <Field label="정원">
