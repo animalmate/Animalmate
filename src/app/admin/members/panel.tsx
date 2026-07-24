@@ -19,6 +19,8 @@ export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; 
   const [members, setMembers] = useState<Member[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // 되돌릴 수 없는 행위(강제 로그아웃)는 두 번 눌러야 실행 — 오클릭 방지.
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
 
   async function load() {
     const r = await apiGet<{ members: Member[] }>('/api/admin/members');
@@ -85,6 +87,17 @@ export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; 
                         </div>
                         <SecondaryButton onClick={() => patch(m.userId, { active: !m.active })}>
                           {m.active ? '비활성화' : '활성화'}
+                        </SecondaryButton>
+                        {/* 기기 분실·계정 공유 정리용. 세션 세대를 올려 그 계정의 모든 로그인을 끊는다. */}
+                        <SecondaryButton
+                          title="이 회원이 로그인한 모든 기기의 세션을 즉시 끊습니다. 다시 로그인해야 합니다."
+                          onClick={() => {
+                            if (confirmRevoke !== m.userId) return setConfirmRevoke(m.userId);
+                            setConfirmRevoke(null);
+                            void patch(m.userId, { revokeSessions: true });
+                          }}
+                        >
+                          {confirmRevoke === m.userId ? '한 번 더 누르면 실행' : '모든 기기에서 로그아웃'}
                         </SecondaryButton>
                       </>
                     )}

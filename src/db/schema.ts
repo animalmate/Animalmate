@@ -60,6 +60,13 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
+  /**
+   * 세션 세대 번호. 발급된 JWT 에 이 값을 넣고 요청마다 DB 값과 대조한다(불일치 = 401).
+   * 값을 1 올리면 그 계정의 **모든 기기 세션이 즉시 무효**가 된다(기기 분실·계정 양도·유출 대응).
+   * 세션 테이블 없이 무효화를 얻는 방법 — 권한을 어차피 매 요청 DB 에서 읽으므로(loadActor)
+   * 같은 SELECT 에 컬럼 하나를 얹는 것이라 추가 조회 비용이 없다.
+   */
+  sessionVersion: integer('session_version').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

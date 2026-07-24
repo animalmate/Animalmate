@@ -24,10 +24,24 @@ const suite = DIRECT_URL ? describe : describe.skip;
 const SECRET = 'integration-secret';
 const ADMIN_EMAIL = 'auth-admin@example.invalid';
 const NEW_EMAIL = 'auth-newbie@example.invalid';
+// 계정 열거 차단 테스트가 만드는 주소들 — cleanup 대상에 포함한다.
+const FRESH_EMAIL = 'fresh-enum@example.invalid';
+const COOLDOWN_EMAIL = 'cooldown-enum@example.invalid';
+const ALL_TEST_EMAILS = [ADMIN_EMAIL, NEW_EMAIL, FRESH_EMAIL, COOLDOWN_EMAIL];
+// 이 테스트가 발급하는 가입코드. 정리는 반드시 이 목록으로만 한정한다(실제 코드 삭제 사고 방지).
+const TEST_JOIN_CODES = ['FIRSTAAA', 'SECONDBB'];
 
-function captureMailer(): { mailer: Mailer; sent: OtpMail[] } {
+function captureMailer(): { mailer: Mailer; sent: OtpMail[]; plain: { to: string | string[]; subject: string }[] } {
   const sent: OtpMail[] = [];
-  return { mailer: { async send() {}, async sendOtp(m) { sent.push(m); } }, sent };
+  const plain: { to: string | string[]; subject: string }[] = [];
+  return {
+    mailer: {
+      async send(m) { plain.push({ to: m.to, subject: m.subject }); },
+      async sendOtp(m) { sent.push(m); },
+    },
+    sent,
+    plain,
+  };
 }
 
 suite('인증 — 가입코드 + 이메일 OTP', () => {
@@ -36,19 +50,28 @@ suite('인증 — 가입코드 + 이메일 OTP', () => {
   let board: Actor;
   let member: Actor;
   let adminUserId: string;
+  let preexistingActiveCodeId: string | null = null;
 
   async function cleanup() {
-    const codes = await db.select({ id: joinCodes.id }).from(joinCodes);
+    // ⚠ 이 테스트는 실제 운영 DB(DIRECT_URL)를 대상으로 돌 수 있다.
+    // 예전에는 여기서 join_codes 를 **전부** 지웠는데(= "테스트 전용 DB 가정"), 그 가정이 틀려서
+    // 통합 테스트를 돌릴 때마다 동아리의 실제 활성 가입코드가 삭제됐다(가입이 조용히 막힌다).
+    // 이제 이 테스트가 만든 코드만 지운다. 다른 정리 대상도 전부 테스트 전용 값으로 한정한다.
+    const codes = await db.select({ id: joinCodes.id }).from(joinCodes).where(inArray(joinCodes.code, TEST_JOIN_CODES));
     const codeIds = codes.map((c) => c.id);
     if (codeIds.length) await db.delete(auditLogs).where(inArray(auditLogs.targetId, codeIds));
-    await db.delete(joinCodes); // 테스트 전용 DB 가정: 가입코드 전부 정리
-    await db.delete(emailCodes).where(inArray(emailCodes.email, [ADMIN_EMAIL, NEW_EMAIL]));
-    await db.delete(users).where(inArray(users.email, [ADMIN_EMAIL, NEW_EMAIL])); // memberships cascade
+    await db.delete(joinCodes).where(inArray(joinCodes.code, TEST_JOIN_CODES));
+    await db.delete(emailCodes).where(inArray(emailCodes.email, ALL_TEST_EMAILS));
+    await db.delete(users).where(inArray(users.email, ALL_TEST_EMAILS)); // memberships cascade
   }
 
   beforeAll(async () => {
     sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
+    // 활성 가입코드는 항상 1개(부분 유니크 인덱스)라, 이 테스트가 코드를 발급하면
+    // 기존 활성 코드가 비활성으로 밀린다 = 실제 가입이 막힌다. 원래 값을 기억해 두고 끝나면 되돌린다.
+    const [existing] = await db.select({ id: joinCodes.id }).from(joinCodes).where(eq(joinCodes.isActive, true));
+    preexistingActiveCodeId = existing?.id ?? null;
     await cleanup();
     const [u] = await db.insert(users).values({ email: ADMIN_EMAIL, name: '회장' }).returning();
     adminUserId = u!.id;
@@ -58,6 +81,10 @@ suite('인증 — 가입코드 + 이메일 OTP', () => {
 
   afterAll(async () => {
     await cleanup();
+    // 테스트가 밀어낸 실제 활성 가입코드를 되살린다(되돌리지 않으면 가입이 조용히 막힌다).
+    if (preexistingActiveCodeId) {
+      await db.update(joinCodes).set({ isActive: true }).where(eq(joinCodes.id, preexistingActiveCodeId));
+    }
     await sql.end({ timeout: 5 });
   });
 
@@ -109,11 +136,38 @@ suite('인증 — 가입코드 + 이메일 OTP', () => {
     expect(m).toMatchObject({ role: 'member', status: 'active' });
   });
 
-  it('이미 가입된 이메일 requestSignup → already_registered', async () => {
-    const { mailer } = captureMailer();
+  // 계정 열거 차단(2026-07-24): 가입 요청 응답은 가입 여부와 무관하게 동일하다.
+  // "이미 가입됨" 은 메일함 — 본인만 볼 수 있는 채널 — 으로만 알린다.
+  it('이미 가입된 이메일 requestSignup → 던지지 않고 안내 메일(코드 미발송)', async () => {
+    const { mailer, sent, plain } = captureMailer();
     await expect(
       requestSignup(db, { email: NEW_EMAIL, joinCode: 'SECONDBB' }, { secret: SECRET, mailer })
-    ).rejects.toMatchObject({ code: 'already_registered' });
+    ).resolves.toBeUndefined();
+
+    expect(sent).toHaveLength(0); // 인증 코드는 나가지 않는다
+    expect(plain).toHaveLength(1);
+    expect(plain[0]!.to).toBe(NEW_EMAIL);
+    expect(plain[0]!.subject).toContain('이미 가입된 계정');
+  });
+
+  it('미가입 이메일 requestSignup → 인증 코드 발송(응답 형태는 기가입과 동일)', async () => {
+    const { mailer, sent, plain } = captureMailer();
+    await expect(
+      requestSignup(db, { email: FRESH_EMAIL, joinCode: 'SECONDBB' }, { secret: SECRET, mailer })
+    ).resolves.toBeUndefined(); // 기가입 경로와 구분되지 않는다
+
+    expect(sent).toHaveLength(1);
+    expect(plain).toHaveLength(0);
+  });
+
+  it('같은 주소로 60초 내 재요청해도 던지지 않는다(쿨다운 429 가 열거 신호가 되지 않게)', async () => {
+    const { mailer } = captureMailer();
+    const email = COOLDOWN_EMAIL;
+    await requestSignup(db, { email, joinCode: 'SECONDBB' }, { secret: SECRET, mailer });
+    // 두 번째 요청은 쿨다운에 걸리지만, 기가입 경로와 똑같이 조용히 성공해야 한다.
+    await expect(
+      requestSignup(db, { email, joinCode: 'SECONDBB' }, { secret: SECRET, mailer })
+    ).resolves.toBeUndefined();
   });
 
   it('로그인: 기존 사용자 OTP → 세션(role member)', async () => {

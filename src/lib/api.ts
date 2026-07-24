@@ -59,6 +59,7 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     self_forbidden: '본인 계정은 여기서 변경할 수 없어요.',
     sysadmin_only: '시스템관리자 역할은 시스템관리자만 변경할 수 있어요.',
     last_sysadmin: '마지막 시스템관리자는 강등·비활성화할 수 없어요.',
+    last_privileged: '마지막 회장단이에요. 다른 회장단을 먼저 지정한 뒤 변경해 주세요(전원 잠금 방지).',
     no_membership: '활성 멤버십이 없는 회원이에요.',
     not_found: '대상을 찾을 수 없어요.',
     bad_role: '올바르지 않은 역할입니다.',
