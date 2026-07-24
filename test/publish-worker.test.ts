@@ -16,6 +16,13 @@ const suite = DIRECT_URL ? describe : describe.skip;
 const MENUID = 990070;
 const EMAIL = 'publish-worker-test@example.invalid';
 
+// 실패 알림이 진짜 운영진 메일로 나가지 않게 모든 워커 호출에 넣는다.
+// (기본값은 실제 SMTP + DB 의 회장단 주소다 — 테스트에서 절대 기본값을 쓰지 말 것.)
+const NO_REAL_MAIL = {
+  alertEmails: async () => ['ops@example.invalid'],
+  mailer: { send: async () => {}, sendOtp: async () => {} },
+} as const;
+
 suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
   let sql: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
@@ -67,7 +74,7 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
 
   it('dry-run: due 게시물 발행 → published + 요약(dryRun=true, 실카페 미호출)', async () => {
     const id = await makeDuePost();
-    const summary = await runPublishWorker(db, { dryRun: true, sleep: async () => {} });
+    const summary = await runPublishWorker(db, { dryRun: true, sleep: async () => {}, ...NO_REAL_MAIL });
 
     expect(summary.dryRun).toBe(true);
     expect(summary.processed).toBeGreaterThanOrEqual(1);
@@ -133,6 +140,7 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
     const summary = await runPublishWorker(db, {
       dryRun: true,
       sleep: async () => {},
+      ...NO_REAL_MAIL,
       cafeWrite: async (post) => {
         written.push(post.id);
         return okRes;
@@ -156,6 +164,7 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
     const summary = await runPublishWorker(db, {
       dryRun: true,
       sleep: async () => {},
+      ...NO_REAL_MAIL,
       cafeWrite: async () => rateLimited, // 이 사이클 모든 글에 999 반환
     });
 
