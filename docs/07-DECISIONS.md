@@ -43,3 +43,28 @@
    - audit 의 `after.sessionsRevoked` 로 "이 변경이 세션을 끊었는지" 를 남긴다.
    - 참고: 인가는 원래 매 요청 DB 에서 역할을 다시 읽으므로(`loadActor`) **강등 후 권한이 남는
      구멍은 없었다**. 이 결정은 그 위에 얹는 방어이자 제품 동작의 일관성 확보다.
+
+## 2026-07-24 챗봇(1D) 착수 — 모델 ID 확정
+14. **Gemini 모델 ID 는 실측으로 확정하고 env 로만 주입한다**(코드 기본값 금지).
+   확인 도구: `node scripts/list-gemini-models.mjs [--probe]` — 지금 키로 실제 호출 가능한 모델과
+   임베딩 출력 차원을 찍어 본다. 제품명과 API ID 는 다르고, 목록은 시간이 지나면 변한다.
+   - **생성: `gemini-3.1-flash-lite`** (문서에 명시된 제품과 일치하는 안정판.
+     같은 계열에 `gemini-3.5-flash-lite`(더 최신), `gemini-2.5-flash-lite`(구세대)도 존재.)
+   - **임베딩: `gemini-embedding-2`** (`-preview` 아닌 안정판.)
+   - **`-latest` / `-preview` 접미사 ID 는 쓰지 않는다**: 내용이 예고 없이 바뀌면 핀 고정이 무의미해지고,
+     임베딩이 바뀌면 이미 저장한 벡터와 의미 공간이 어긋나 검색 품질이 조용히 망가진다.
+
+15. **임베딩 차원은 768 을 유지한다 — `outputDimensionality=768` 로 요청**(마이그레이션 없음).
+   `gemini-embedding-2` 의 기본 출력은 **3072차원**이라 `doc_chunks.embedding = vector(768)` 과 맞지 않는다.
+   세 가지 길을 재 보고 768 로 결정했다:
+   - ❌ 컬럼을 `vector(3072)` 로 확대: **불가**. 이 DB(pgvector 0.8.2)에서 실측 결과
+     `column cannot have more than 2000 dimensions for hnsw index` — 인덱스를 못 만들면
+     문서가 늘수록 전체 스캔이라 검색이 무너진다.
+   - △ `halfvec(3072)`로 우회: HNSW 한도는 넘기지만 정밀도를 깎고 스키마·쿼리가 복잡해진다.
+     300명 규모 문서량에 치를 비용이 아니다.
+   - ✅ **`outputDimensionality=768`**: Gemini 임베딩은 Matryoshka 축소를 지원한다.
+     실측으로 768차원이 나오고 **L2 노름이 1.0 으로 이미 정규화**돼 있어(코사인 검색 전제 충족)
+     추가 정규화도 필요 없다. 기존 스키마·HNSW 인덱스를 그대로 쓴다.
+   → **호출부는 `outputDimensionality` 를 반드시 명시해야 한다.** 빠뜨리면 3072차원이 돌아와
+     삽입이 실패한다(차원 불일치). 이 값은 `doc_chunks.embedding` 정의와 한 몸이므로,
+     차원을 바꾸려면 컬럼 재생성 + **전 문서 재임베딩**이 함께 가야 한다.
