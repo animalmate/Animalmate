@@ -12,6 +12,7 @@ import { fetchDuePosts, applyPublishResult, markUnpublishable, type ScheduledPos
 import { classifyPublishResponse } from './state-machine';
 import { renderForPublish } from './final-render';
 import { postArticle, type CafeWriteResult } from '@/naver/cafe-write';
+import { getWritableBoard } from '@/boards/service';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import type { Mailer } from '@/auth/mailer';
 import { defaultMailer } from '@/auth/mailer';
@@ -96,6 +97,19 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
   let written = 0; // 실제 게시 시도 횟수 — 차단된 건에는 대기 간격을 쓰지 않는다.
   for (let i = 0; i < due.length; i++) {
     const post = due[i]!;
+
+    // 게시판 게이트(마지막 방어선). 예약 생성 때도 확인하지만, 그 뒤에 게시판이 비활성화되거나
+    // 봇 쓰기 권한이 회수됐을 수 있다. 카페는 삭제 API 가 없어 한번 나가면 되돌릴 수 없으므로
+    // 실제로 쓰기 직전에 다시 확인하고, 아니면 게시하지 않고 failed 로 확정한다.
+    if (!(await getWritableBoard(db, post.boardMenuid))) {
+      const reason = `봇이 쓸 수 없는 게시판(menuid=${post.boardMenuid}) — 게시판 설정을 확인하세요.`;
+      if (!(await markUnpublishable(db, post, reason))) continue; // 사이클 도중 취소됨
+      summary.processed += 1;
+      summary.blocked += 1;
+      summary.failed += 1;
+      failedNow.push({ title: post.title, reason });
+      continue;
+    }
 
     // 발행 직전 최종 치환({{장소}}{{정원}} 등). events 가 값의 원천이므로 회차별 수정이 그대로 반영된다.
     const rendered = await renderForPublish(db, post);

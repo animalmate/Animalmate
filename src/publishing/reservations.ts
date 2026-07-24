@@ -9,9 +9,22 @@ import { isPrivileged, type Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { getTemplate, renderTemplate } from './post-templates';
+import { getWritableBoard } from '@/boards/service';
 import { publishVars, usedPlaceholders, type UsedPlaceholder } from './final-render';
 
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
+
+/** 봇이 쓸 수 없는 게시판으로 예약을 만들려 함. 라우트에서 400 으로 매핑. */
+export class BoardNotWritableError extends Error {
+  readonly status = 400;
+  constructor(readonly menuid: number) {
+    super(`board not writable: menuid=${menuid}`);
+    this.name = 'BoardNotWritableError';
+  }
+}
+
+/** 한 요청에서 만들 수 있는 예약 건수 상한(요청 하나로 발행 큐를 채우는 것을 막는다). */
+export const MAX_OCCURRENCES = 60;
 
 export interface CreateGeneralInput {
   kind: 'general';
@@ -41,6 +54,9 @@ export async function createReservation(db: Db, actor: Actor, input: CreateReser
   } else {
     requireAuthorized(actor, { kind: 'post.create' });
   }
+
+  // 게시판 게이트: 등록·활성·봇 쓰기 허용된 게시판에만 예약할 수 있다(레지스트리는 회장단만 관리).
+  if (!(await getWritableBoard(db, input.boardMenuid))) throw new BoardNotWritableError(input.boardMenuid);
 
   if (input.kind === 'general') {
     const [post] = await db
@@ -116,12 +132,28 @@ export interface Occurrence {
  * {{장소}}{{정원}}은 본문에 남겨 두고 발행 직전에 events 값으로 치환한다(final-render).
  * 양식에 기본 장소·정원이 있으면 각 회차(events)의 초기값으로 복사된다.
  */
+/**
+ * 요청자가 실제로 쓸 수 있는 양식일 때만 반환(아니면 null — 조용히 기본값 없이 진행).
+ * 목록 스코프(listUsableTemplates)와 같은 규칙을 쓰므로 화면에 보이지 않는 양식은 여기서도 안 보인다.
+ */
+async function loadUsableTemplate(db: Db, actor: Actor, templateId: string) {
+  const tpl = await getTemplate(db, templateId);
+  if (!tpl) return null;
+  if (isPrivileged(actor.role)) return tpl;
+  if (tpl.ownerType === 'global') return tpl;
+  if (tpl.ownerType === 'personal') return tpl.ownerId === actor.userId ? tpl : null;
+  return actor.teams.some((t) => t.teamId === tpl.ownerId) ? tpl : null;
+}
+
 export async function createReservationsMulti(
   db: Db,
   actor: Actor,
   shared: SharedFields,
   occurrences: Occurrence[]
 ): Promise<string[]> {
+  if (occurrences.length > MAX_OCCURRENCES) {
+    throw new Error(`한 번에 만들 수 있는 예약은 최대 ${MAX_OCCURRENCES}건입니다.`);
+  }
   // 봉사 공지면 팀장단 명단을 한 번만 조회.
   let leaders = '';
   if (shared.kind === 'volunteer' && shared.teamId) {
@@ -129,7 +161,9 @@ export async function createReservationsMulti(
     leaders = leadersBlock(team?.leaders);
   }
   // 양식의 기본 장소·정원(장소별 양식). 없으면 null 로 두고 예약 수정에서 채운다.
-  const template = shared.templateId ? await getTemplate(db, shared.templateId) : null;
+  // templateId 는 요청 본문에서 오므로 "이 사용자가 쓸 수 있는 양식인지"를 확인한다.
+  // (확인 없이 조회하면 남의 팀 양식 id 를 넣어 그 팀의 기본 장소·정원을 읽어낼 수 있다.)
+  const template = shared.templateId ? await loadUsableTemplate(db, actor, shared.templateId) : null;
 
   const ids: string[] = [];
   for (const occ of occurrences) {

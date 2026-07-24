@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/http/cron-auth';
 import { runReadinessCheck } from '@/publishing/readiness-check';
 import { defaultMailer } from '@/auth/mailer';
+import { pruneRateLimits } from '@/http/rate-limit';
 import { db } from '@/db/client';
 
 export const runtime = 'nodejs';
@@ -16,6 +17,7 @@ export async function POST(req: Request): Promise<Response> {
   }
   try {
     const summary = await runReadinessCheck(db, { mailer: defaultMailer() });
+    await pruneRateLimits(db); // 지난 윈도의 레이트 리밋 카운터 정리(테이블이 무한히 자라지 않게)
     return NextResponse.json(summary);
   } catch (e) {
     return NextResponse.json(

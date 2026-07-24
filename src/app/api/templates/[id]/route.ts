@@ -10,6 +10,8 @@ import {
   type UpdateTemplatePatch,
 } from '@/publishing/post-templates';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
+import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,6 +27,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (b.name !== undefined) patch.name = String(b.name);
     if (b.titleTemplate !== undefined) patch.titleTemplate = String(b.titleTemplate);
     if (b.bodyTemplate !== undefined) patch.bodyTemplate = String(b.bodyTemplate);
+    checkLength('이름', patch.name, LIMITS.name);
+    checkLength('제목', patch.titleTemplate, LIMITS.title);
+    checkLength('본문', patch.bodyTemplate, LIMITS.contentMd);
     if (b.defaultPlace !== undefined) patch.defaultPlace = parseDefaultPlace(b.defaultPlace);
     if (b.defaultCapacity !== undefined) patch.defaultCapacity = parseDefaultCapacity(b.defaultCapacity);
     if (b.defaultMeetTime !== undefined) patch.defaultMeetTime = parseDefaultTime(b.defaultMeetTime);
@@ -33,7 +38,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ template: tpl });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    return internalError('PATCH /api/templates/[id]', e);
   }
 }
 
@@ -47,6 +53,6 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ ok: true });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return internalError('DELETE /api/templates/[id]', e);
   }
 }

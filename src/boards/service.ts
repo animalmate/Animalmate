@@ -52,6 +52,21 @@ export async function getBoard(db: DB, menuid: number): Promise<Board | null> {
   return row ?? null;
 }
 
+/**
+ * 봇이 실제로 글을 써도 되는 게시판이면 그 행을, 아니면 null.
+ * 조건 = 레지스트리에 등록 + is_active + bot_can_write.
+ *
+ * 왜 필요한가: boardMenuid 는 예약 생성 요청 본문에서 오고, FK 때문에 "등록된 게시판"까지만
+ * 강제된다. 즉 운영진 계정 하나만 있으면 봇이 쓰면 안 되는 게시판(bot_can_write=false)이나
+ * 폐지한 게시판(is_active=false)으로도 예약을 만들 수 있었다. 카페는 삭제 API 가 없어
+ * 한번 나간 글은 되돌릴 수 없으므로, 등록 시점과 발행 직전 두 곳에서 모두 확인한다.
+ */
+export async function getWritableBoard(db: DB, menuid: number): Promise<Board | null> {
+  const board = await getBoard(db, menuid);
+  if (!board || !board.isActive || !board.botCanWrite) return null;
+  return board;
+}
+
 /** 게시판 생성(회장단 전용). 권한 검사 → 삽입 → audit. */
 export async function createBoard(db: DB, actor: Actor, input: CreateBoardInput): Promise<Board> {
   requireAuthorized(actor, REGISTRY);

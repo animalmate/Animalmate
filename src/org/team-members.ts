@@ -12,6 +12,7 @@ import { teamMembers, teams, users, memberships, type TeamLeader } from '@/db/sc
 import { isPrivileged, type Actor } from '@/auth/permissions';
 import { PermissionError } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
+import { LIMITS, checkLength } from '@/http/input';
 
 type Db = PostgresJsDatabase<typeof schema>;
 export type Team = typeof teams.$inferSelect;
@@ -23,10 +24,13 @@ export interface RosterEntry {
   email?: string;
 }
 
+/** 팀장단 명단 최대 행 수(팀장 + 부팀장 몇 명 규모). */
+export const MAX_ROSTER_ENTRIES = 30;
+
 export class TeamMemberError extends Error {
   readonly status = 400;
   constructor(
-    readonly code: 'team_not_found' | 'user_not_found' | 'user_inactive',
+    readonly code: 'team_not_found' | 'user_not_found' | 'user_inactive' | 'too_many_entries',
     readonly email?: string
   ) {
     super(code);
@@ -78,6 +82,8 @@ export async function setTeamRoster(db: Db, actor: Actor, teamId: string, entrie
   const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1);
   if (!team) throw new TeamMemberError('team_not_found');
 
+  // 명단은 공지에 그대로 나가고 이름·전화번호(개인정보)를 담는다. 길이·건수를 서버에서 못 박는다.
+  if (entries.length > MAX_ROSTER_ENTRIES) throw new TeamMemberError('too_many_entries');
   const clean = entries
     .map((e) => ({
       label: String(e.label ?? '').trim(),
@@ -86,6 +92,12 @@ export async function setTeamRoster(db: Db, actor: Actor, teamId: string, entrie
       email: String(e.email ?? '').trim().toLowerCase(),
     }))
     .filter((e) => e.name || e.phone || e.email);
+  for (const e of clean) {
+    checkLength('직위', e.label, LIMITS.label);
+    checkLength('이름', e.name, LIMITS.name);
+    checkLength('전화번호', e.phone, LIMITS.phone);
+    checkLength('이메일', e.email, LIMITS.email);
+  }
 
   // 이메일이 있는 행 → 계정 확인(관리 권한 부여 대상).
   const resolved = new Map<string, { userId: string; name: string }>();
