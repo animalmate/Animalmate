@@ -98,8 +98,8 @@ export function InfoText({ children }: { children: ReactNode }) {
 const STATUS: Record<string, string> = {
   draft: '작성중',
   ready: '완성',
-  scheduled: '발행 대기',
-  published: '발행됨',
+  scheduled: '업로드 대기',
+  published: '업로드됨',
   failed: '실패',
 };
 

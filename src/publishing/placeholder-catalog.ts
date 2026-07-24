@@ -16,9 +16,15 @@ export const PLACEHOLDERS: PlaceholderInfo[] = [
   { key: '간결_날짜', label: '봉사 날짜(짧게)', example: '07/23', from: '예약의 봉사 일자' },
   { key: '전체_날짜', label: '봉사 날짜(자세히)', example: '2026년 7월 23일 목요일', from: '예약의 봉사 일자' },
   { key: '집합시간', label: '집합 시간', example: '14:00', from: '예약의 집합 시간' },
-  { key: '정원', label: '정원', example: '20', from: '예약의 정원(없으면 양식 기본 정원)' },
+  { key: '정원', label: '정원', example: '20명', from: '예약의 정원(없으면 양식 기본 정원)' },
   { key: '팀장단', label: '팀장단 연락처', example: '팀장 홍길동 010-0000-0000', from: '팀 관리 > 팀장단 명단' },
 ];
+
+/** {{정원}} 에 들어갈 문구 — 숫자만 나오면 어색해서 단위까지 붙인다("20" → "20명"). */
+export function capacityText(capacity: string | number): string {
+  const s = String(capacity).trim();
+  return s === '' ? '' : `${s}명`;
+}
 
 export function findPlaceholder(key: string): PlaceholderInfo | null {
   return PLACEHOLDERS.find((p) => p.key === key) ?? null;

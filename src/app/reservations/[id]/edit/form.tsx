@@ -5,7 +5,7 @@ import { apiGet, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
-import { shortenValue } from '@/publishing/placeholder-catalog';
+import { shortenValue, capacityText } from '@/publishing/placeholder-catalog';
 
 interface Detail {
   post: { id: string; title: string; contentMd: string; publishAt: string | null; status: string; eventId: string | null };
@@ -14,12 +14,17 @@ interface Detail {
   vars: Record<string, string>;
 }
 
-function toLocalInput(iso: string | null): string {
-  if (!iso) return '';
+/** ISO → 화면 입력용 날짜·시각 두 칸(datetime-local 한 칸은 선택 도구가 작아 고르기 어렵다). */
+function toDateTimeInputs(iso: string | null): { date: string; time: string } {
+  if (!iso) return { date: '', time: '' };
   const d = new Date(iso);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return {
+    date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+    time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+  };
 }
+const TIME_STEP = 600; // 10분 단위
 
 export function EditReservationForm({ id }: { id: string }) {
   const router = useRouter();
@@ -28,7 +33,8 @@ export function EditReservationForm({ id }: { id: string }) {
   const [hasEvent, setHasEvent] = useState(false);
   const [title, setTitle] = useState('');
   const [contentMd, setContentMd] = useState('');
-  const [publishLocal, setPublishLocal] = useState('');
+  const [publishDate, setPublishDate] = useState('');
+  const [publishTime, setPublishTime] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [meetTime, setMeetTime] = useState('');
   const [place, setPlace] = useState('');
@@ -47,7 +53,9 @@ export function EditReservationForm({ id }: { id: string }) {
       setStatus(post.status);
       setTitle(post.title);
       setContentMd(post.contentMd);
-      setPublishLocal(toLocalInput(post.publishAt));
+      const at = toDateTimeInputs(post.publishAt);
+      setPublishDate(at.date);
+      setPublishTime(at.time);
       setHasEvent(Boolean(post.eventId));
       if (event) {
         setEventDate(event.eventDate ?? '');
@@ -67,7 +75,7 @@ export function EditReservationForm({ id }: { id: string }) {
       body: JSON.stringify({
         title,
         contentMd,
-        publishAt: publishLocal ? new Date(publishLocal).toISOString() : null,
+        publishAt: publishDate && publishTime ? new Date(`${publishDate}T${publishTime}`).toISOString() : null,
         ...(hasEvent ? { eventDate: eventDate || null, meetTime: meetTime || null, place: place || null, capacity } : {}),
       }),
     });
@@ -85,7 +93,7 @@ export function EditReservationForm({ id }: { id: string }) {
   if (hasEvent) {
     if (place.trim()) previewVars['장소'] = place.trim();
     else delete previewVars['장소'];
-    if (capacity.trim()) previewVars['정원'] = capacity.trim();
+    if (capacity.trim()) previewVars['정원'] = capacityText(capacity.trim());
     else delete previewVars['정원'];
     if (meetTime) previewVars['집합시간'] = meetTime;
   }
@@ -98,7 +106,7 @@ export function EditReservationForm({ id }: { id: string }) {
   if (status === 'published')
     return (
       <Card>
-        <InfoText>발행된 예약은 수정할 수 없습니다. 변경 사항은 카페 댓글로 안내하세요.</InfoText>
+        <InfoText>이미 업로드된 예약은 수정할 수 없습니다. 변경 사항은 카페 댓글로 안내하세요.</InfoText>
       </Card>
     );
 
@@ -112,9 +120,14 @@ export function EditReservationForm({ id }: { id: string }) {
         <Field label="본문">
           <AutoGrowTextarea value={contentMd} onChange={(e) => setContentMd(e.target.value)} />
         </Field>
-        <Field label="발행 시각">
-          <Input type="datetime-local" value={publishLocal} onChange={(e) => setPublishLocal(e.target.value)} />
-        </Field>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="업로드 날짜">
+            <Input type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} />
+          </Field>
+          <Field label="업로드 시각">
+            <Input type="time" step={TIME_STEP} value={publishTime} onChange={(e) => setPublishTime(e.target.value)} />
+          </Field>
+        </div>
         {hasEvent ? (
           <div className="space-y-3 rounded-md bg-cream-100 p-3">
             <div className="text-sm font-medium text-ink-700">봉사 회차 정보</div>
@@ -140,7 +153,7 @@ export function EditReservationForm({ id }: { id: string }) {
 
       <Card className="space-y-2">
         <div className="font-medium">카페에 나갈 최종 본문</div>
-        <InfoText>위에서 값을 고치면 바로 반영됩니다. 본문 글자를 직접 고칠 필요 없어요.</InfoText>
+        <InfoText>위에서 값을 고치면 바로 반영됩니다. 업로드 직전에 이 내용으로 올라갑니다.</InfoText>
         {used.length > 0 ? (
           <ul className="space-y-0.5 text-[13px]">
             {used.map((u) => (
@@ -150,7 +163,7 @@ export function EditReservationForm({ id }: { id: string }) {
                 {u.value ? (
                   <span className="text-ink-900">{shortenValue(u.value, 40)}</span>
                 ) : (
-                  <span className="text-warning-700">비어 있음 — 채우지 않으면 발행이 보류됩니다</span>
+                  <span className="text-warning-700">비어 있음 — 채우지 않으면 업로드되지 않습니다</span>
                 )}
               </li>
             ))}

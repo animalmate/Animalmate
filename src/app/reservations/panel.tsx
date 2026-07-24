@@ -18,7 +18,7 @@ interface Reservation {
 }
 
 function fmt(iso: string | null): string {
-  if (!iso) return '발행시각 미정';
+  if (!iso) return '업로드 시각 미정';
   const d = new Date(iso);
   return d.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
 }
@@ -83,7 +83,7 @@ export function ReservationsPanel() {
                 ) : null}
                 {r.placeholders.length > 0 ? (
                   <div className="rounded-md bg-cream-100 p-2">
-                    <div className="mb-1 text-xs text-ink-500">발행할 때 이렇게 바뀝니다</div>
+                    <div className="mb-1 text-xs text-ink-500">업로드할 때 이렇게 바뀝니다</div>
                     <ul className="space-y-0.5 text-[13px]">
                       {r.placeholders.map((p) => (
                         <li key={p.key} className="flex flex-wrap items-baseline gap-1">
@@ -92,7 +92,7 @@ export function ReservationsPanel() {
                           {p.value ? (
                             <span className="text-ink-900">{shortenValue(p.value)}</span>
                           ) : (
-                            <span className="text-warning-700">비어 있음 — "수정"에서 채우세요(그대로면 발행 보류)</span>
+                            <span className="text-warning-700">비어 있음 — "수정"에서 채우세요(그대로면 업로드 안 됨)</span>
                           )}
                         </li>
                       ))}
@@ -101,12 +101,12 @@ export function ReservationsPanel() {
                 ) : null}
                 {r.status === 'failed' ? (
                   <div className="rounded-md bg-coral-50 p-2 text-sm text-coral-700">
-                    발행 실패{r.failReason ? `: ${r.failReason}` : ''}. 원인 확인 후 "재시도"로 발행 대기 큐에 다시 넣으세요.
+                    업로드 실패{r.failReason ? `: ${r.failReason}` : ''}. 원인 확인 후 "재시도"로 업로드 대기에 다시 넣으세요.
                   </div>
                 ) : null}
                 {r.status === 'published' ? (
                   <div className="rounded-md bg-cream-100 p-2 text-sm">
-                    발행 완료 —{' '}
+                    업로드 완료 —{' '}
                     {r.cafeArticleUrl ? (
                       <a className="underline" href={r.cafeArticleUrl} target="_blank" rel="noreferrer">
                         카페 글 보기
@@ -114,7 +114,7 @@ export function ReservationsPanel() {
                     ) : (
                       '카페 링크 대기'
                     )}
-                    <div className="text-xs text-ink-500">발행된 글은 수정 불가입니다. 변경 사항은 카페 댓글로 안내하세요.</div>
+                    <div className="text-xs text-ink-500">업로드된 글은 수정 불가입니다. 변경 사항은 카페 댓글로 안내하세요.</div>
                   </div>
                 ) : null}
                 {r.status !== 'published' ? (
@@ -126,10 +126,10 @@ export function ReservationsPanel() {
                       <SecondaryButton onClick={() => act(r.id, 'ready')}>완성 처리</SecondaryButton>
                     ) : null}
                     {r.status === 'ready' ? (
-                      <SecondaryButton onClick={() => act(r.id, 'schedule')}>발행 대기로</SecondaryButton>
+                      <SecondaryButton onClick={() => act(r.id, 'schedule')}>업로드 대기로</SecondaryButton>
                     ) : null}
                     {r.status === 'failed' ? (
-                      <SecondaryButton onClick={() => act(r.id, 'schedule')}>재시도(발행 대기)</SecondaryButton>
+                      <SecondaryButton onClick={() => act(r.id, 'schedule')}>재시도(업로드 대기)</SecondaryButton>
                     ) : null}
                     <SecondaryButton onClick={() => act(r.id, 'cancel')}>취소</SecondaryButton>
                   </div>
