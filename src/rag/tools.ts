@@ -4,10 +4,16 @@
 // **지금 DB 상태**를 물을 때 쓴다. 모델이 스스로 판단해 호출한다(function calling).
 // 봉사 정보(일시·장소·정원)는 부원 이상 전원 공개라 역할 필터 없이 조회한다.
 
-import { and, asc, gte, ne, eq } from 'drizzle-orm';
+import { and, asc, gte, eq, inArray } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { events, teams } from '@/db/schema';
+import { events, teams, scheduledPosts } from '@/db/schema';
 import type { GeminiTool } from './gemini';
+
+// 챗봇에 노출할 회차 = "실제로 공지된(또는 공지 예정)" 것만. 연결된 예약글이 scheduled/published 일 때.
+// 이유: ①event.status 는 draft 에서 전이되지 않아 그 자체로는 공지 여부를 못 가른다
+//      ②취소된 예약은 글만 삭제되고 event 는 남는다(고아) — 그대로 두면 취소된 봉사가 목록에 뜬다.
+//      예약글과 조인해 상태로 거르면 초안·고아·미승인 회차가 자연히 빠진다.
+const ANNOUNCED_POST_STATUS = ['scheduled', 'published'] as const;
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -44,30 +50,30 @@ function toView(r: { eventDate: string | null; meetTime: string | null; place: s
   };
 }
 
-/** 다가오는 봉사 회차(오늘 이후, 취소 제외). 날짜 오름차순. */
-export async function listUpcomingSessions(db: Db, opts: { limit?: number; now?: Date } = {}): Promise<SessionView[]> {
-  const now = opts.now ?? new Date();
-  const today = kstToday(now);
-  const rows = await db
-    .select({ eventDate: events.eventDate, meetTime: events.meetTime, place: events.place, capacity: events.capacity, team: teams.name, title: events.title })
+// 공지된 회차만 뽑는 공통 select(events + team 이름 + 공지된 예약글 존재 확인).
+function announcedSelect(db: Db) {
+  return db
+    .selectDistinct({ eventDate: events.eventDate, meetTime: events.meetTime, place: events.place, capacity: events.capacity, team: teams.name, title: events.title })
     .from(events)
-    .leftJoin(teams, eq(teams.id, events.teamId))
-    .where(and(gte(events.eventDate, today), ne(events.status, 'canceled')))
+    .innerJoin(scheduledPosts, and(eq(scheduledPosts.eventId, events.id), inArray(scheduledPosts.status, [...ANNOUNCED_POST_STATUS])))
+    .leftJoin(teams, eq(teams.id, events.teamId));
+}
+
+/** 다가오는 봉사 회차(오늘 이후, 공지된 것만). 날짜 오름차순. */
+export async function listUpcomingSessions(db: Db, opts: { limit?: number; now?: Date } = {}): Promise<SessionView[]> {
+  const today = kstToday(opts.now ?? new Date());
+  const rows = await announcedSelect(db)
+    .where(gte(events.eventDate, today))
     .orderBy(asc(events.eventDate))
     .limit(Math.min(opts.limit ?? 10, 20));
   return rows.map(toView);
 }
 
-/** 특정 날짜의 봉사 회차 상세(여러 팀이 같은 날이면 여러 건). */
+/** 특정 날짜의 봉사 회차 상세(여러 팀이 같은 날이면 여러 건, 공지된 것만). */
 export async function getSessionsOnDate(db: Db, dateStr: string, now: Date = new Date()): Promise<SessionView[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return [];
   void now;
-  const rows = await db
-    .select({ eventDate: events.eventDate, meetTime: events.meetTime, place: events.place, capacity: events.capacity, team: teams.name, title: events.title })
-    .from(events)
-    .leftJoin(teams, eq(teams.id, events.teamId))
-    .where(and(eq(events.eventDate, dateStr), ne(events.status, 'canceled')))
-    .orderBy(asc(events.meetTime));
+  const rows = await announcedSelect(db).where(eq(events.eventDate, dateStr)).orderBy(asc(events.meetTime));
   return rows.map(toView);
 }
 

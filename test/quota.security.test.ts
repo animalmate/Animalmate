@@ -4,7 +4,7 @@ import 'dotenv/config';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq, inArray, like } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { chatLogs, users, appSettings, auditLogs } from '@/db/schema';
 import { checkQuota, getUsage, SETTING_KEYS } from '@/rag/quota';
