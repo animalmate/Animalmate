@@ -48,8 +48,12 @@
 14. **Gemini 모델 ID 는 실측으로 확정하고 env 로만 주입한다**(코드 기본값 금지).
    확인 도구: `node scripts/list-gemini-models.mjs [--probe]` — 지금 키로 실제 호출 가능한 모델과
    임베딩 출력 차원을 찍어 본다. 제품명과 API ID 는 다르고, 목록은 시간이 지나면 변한다.
-   - **생성: `gemini-3.1-flash-lite`** (문서에 명시된 제품과 일치하는 안정판.
-     같은 계열에 `gemini-3.5-flash-lite`(더 최신), `gemini-2.5-flash-lite`(구세대)도 존재.)
+   - **생성: `gemini-3.1-flash-lite`** (확정). 근거 = **단가**: $0.25/$1.50(입력/출력, 100만 토큰당)로
+     `gemini-3.5-flash-lite`($0.30/$2.50)보다 싸다. RAG 는 검색된 근거로 답하는 일이라 3.5 의
+     에이전틱 강화가 필요 없어, 더 비싼 모델을 쓸 이유가 없다.
+     - 후보 `gemini-3.5-flash-lite`: **단가 역전 또는 3.1 의 품질 이슈가 확인되면 재검토**한다.
+       env 로만 주입하므로 교체는 값 하나 바꾸는 일이다(생성 모델은 저장 데이터와 무관해 언제든 교체 가능).
+     - `gemini-2.5-flash-lite` 는 구세대라 제외.
    - **임베딩: `gemini-embedding-2`** (`-preview` 아닌 안정판.)
    - **`-latest` / `-preview` 접미사 ID 는 쓰지 않는다**: 내용이 예고 없이 바뀌면 핀 고정이 무의미해지고,
      임베딩이 바뀌면 이미 저장한 벡터와 의미 공간이 어긋나 검색 품질이 조용히 망가진다.
@@ -68,3 +72,21 @@
    → **호출부는 `outputDimensionality` 를 반드시 명시해야 한다.** 빠뜨리면 3072차원이 돌아와
      삽입이 실패한다(차원 불일치). 이 값은 `doc_chunks.embedding` 정의와 한 몸이므로,
      차원을 바꾸려면 컬럼 재생성 + **전 문서 재임베딩**이 함께 가야 한다.
+
+## 2026-07-24 챗봇(1D) — 1D-1: nonce 기반 CSP (결정 10 이행)
+16. **CSP nonce 는 미들웨어에서, unsafe-inline 은 script-src 에서 제거**(`src/middleware.ts`).
+   요청마다 nonce 를 발급해 `script-src 'self' 'nonce-…' 'strict-dynamic'` 로 내보낸다.
+   Next 가 이 nonce 를 자기 스크립트에 붙이고, nonce 없는 스크립트(주입된 XSS)는 브라우저가 거부한다.
+   정적 헤더(XFO·nosniff·HSTS 등)는 nonce 와 무관하므로 `next.config.mjs` 에 그대로 둔다.
+   - **정적 프리렌더 페이지는 동적으로 전환해야 한다**: nonce 는 매 요청 바뀌는데 정적 페이지는
+     빌드 시점 nonce 가 박혀 응답 헤더와 어긋난다 → 스크립트 전부 차단 = 화면 깨짐.
+     `login`/`signup` 을 `page.tsx`(서버, `force-dynamic`) + `form.tsx`(클라이언트)로 쪼갰다.
+     나머지 화면은 이미 전부 동적(인증 게이트)이라 그대로 동작한다.
+   - **남는 한계(의도적)**:
+     · `style-src` 는 `'unsafe-inline'` 을 **유지**한다 — React 인라인 style 속성과 Next/styled-jsx 의
+       `<style>` 때문이며, 스타일 주입은 스크립트 주입과 달리 위험도가 낮다(코드 실행 불가).
+       챗봇이 다루는 위험은 스크립트 실행이고 그건 막았다. DoD 의 "unsafe-inline 없음" 은 script-src 기준.
+     · 기본 404 는 정적이라 프레임워크 스크립트가 차단될 수 있어 `not-found.tsx` 를 **JS 없이도 동작하는
+       순수 HTML(+홈 링크)** 로 만들었다. 내용·링크는 정상, 콘솔 잡음만 남는다(에러 페이지라 무해).
+   - 검증: `/login`·`/signup` 의 응답 CSP nonce 와 HTML 의 모든 `<script nonce>` 가 일치, nonce 없는
+     인라인 스크립트 0개, script-src 에 unsafe-inline 없음(2026-07-24 prod 빌드 실측).
