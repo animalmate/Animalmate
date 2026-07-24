@@ -20,7 +20,6 @@ interface Shortcut {
 const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations', label: '예약', desc: '공지 예약을 만들고 관리해요', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식을 저장해요', icon: 'doc' },
-  { href: '/reservations/batch', label: '일괄 생성', desc: '정기 봉사를 한 번에 예약해요', icon: 'layers' },
 ];
 const BOARD_SHORTCUTS: Shortcut[] = [
   { href: '/admin/teams', label: '팀', desc: '팀과 팀장단을 관리해요', icon: 'users' },

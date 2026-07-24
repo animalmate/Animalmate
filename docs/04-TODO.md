@@ -96,7 +96,7 @@
       **남음(사용자): 실게시는 NAVER_PUBLISH_DRY_RUN=false 전환 + 봇을 실공지 게시판 카페스탭으로 임명.**
 ### 1C. 반복 공지 발행 (F1 — 2026-07-23 재개정: 수동 선예약 중심. 크론 자동 생성 폐기) — 서비스 구현 완료
 > 서비스·로직·API 완료(마이그레이션 0004/0005). UI(프론트)만 남음. next build 통과.
-- [x] "매월 N번째 X요일" 날짜 계산 유틸 → `src/recurrence/month-weekday.ts`(단위 12). 일괄 생성이 재사용.
+- [x] ~~"매월 N번째 X요일" 날짜 계산 유틸~~ **삭제(2026-07-24)** — 일괄 생성과 함께 제거(`src/recurrence/` 전체).
 - [x] post_templates CRUD (팀/개인/global) → `src/publishing/post-templates.ts`(template.manage,
       global=회장단만·사용 전원, renderTemplate 플레이스홀더). 단위(render 3)+통합. UI "양식 불러오기"만 남음.
 - [x] **장소별 양식 + 발행 직전 치환(2026-07-24, 마이그레이션 0007)**: post_templates 에 기본 장소·정원
@@ -107,12 +107,15 @@
       발행 성공 시 최종 본문을 scheduled_posts 에 저장. 단위 9(final-render).
 - [~] 직접 선예약 + 팀별 예약 큐 → `scheduled-posts.ts`에 event_id 연결·`cancelPost`(published 전 취소)·
       markReady가 event 필수필드(일시/장소/정원) 검증. **예약 큐 화면(프론트)만 남음**.
-- [x] 일괄 생성 도우미 → `src/publishing/batch-generate.ts`(패턴+기간 → 템플릿 렌더 event+post 즉시 생성,
-      publish_at=봉사일−lead+발행시각 KST, 지난 회차 skip). 통합 테스트 통과.
+- [x] ~~일괄 생성 도우미~~ **폐기(2026-07-24)**: 패턴이 고정된 봉사가 드물어 쓰이지 않았다.
+      화면(`/reservations/batch`)·API·`batch-generate.ts`·`src/recurrence/` 전부 삭제. 여러 회차는 새 예약
+      화면에서 일정 행을 추가해 만든다(회차별 날짜·집합시간·정원 + 회차별 미리보기 팝업).
+      recurring_rules 테이블은 데이터 보존을 위해 남겨 둠(미사용 — 03-DATA-MODEL 참고).
 - [x] draft-generate 크론 → **미완성 점검** → `src/publishing/readiness-check.ts`(D-3/D-1, notice_check_log
       중복 방지, D-1 격상, 팀장단 알림). `/api/cron/draft-generate` 라우트가 이걸 호출. 구 draft-generation 제거.
-- [x] recurring_rules(생성 프리셋) CRUD → `recurring-rules.ts` 새 필드(template_id/notice_lead_days/publish_time).
-      DoD(F1 전체): 파일럿 팀이 템플릿→선예약(또는 일괄 생성)→필드 완성→카페 발행까지 end-to-end (UI 붙이면 완성)
+- [x] ~~recurring_rules(생성 프리셋) CRUD~~ **삭제(2026-07-24)** — 일괄 생성 전용이라 `recurring-rules.ts`와
+      통합 테스트를 함께 제거(화면에서 도달할 수 없는 코드였음).
+      DoD(F1 전체): 파일럿 팀이 템플릿→선예약→필드 완성→카페 발행까지 end-to-end (UI 붙이면 완성)
 ### 1D. 챗봇 v1
 - [ ] LLM 클라이언트: **Gemini 3.1 Flash-Lite(유료 티어)** 생성 + 최신 임베딩 모델.
       **구형 2.0 계열 모델명 사용 금지**. 모델 ID는 `GEMINI_MODEL`·`GEMINI_EMBEDDING_MODEL`

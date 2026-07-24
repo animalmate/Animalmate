@@ -6,7 +6,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { boards, users, teams, teamMembers, memberships, scheduledPosts, events, postTemplates, noticeCheckLog, auditLogs } from '@/db/schema';
 import { createTemplate } from '@/publishing/post-templates';
-import { batchGenerate, type BatchPreset } from '@/publishing/batch-generate';
+import { createReservationsMulti } from '@/publishing/reservations';
 import { renderForPublish } from '@/publishing/final-render';
 import { runReadinessCheck } from '@/publishing/readiness-check';
 import { createDraft } from '@/publishing/scheduled-posts';
@@ -92,31 +92,29 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
     expect(tpl.ownerId).toBeNull();
   });
 
-  it('일괄 생성: 미래 회차만 생성, 지난 회차는 skip, event+post 연결·템플릿 렌더', async () => {
-    const preset: BatchPreset = {
-      teamId,
-      monthWeek: '1',
-      weekday: 0, // 첫째 일요일
-      meetTime: '14:00',
-      boardMenuid: MENUID,
-      templateId,
-      noticeLeadDays: 7,
-      publishTime: '20:00',
-    };
-    const now = new Date('2026-02-01T00:00:00Z');
-    const res = await batchGenerate(db, leader, preset, { startYear: 2026, startMonth: 1, endYear: 2026, endMonth: 3 }, now);
+  it('새 예약(다건): 회차마다 날짜·집합시간이 렌더되고 event+post 가 연결된다', async () => {
+    const tpl = (await db.select().from(postTemplates).where(eq(postTemplates.id, templateId)))[0]!;
+    const ids = await createReservationsMulti(
+      db,
+      leader,
+      { kind: 'volunteer', teamId, boardMenuid: MENUID, title: tpl.titleTemplate, contentMd: tpl.bodyTemplate },
+      [
+        { publishAt: new Date('2026-02-22T11:00:00Z'), eventDate: '2026-03-01', meetTime: '14:00' },
+        { publishAt: new Date('2026-03-29T11:00:00Z'), eventDate: '2026-04-05', meetTime: '14:00' },
+      ]
+    );
+    expect(ids).toHaveLength(2);
 
-    // 2026-03 첫째 일요일=3/1, 발행=2/22 20:00 KST(미래) → 생성. 1·2월은 발행일 과거 → skip.
-    expect(res.created).toHaveLength(1);
-    expect(res.created[0]!.eventDate).toBe('2026-03-01');
-    expect(res.skipped.filter((s) => s.reason === 'publish_past').length).toBe(2);
-
-    const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, res.created[0]!.postId!)))[0]!;
-    expect(post.eventId).toBe(res.created[0]!.eventId);
+    const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, ids[0]!)))[0]!;
+    expect(post.eventId).not.toBeNull();
     expect(post.title).toBe('03/01 봉사 공지'); // {{간결_날짜}} 렌더
     expect(post.contentMd).toContain('2026년 3월 1일 일요일'); // {{전체_날짜}} 렌더
     expect(post.contentMd).toContain('집합 14:00'); // {{집합시간}} 렌더
-    expect(post.contentMd).toContain('{{장소}}'); // 미치환(개별 수정에서 채움)
+    expect(post.contentMd).toContain('{{장소}}'); // 회차 값이라 발행 직전에 치환
+
+    // 두 번째 회차는 자기 날짜로 렌더된다(회차별 독립).
+    const second = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, ids[1]!)))[0]!;
+    expect(second.title).toBe('04/05 봉사 공지');
   });
 
   it('장소별 양식: 기본 장소·정원이 회차에 채워지고 발행 직전에 본문으로 치환된다', async () => {
@@ -129,32 +127,19 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
       defaultPlace: '양주 쉼터',
       defaultCapacity: 20,
     });
-    const preset: BatchPreset = {
-      teamId,
-      monthWeek: '2',
-      weekday: 6, // 둘째 토요일
-      meetTime: '10:00',
-      boardMenuid: MENUID,
-      templateId: tpl.id,
-      noticeLeadDays: 7,
-      publishTime: '20:00',
-    };
-    const res = await batchGenerate(
+    const ids = await createReservationsMulti(
       db,
       leader,
-      preset,
-      { startYear: 2026, startMonth: 12, endYear: 2026, endMonth: 12 },
-      new Date('2026-02-01T00:00:00Z')
+      { kind: 'volunteer', teamId, boardMenuid: MENUID, title: tpl.titleTemplate, contentMd: tpl.bodyTemplate, templateId: tpl.id },
+      [{ publishAt: new Date('2026-12-05T11:00:00Z'), eventDate: '2026-12-12', meetTime: '10:00' }]
     );
-    expect(res.created).toHaveLength(1);
+    expect(ids).toHaveLength(1);
 
     // 기본값이 회차(events)에 복사된다 — 이후 회차별 수정의 출발점.
-    const ev = (await db.select().from(events).where(eq(events.id, res.created[0]!.eventId!)))[0]!;
+    const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, ids[0]!)))[0]!;
+    const ev = (await db.select().from(events).where(eq(events.id, post.eventId!)))[0]!;
     expect(ev.place).toBe('양주 쉼터');
     expect(ev.capacity).toBe(20);
-
-    // 본문에는 플레이스홀더가 그대로 남고, 발행 직전 치환에서만 값이 들어간다.
-    const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, res.created[0]!.postId!)))[0]!;
     expect(post.contentMd).toBe('장소 {{장소}} / 정원 {{정원}}');
     const rendered = await renderForPublish(db, post);
     expect(rendered.contentMd).toBe('장소 양주 쉼터 / 정원 20');

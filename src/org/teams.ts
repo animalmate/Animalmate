@@ -3,7 +3,7 @@
 
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { teams, events, recurringRules, scheduledPosts } from '@/db/schema';
+import { teams, events, scheduledPosts } from '@/db/schema';
 import { isPrivileged, type Actor } from '@/auth/permissions';
 import { PermissionError } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
@@ -37,7 +37,7 @@ export async function setTeamActive(db: Db, actor: Actor, id: string, isActive: 
 
 export class TeamInUseError extends Error {
   readonly status = 409;
-  constructor(readonly counts: { events: number; presets: number; reservations: number }) {
+  constructor(readonly counts: { events: number; reservations: number }) {
     super('team in use');
     this.name = 'TeamInUseError';
   }
@@ -46,13 +46,12 @@ export class TeamInUseError extends Error {
 /** 하드 삭제 — 참조가 없을 때만. 있으면 TeamInUseError(비활성화 권장). */
 export async function deleteTeam(db: Db, actor: Actor, id: string): Promise<void> {
   ensureBoard(actor);
-  const [[ev], [pr], [rv]] = await Promise.all([
+  const [[ev], [rv]] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int` }).from(events).where(eq(events.teamId, id)),
-    db.select({ n: sql<number>`count(*)::int` }).from(recurringRules).where(eq(recurringRules.teamId, id)),
     db.select({ n: sql<number>`count(*)::int` }).from(scheduledPosts).where(and(eq(scheduledPosts.ownerType, 'team'), eq(scheduledPosts.ownerId, id))),
   ]);
-  const counts = { events: ev?.n ?? 0, presets: pr?.n ?? 0, reservations: rv?.n ?? 0 };
-  if (counts.events + counts.presets + counts.reservations > 0) throw new TeamInUseError(counts);
+  const counts = { events: ev?.n ?? 0, reservations: rv?.n ?? 0 };
+  if (counts.events + counts.reservations > 0) throw new TeamInUseError(counts);
   await db.delete(teams).where(eq(teams.id, id)); // team_members 는 cascade
   await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: 'team.delete', targetTable: 'teams', targetId: id }));
 }

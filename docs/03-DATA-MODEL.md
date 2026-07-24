@@ -52,14 +52,16 @@
     예약 생성 시 `events.place/capacity` 의 **초기값으로 복사**되며, 회차별로 다르면 예약 수정에서 덮어쓴다.
     정원은 새 예약 화면에서 **일정(회차)별로 직접 지정**할 수도 있다(우선순위: 회차별 입력 > 양식 기본값 > 빈 값).
   - **치환 2단계(결정 2026-07-24)**: ① 생성 시 = 회차가 정해지는 값(날짜/집합시간/팀장단)을 본문에 굳힘
-    (`batch-generate.ts`, `reservations.ts`). ② 발행 직전 = `{{장소}}{{정원}}` 등 남은 키를 **events 값으로**
+    (`reservations.ts`). ② 발행 직전 = `{{장소}}{{정원}}` 등 남은 키를 **events 값으로**
     치환(`final-render.ts`). events 가 장소·정원의 유일한 저장소이므로 회차별 수정이 본문과 어긋날 수 없다.
     치환 후에도 남은 키가 있으면 **게시하지 않는다**(markReady 차단 + 워커가 failed 확정, audit `post.blocked`).
     발행 성공 시 치환된 최종 제목·본문을 `scheduled_posts` 에 저장한다(발행된 글은 수정 불가 = 이 기록이 원본).
 - `recurring_rules` (id, team_id, label, month_week[1..4|last], weekday, time(봉사 집합시간),
   board_menuid, template_id?, notice_lead_days default 7, publish_time default 20:00, is_active)   ← 0004/0005
-  - **역할 = 일괄 생성 도우미의 저장된 프리셋**(크론 자동 생성 아님). template_md→template_id 이관,
-    draft_lead_days 제거. 테이블명은 리네임 마이그레이션 회피 위해 유지(실체 = generation preset).
+  - **미사용(2026-07-24)**: 일괄 생성 도우미를 없애면서 이 테이블을 읽고 쓰는 코드(`batch-generate.ts`,
+    `recurring-rules.ts`, `month-weekday.ts`, `/reservations/batch`, `/api/reservations/batch`)를 전부 제거했다.
+    테이블은 데이터 보존을 위해 남겨 두었다 — 다시 쓸 일이 없다고 확정되면 DROP 마이그레이션으로 정리한다.
+    (`events.rule_id` 도 함께 미사용.)
 - `events` (id, team_id, rule_id?, title, event_date, meet_time, place, capacity, status, created_at)
   - **봉사 회차 = 예약 폼과 통합**: 일시(event_date/meet_time)·장소·정원이 event 에 저장되어
     챗봇 상태 질의("이번 주 봉사 어디야")의 **원천**. 필수 필드(event_date, place, capacity) 미완성 시
