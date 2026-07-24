@@ -8,6 +8,9 @@ export default defineConfig({
     environment: 'node',
   },
   resolve: {
-    alias: { '@': new URL('./src', import.meta.url).pathname },
+    alias: {
+      '@': new URL('./src', import.meta.url).pathname,
+      'server-only': new URL('./test/stubs/server-only.ts', import.meta.url).pathname,
+    },
   },
 });
