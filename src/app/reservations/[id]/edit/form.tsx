@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, InfoText, Input, Textarea } from '@/components/ui';
+import { Button, Card, ErrorText, Field, InfoText, Input } from '@/components/ui';
+import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { renderTemplate, unresolvedKeys } from '@/publishing/template-render';
 
 interface Detail {
@@ -107,7 +108,7 @@ export function EditReservationForm({ id }: { id: string }) {
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
         <Field label="본문">
-          <Textarea rows={5} value={contentMd} onChange={(e) => setContentMd(e.target.value)} />
+          <AutoGrowTextarea value={contentMd} onChange={(e) => setContentMd(e.target.value)} />
         </Field>
         <Field label="발행 시각">
           <Input type="datetime-local" value={publishLocal} onChange={(e) => setPublishLocal(e.target.value)} />
