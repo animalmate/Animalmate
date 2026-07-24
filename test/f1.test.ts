@@ -107,14 +107,14 @@ suite('F1 — 템플릿 / 다건 예약 생성 / 미완성 점검', () => {
 
     const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, ids[0]!)))[0]!;
     expect(post.eventId).not.toBeNull();
-    expect(post.title).toBe('03/01 봉사 공지'); // {{간결_날짜}} 렌더
+    expect(post.title).toBe('03/01 일요일 봉사 공지'); // {{간결_날짜}} 렌더
     expect(post.contentMd).toContain('2026년 3월 1일 일요일'); // {{전체_날짜}} 렌더
     expect(post.contentMd).toContain('집합 14:00'); // {{집합시간}} 렌더
     expect(post.contentMd).toContain('{{장소}}'); // 회차 값이라 발행 직전에 치환
 
     // 두 번째 회차는 자기 날짜로 렌더된다(회차별 독립).
     const second = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, ids[1]!)))[0]!;
-    expect(second.title).toBe('04/05 봉사 공지');
+    expect(second.title).toBe('04/05 일요일 봉사 공지');
   });
 
   it('장소별 양식: 기본 장소·정원이 회차에 채워지고 발행 직전에 본문으로 치환된다', async () => {

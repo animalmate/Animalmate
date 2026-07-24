@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { dateVars, leadersBlock, kstDateStr } from './placeholders';
 
 describe('dateVars', () => {
-  it('간결_날짜=MM/DD, 전체_날짜=YYYY년 M월 D일 요일', () => {
-    // 2026-07-23 은 목요일
-    expect(dateVars('2026-07-23')).toEqual({ 간결_날짜: '07/23', 전체_날짜: '2026년 7월 23일 목요일' });
+  it('간결_날짜=MM/DD 요일, 전체_날짜=YYYY년 M월 D일 요일', () => {
+    // 2026-07-23 은 목요일. 간결_날짜에도 요일을 붙인다("07/23" 만으로는 무슨 요일인지 모른다).
+    expect(dateVars('2026-07-23')).toEqual({ 간결_날짜: '07/23 목요일', 전체_날짜: '2026년 7월 23일 목요일' });
   });
   it('2026-03-01 은 일요일', () => {
-    expect(dateVars('2026-03-01')).toEqual({ 간결_날짜: '03/01', 전체_날짜: '2026년 3월 1일 일요일' });
+    expect(dateVars('2026-03-01')).toEqual({ 간결_날짜: '03/01 일요일', 전체_날짜: '2026년 3월 1일 일요일' });
   });
   it('빈/잘못된 값 → 빈 객체', () => {
     expect(dateVars(null)).toEqual({});
