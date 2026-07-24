@@ -5,6 +5,7 @@ import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { Modal } from '@/components/modal';
+import { TimeSelect } from '@/components/time-select';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { dateVars, kstDateStr } from '@/publishing/placeholders';
 import { capacityText } from '@/publishing/placeholder-catalog';
@@ -41,7 +42,6 @@ const emptyRow = (d: Partial<Row> = {}): Row => ({
 });
 /** 두 칸으로 나눠 받은 발행 시각 → datetime-local 문자열. 둘 중 하나라도 비면 빈 값. */
 const publishLocalOf = (r: Row): string => (r.publishDate && r.publishTime ? `${r.publishDate}T${r.publishTime}` : '');
-const TIME_STEP = 600; // 10분 단위 — 분 단위까지 고를 일이 없다.
 // 게시판 목록은 menuid 순으로 오지만, 고를 때는 이름순이 찾기 쉽다(한글 기준).
 const byName = (a: Board, b: Board) => a.name.localeCompare(b.name, 'ko');
 
@@ -295,25 +295,15 @@ export function NewReservationForm() {
               {/* 양식에서 채워진 값 — 이 회차만 다르면 고치면 된다. */}
               <div className="flex flex-wrap items-end gap-2">
                 {kind === 'volunteer' ? (
-                  <div className="w-[104px]">
+                  <div className="w-32">
                     <Field label="집합 시간">
-                      <Input
-                        type="time"
-                        step={TIME_STEP}
-                        value={r.meetTime}
-                        onChange={(e) => setRow(i, 'meetTime', e.target.value)}
-                      />
+                      <TimeSelect value={r.meetTime} onChange={(v) => setRow(i, 'meetTime', v)} />
                     </Field>
                   </div>
                 ) : null}
-                <div className="w-[104px]">
+                <div className="w-32">
                   <Field label="업로드 시각">
-                    <Input
-                      type="time"
-                      step={TIME_STEP}
-                      value={r.publishTime}
-                      onChange={(e) => setRow(i, 'publishTime', e.target.value)}
-                    />
+                    <TimeSelect value={r.publishTime} onChange={(v) => setRow(i, 'publishTime', v)} />
                   </Field>
                 </div>
                 {kind === 'volunteer' ? (
