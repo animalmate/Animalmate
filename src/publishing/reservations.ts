@@ -9,7 +9,7 @@ import { isPrivileged, type Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { getTemplate, renderTemplate } from './post-templates';
-import { publishVars, renderFinal } from './final-render';
+import { publishVars, usedPlaceholders, type UsedPlaceholder } from './final-render';
 
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
 
@@ -233,7 +233,8 @@ export interface ReservationRow {
   failReason: string | null; // failed 일 때 실패 사유
   event: { eventDate: string | null; meetTime: string | null; place: string | null; capacity: number | null } | null;
   missing: string[]; // draft 일 때 부족한 필수 필드
-  unresolved: string[]; // 발행 직전에도 채워지지 않는 플레이스홀더 키(발행 차단 대상)
+  /** 이 글이 쓰는 플레이스홀더와 발행 시 들어갈 값(value=null 이면 미치환 = 발행 차단). */
+  placeholders: UsedPlaceholder[];
 }
 
 function computeMissing(p: ScheduledPost, ev: typeof events.$inferSelect | null): string[] {
@@ -292,9 +293,9 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
       ? { eventDate: event.eventDate, meetTime: event.meetTime, place: event.place, capacity: event.capacity }
       : null,
     missing: computeMissing(post, event),
-    unresolved:
+    placeholders:
       post.status === 'published'
-        ? [] // 이미 나간 글은 되돌릴 수 없다(카페 수정 API 없음) — 경고 대상 아님
-        : renderFinal(post, publishVars(event, leadersBlock(leaders))).unresolved,
+        ? [] // 이미 나간 글은 치환이 끝난 최종본이다(카페 수정 API 없음)
+        : usedPlaceholders(post, publishVars(event, leadersBlock(leaders))),
   }));
 }

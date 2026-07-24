@@ -1,7 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select, Textarea } from '@/components/ui';
+import { Button, Card, ErrorText, Field, Input, SecondaryButton, Select } from '@/components/ui';
+import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
+import { PLACEHOLDERS, findPlaceholder } from '@/publishing/placeholder-catalog';
+import { placeholderKeys } from '@/publishing/template-render';
 
 interface Template {
   id: string;
@@ -113,22 +116,28 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
   }
 
   const canSave = !!name.trim() && !!titleTemplate.trim() && (editingId !== null || ownerType !== 'team' || !!teamId);
+  const usedKeys = placeholderKeys(titleTemplate, bodyTemplate); // 작성 중인 양식이 쓰는 값(오타 확인용)
 
   return (
     <div className="space-y-4">
       <h1 className="text-[22px] font-bold text-ink-900">템플릿</h1>
       <Card className="space-y-3">
         <div className="font-medium">{editingId ? '양식 수정' : '새 양식'}</div>
-        <InfoText>
-          플레이스홀더(생성 시 자동 치환):{' '}
-          <code className="rounded bg-cream-100 px-1">{'{{간결_날짜}}'}</code>(07/23){' '}
-          <code className="rounded bg-cream-100 px-1">{'{{전체_날짜}}'}</code>(2026년 7월 23일 목요일){' '}
-          <code className="rounded bg-cream-100 px-1">{'{{집합시간}}'}</code>{' '}
-          <code className="rounded bg-cream-100 px-1">{'{{팀장단}}'}</code>(팀별 명단).{' '}
-          <code className="rounded bg-cream-100 px-1">{'{{장소}}'}</code>{' '}
-          <code className="rounded bg-cream-100 px-1">{'{{정원}}'}</code> 은 아래 기본값으로 채워지고, 회차별로 다르면 각
-          예약 수정에서 바꾸면 됩니다(발행 직전에 반영).
-        </InfoText>
+        <div className="rounded-md bg-cream-100 p-3">
+          <div className="text-sm font-medium text-ink-700">회차마다 달라지는 값은 이렇게 적어 두세요</div>
+          <p className="mt-0.5 text-xs text-ink-500">
+            아래 표시를 본문에 그대로 쓰면 공지가 나갈 때 실제 값으로 바뀝니다. 장소처럼 늘 같은 내용은 그냥 적으세요.
+          </p>
+          <ul className="mt-2 space-y-1 text-[13px]">
+            {PLACEHOLDERS.map((p) => (
+              <li key={p.key} className="flex flex-wrap items-baseline gap-x-1.5">
+                <code className="rounded bg-white px-1 text-ink-700">{`{{${p.key}}}`}</code>
+                <span className="text-ink-900">{p.label}</span>
+                <span className="text-ink-500">예: {p.example}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
         <Field label="소유">
           <Select value={ownerType} onChange={(e) => setOwnerType(e.target.value)} disabled={editingId !== null}>
             <option value="personal">개인</option>
@@ -155,13 +164,18 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
           <Input value={titleTemplate} onChange={(e) => setTitleTemplate(e.target.value)} placeholder="{{간결_날짜}} 정기 봉사 안내" />
         </Field>
         <Field label="본문 양식">
-          <Textarea rows={5} value={bodyTemplate} onChange={(e) => setBodyTemplate(e.target.value)} placeholder={'{{전체_날짜}} 봉사\n집합 {{집합시간}} / 장소 {{장소}} / 정원 {{정원}}\n\n문의:\n{{팀장단}}'} />
+          <AutoGrowTextarea
+            minRows={8}
+            value={bodyTemplate}
+            onChange={(e) => setBodyTemplate(e.target.value)}
+            placeholder={'{{전체_날짜}} 양주 쉼터 봉사\n집합 {{집합시간}} / 정원 {{정원}}명\n\n문의:\n{{팀장단}}'}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="기본 장소" hint="이 양식으로 만든 예약의 기본값">
+          <Field label="봉사 장소" hint="공지 본문에는 직접 적고, 이 값은 회차 기록용입니다">
             <Input value={defaultPlace} onChange={(e) => setDefaultPlace(e.target.value)} placeholder="양주 쉼터" />
           </Field>
-          <Field label="기본 정원" hint="비우면 예약마다 직접 입력">
+          <Field label="기본 정원" hint="예약마다 바꿀 수 있어요">
             <Input
               inputMode="numeric"
               value={defaultCapacity}
@@ -170,6 +184,21 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
             />
           </Field>
         </div>
+        {usedKeys.length > 0 ? (
+          <div className="text-[13px] text-ink-500">
+            이 양식이 쓰는 값:{' '}
+            {usedKeys.map((k, i) => {
+              const info = findPlaceholder(k);
+              return (
+                <span key={k}>
+                  {i > 0 ? ', ' : ''}
+                  <code className="rounded bg-cream-100 px-1">{`{{${k}}}`}</code>
+                  {info ? ` ${info.label}` : ' — 목록에 없는 이름입니다(오타 확인)'}
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
         <ErrorText>{error}</ErrorText>
         <div className="flex gap-2">
           <Button disabled={busy || !canSave} onClick={save}>
@@ -194,10 +223,21 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
                   <div className="truncate text-ink-500">{t.titleTemplate}</div>
                   {t.defaultPlace || t.defaultCapacity != null ? (
                     <div className="text-xs text-ink-500">
-                      기본 {t.defaultPlace ?? '장소 미지정'}
-                      {t.defaultCapacity != null ? ` · 정원 ${t.defaultCapacity}` : ''}
+                      {t.defaultPlace ?? '장소 미지정'}
+                      {t.defaultCapacity != null ? ` · 기본 정원 ${t.defaultCapacity}명` : ''}
                     </div>
                   ) : null}
+                  <ul className="mt-1 space-y-0.5 text-xs text-ink-500">
+                    {placeholderKeys(t.titleTemplate, t.bodyTemplate).map((k) => {
+                      const info = findPlaceholder(k);
+                      return (
+                        <li key={k}>
+                          <code className="rounded bg-cream-100 px-1">{`{{${k}}}`}</code>{' '}
+                          {info ? `→ ${info.from}` : '→ 목록에 없는 이름(오타 확인)'}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
                 {isBoard || t.ownerType !== 'global' ? (
                   <span className="flex shrink-0 gap-2">

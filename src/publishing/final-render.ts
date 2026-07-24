@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { events, teams } from '@/db/schema';
 import type { Database } from '@/db/types';
 import { dateVars, leadersBlock } from './placeholders';
-import { renderTemplate, unresolvedKeys } from './template-render';
+import { renderTemplate, placeholderKeys } from './template-render';
 
 type EventRow = typeof events.$inferSelect;
 
@@ -20,7 +20,11 @@ export interface RenderedPost {
   unresolved: string[];
 }
 
-/** 회차(event) + 팀장단 명단 → 최종 치환 변수. 값이 빈 키는 넣지 않아 미치환으로 남긴다. */
+/**
+ * 회차(event) + 팀장단 명단 → 최종 치환 변수. 값이 빈 키는 넣지 않아 미치환으로 남긴다.
+ * 장소는 안내하는 플레이스홀더가 아니지만(양식별로 본문에 직접 적는다), 예전에 만든 양식이
+ * {{장소}}를 쓰고 있을 수 있어 값이 있으면 채워 준다.
+ */
 export function publishVars(event: EventRow | null, leaders: string): Record<string, string> {
   const vars: Record<string, string> = {};
   if (event) {
@@ -33,11 +37,25 @@ export function publishVars(event: EventRow | null, leaders: string): Record<str
   return vars;
 }
 
+export interface UsedPlaceholder {
+  key: string;
+  /** 발행 시 들어갈 값. null 이면 채워지지 않아 발행이 막힌다. */
+  value: string | null;
+}
+
+/** 이 글이 쓰는 플레이스홀더와 각각 어떤 값이 될지 — 예약 큐·수정 화면에서 그대로 보여준다. */
+export function usedPlaceholders(
+  post: { title: string; contentMd: string },
+  vars: Record<string, string>
+): UsedPlaceholder[] {
+  return placeholderKeys(post.title, post.contentMd).map((key) => ({ key, value: vars[key] ?? null }));
+}
+
 /** 제목·본문에 변수를 적용하고 남은 미치환 키를 함께 돌려준다(순수). */
 export function renderFinal(post: { title: string; contentMd: string }, vars: Record<string, string>): RenderedPost {
   const title = renderTemplate(post.title, vars);
   const contentMd = renderTemplate(post.contentMd, vars);
-  return { title, contentMd, unresolved: unresolvedKeys(title, contentMd) };
+  return { title, contentMd, unresolved: placeholderKeys(title, contentMd) };
 }
 
 /** 예약 글의 최종 치환 변수를 DB 에서 모은다(연결된 event + 팀 소유면 팀장단 명단). */

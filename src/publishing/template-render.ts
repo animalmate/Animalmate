@@ -12,8 +12,11 @@ export function renderTemplate(text: string, vars: Record<string, string>): stri
   return text.replace(PLACEHOLDER_RE, (m, key: string) => vars[key] ?? m);
 }
 
-/** 아직 치환되지 않은 플레이스홀더 키 목록(중복 제거). 빈 배열이면 발행 가능. */
-export function unresolvedKeys(...texts: (string | null | undefined)[]): string[] {
+/**
+ * 텍스트에 들어 있는 플레이스홀더 키 목록(등장 순, 중복 제거).
+ * 원문에 쓰면 "이 양식이 쓰는 키", 치환된 결과에 쓰면 "값이 없어 남은 키"가 된다.
+ */
+export function placeholderKeys(...texts: (string | null | undefined)[]): string[] {
   const found = new Set<string>();
   for (const text of texts) {
     if (!text) continue;

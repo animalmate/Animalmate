@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { publishVars, renderFinal } from './final-render';
-import { unresolvedKeys, renderTemplate } from './template-render';
+import { publishVars, renderFinal, usedPlaceholders } from './final-render';
+import { placeholderKeys, renderTemplate } from './template-render';
 import type { events } from '@/db/schema';
 
 type EventRow = typeof events.$inferSelect;
@@ -73,17 +73,38 @@ describe('renderFinal — 최종 본문 + 미치환 키', () => {
   });
 });
 
-describe('unresolvedKeys', () => {
+describe('usedPlaceholders — 예약 큐·수정 화면의 "이렇게 바뀝니다" 목록', () => {
+  const post = { title: '{{간결_날짜}} 봉사', contentMd: '정원 {{정원}}명 / 문의 {{팀장단}}' };
+
+  it('쓰는 키마다 들어갈 값을 등장 순서대로 돌려준다', () => {
+    const vars = publishVars(makeEvent(), '팀장 홍길동');
+    expect(usedPlaceholders(post, vars)).toEqual([
+      { key: '간결_날짜', value: '07/23' },
+      { key: '정원', value: '20' },
+      { key: '팀장단', value: '팀장 홍길동' },
+    ]);
+  });
+
+  it('값이 없는 키는 null 로 표시한다(화면에서 "비어 있음" 경고)', () => {
+    const vars = publishVars(makeEvent({ capacity: null }), '');
+    const byKey = new Map(usedPlaceholders(post, vars).map((u) => [u.key, u.value]));
+    expect(byKey.get('정원')).toBeNull();
+    expect(byKey.get('팀장단')).toBeNull();
+    expect(byKey.get('간결_날짜')).toBe('07/23');
+  });
+});
+
+describe('placeholderKeys', () => {
   it('제목·본문을 함께 훑고 중복 키는 한 번만 보고한다', () => {
-    expect(unresolvedKeys('{{장소}}', '{{장소}} / {{정원}}')).toEqual(['장소', '정원']);
+    expect(placeholderKeys('{{장소}}', '{{장소}} / {{정원}}')).toEqual(['장소', '정원']);
   });
 
   it('공백을 넣은 표기도 같은 키로 인식한다(renderTemplate 와 동일 규칙)', () => {
-    expect(unresolvedKeys('{{ 장소 }}')).toEqual(['장소']);
+    expect(placeholderKeys('{{ 장소 }}')).toEqual(['장소']);
     expect(renderTemplate('{{ 장소 }}', { 장소: '양주 쉼터' })).toBe('양주 쉼터');
   });
 
   it('플레이스홀더가 없으면 빈 배열', () => {
-    expect(unresolvedKeys('일반 공지 본문', null, undefined)).toEqual([]);
+    expect(placeholderKeys('일반 공지 본문', null, undefined)).toEqual([]);
   });
 });
