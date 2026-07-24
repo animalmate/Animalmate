@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
-import { setMemberRole, setMemberActive, MemberError } from '@/auth/members';
+import { setMemberRole, setMemberActive, revokeSessions, MemberError } from '@/auth/members';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
 
@@ -22,6 +22,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     if (typeof b.active === 'boolean') {
       await setMemberActive(db, actor, id, b.active);
+      return NextResponse.json({ ok: true });
+    }
+    // 모든 기기에서 로그아웃(users.session_version + 1 → 기존 토큰 전부 무효).
+    if (b.revokeSessions === true) {
+      await revokeSessions(db, actor, id);
       return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ error: 'bad_request' }, { status: 400 });

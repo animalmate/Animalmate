@@ -77,8 +77,13 @@ export default function SignupPage() {
           </>
         ) : (
           <>
+            {/* 가입 여부를 화면에서 구분하지 않는다(계정 열거 차단) — 어느 쪽인지는 메일함에서 알게 된다. */}
             <InfoText>
-              {email} 으로 6자리 코드를 보냈습니다. 메일이 안 보이면 <b>스팸함(특히 네이버 메일)</b>을 확인하세요.
+              {email} 으로 메일을 보냈습니다. 메일함에서 6자리 코드를 확인해 주세요.
+              <br />
+              이미 가입된 주소라면 코드 대신 <b>안내 메일</b>이 갑니다 — 그 경우 로그인으로 진행하세요.
+              <br />
+              메일이 안 보이면 <b>스팸함(특히 네이버 메일)</b>을 확인하세요.
             </InfoText>
             <Field label="인증 코드 (6자리)">
               <Input inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" />

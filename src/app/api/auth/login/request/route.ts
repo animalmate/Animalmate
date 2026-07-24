@@ -16,6 +16,8 @@ export async function POST(req: Request): Promise<Response> {
     await consumeRateLimit(db, RULES.loginRequest, clientIp(req.headers));
     const { email } = await req.json();
     checkLength('이메일', String(email ?? ''), LIMITS.email);
+    // 가입 요청과 같은 버킷 — 두 엔드포인트를 번갈아 써서 한 주소에 메일을 두 배로 보낼 수 없게.
+    await consumeRateLimit(db, RULES.mailToAddress, String(email ?? '').trim().toLowerCase());
     await requestLogin(db, { email }, { secret: requireSecret(), mailer: defaultMailer() });
     return NextResponse.json({ ok: true });
   } catch (e) {

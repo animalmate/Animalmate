@@ -45,6 +45,13 @@ export const RULES = {
   loginRequest: { bucket: 'login_request', windowSeconds: 3600, max: 10 },
   /** OTP 검증(가입·로그인 공통) — 코드 무차별 대입 방어. */
   otpVerify: { bucket: 'otp_verify', windowSeconds: 3600, max: 20 },
+  /**
+   * 수신 주소 기준 발송 상한(IP 가 아니라 **이메일**로 센다).
+   * 가입 응답을 통일한 뒤로는 기가입 주소에도 안내 메일이 나가므로, IP 를 바꿔 가며
+   * 특정인의 메일함을 채우는 괴롭힘이 가능해진다. 그 경로를 주소 단위로 막는다.
+   * 가입 여부와 무관하게 같은 지점에서 적용해야 리밋 자체가 열거 신호가 되지 않는다.
+   */
+  mailToAddress: { bucket: 'mail_to_address', windowSeconds: 3600, max: 5 },
 } as const satisfies Record<string, LimitRule>;
 
 /** 고정 윈도의 시작 시각(윈도 길이로 내림). */

@@ -12,6 +12,29 @@ describe('세션 JWT (HS256)', () => {
     expect(p!.exp).toBeGreaterThan(p!.iat);
   });
 
+  it('세션 세대(sv)가 토큰에 담기고 검증 후에도 그대로 나온다', () => {
+    const token = signSession({ sub: 'u-1', role: 'board', sv: 7 }, SECRET);
+    expect(verifySession(token, SECRET)!.sv).toBe(7);
+  });
+
+  it('sv 를 안 주면 0(초기 세대)', () => {
+    expect(verifySession(signSession({ sub: 'u-1', role: 'member' }, SECRET), SECRET)!.sv).toBe(0);
+  });
+
+  it('sv 가 없는 옛 토큰도 0 으로 읽는다(이 배포 전에 발급된 세션 호환)', () => {
+    // sv 필드가 아예 없는 payload 를 같은 시크릿으로 직접 서명해 재현한다.
+    const { createHmac } = require('node:crypto') as typeof import('node:crypto');
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    const head = b64({ alg: 'HS256', typ: 'JWT' });
+    const body = b64({ sub: 'u-old', role: 'staff', iat: now, exp: now + 600 });
+    const sig = createHmac('sha256', SECRET).update(`${head}.${body}`).digest('base64url');
+
+    const p = verifySession(`${head}.${body}.${sig}`, SECRET);
+    expect(p).not.toBeNull();
+    expect(p!.sv).toBe(0);
+  });
+
   it('다른 시크릿 → null', () => {
     const token = signSession({ sub: 'u-1', role: 'member' }, SECRET);
     expect(verifySession(token, 'other')).toBeNull();

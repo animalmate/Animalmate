@@ -13,7 +13,8 @@ export async function getCurrentActor(): Promise<Actor | null> {
   const jar = await cookies();
   const payload = verifySession(jar.get(SESSION_COOKIE)?.value, secret);
   if (!payload) return null;
-  return loadActor(db, payload.sub);
+  // 서명·만료가 유효해도 세대 번호가 밀렸으면(= 그 사이 "모든 기기에서 로그아웃") 거부한다.
+  return loadActor(db, payload.sub, payload.sv);
 }
 
 /** 로그인 필수(서버 컴포넌트). 미로그인 시 /login 으로. */

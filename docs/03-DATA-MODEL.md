@@ -12,7 +12,9 @@
 
 ## 테이블
 ### 조직/계정
-- `users` (id, email, name, created_at)
+- `users` (id, email, name, session_version, created_at)
+  - `session_version`: 세션 세대(0010). 발급된 JWT 에 이 값을 담고 요청마다 대조 — 값을 1 올리면
+    그 계정의 **모든 기기 세션이 즉시 무효**(회원 관리 > "모든 기기에서 로그아웃"). 세션 테이블 불필요.
 - `memberships` (user_id, role, board_position?, term_start, term_end, status[active|expired])
   - 크론이 매일 term_end 경과 건을 expired로 강등. 회장단만 memberships를 변경 가능.
 - `teams` (id, name, kind[activity|functional], is_active, leaders jsonb)
@@ -91,7 +93,9 @@
   - UNIQUE(bucket, identifier, window_start). 고정 윈도 방식 — 원자적 UPSERT 로 세므로
     서버리스 인스턴스가 몇 개든 합산된다(메모리 카운터는 Vercel 에서 무력).
   - 적용 지점: `signup_request`(IP, 10회/시간) · `login_request`(IP, 10회/시간) ·
-    `otp_verify`(IP, 20회/시간 — 가입·로그인 검증이 **같은 버킷을 공유**해 번갈아 써도 상한이 늘지 않는다).
+    `otp_verify`(IP, 20회/시간 — 가입·로그인 검증이 **같은 버킷을 공유**해 번갈아 써도 상한이 늘지 않는다) ·
+    `mail_to_address`(**수신 이메일**, 5회/시간 — 가입·로그인 요청 공용. 계정 열거 차단으로 기가입 주소에도
+    안내 메일이 나가므로, IP 를 바꿔 가며 특정인 메일함을 채우는 경로를 주소 단위로 막는다).
   - 지난 윈도 행은 일일 크론(`/api/cron/draft-generate`)이 `pruneRateLimits` 로 정리.
 
 ### Phase 2 예정 모듈 (F8 총무 / F9 신입모집) — 설계 확정(2026-07-23), 마이그레이션은 착수 시점

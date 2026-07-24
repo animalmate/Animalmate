@@ -17,7 +17,10 @@ export async function POST(req: Request): Promise<Response> {
     await consumeRateLimit(db, RULES.signupRequest, clientIp(req.headers));
     const { email, joinCode } = await req.json();
     checkLength('이메일', String(email ?? ''), LIMITS.email);
+    // 주소 단위 발송 상한 — 가입 여부를 보기 **전에** 걸어야 리밋 응답이 열거 신호가 되지 않는다.
+    await consumeRateLimit(db, RULES.mailToAddress, String(email ?? '').trim().toLowerCase());
     await requestSignup(db, { email, joinCode: String(joinCode ?? '') }, { secret: requireSecret(), mailer: defaultMailer() });
+    // 응답은 가입 여부와 무관하게 동일하다. 구분 정보는 메일함으로만 간다(계정 열거 차단).
     return NextResponse.json({ ok: true });
   } catch (e) {
     return authErrorResponse(e);
