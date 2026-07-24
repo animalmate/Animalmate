@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { apiGet, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
+import { TimeSelect } from '@/components/time-select';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { shortenValue, capacityText } from '@/publishing/placeholder-catalog';
 
@@ -24,7 +25,6 @@ function toDateTimeInputs(iso: string | null): { date: string; time: string } {
     time: `${p(d.getHours())}:${p(d.getMinutes())}`,
   };
 }
-const TIME_STEP = 600; // 10분 단위
 
 export function EditReservationForm({ id }: { id: string }) {
   const router = useRouter();
@@ -125,7 +125,7 @@ export function EditReservationForm({ id }: { id: string }) {
             <Input type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} />
           </Field>
           <Field label="업로드 시각">
-            <Input type="time" step={TIME_STEP} value={publishTime} onChange={(e) => setPublishTime(e.target.value)} />
+            <TimeSelect value={publishTime} onChange={setPublishTime} />
           </Field>
         </div>
         {hasEvent ? (
@@ -135,7 +135,7 @@ export function EditReservationForm({ id }: { id: string }) {
               <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
             </Field>
             <Field label="집합 시간">
-              <Input type="time" value={meetTime} onChange={(e) => setMeetTime(e.target.value)} />
+              <TimeSelect value={meetTime} onChange={setMeetTime} />
             </Field>
             <Field label="장소">
               <Input value={place} onChange={(e) => setPlace(e.target.value)} />

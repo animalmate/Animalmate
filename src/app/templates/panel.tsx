@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, Input, SecondaryButton, Select } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
+import { TimeSelect } from '@/components/time-select';
 import { PLACEHOLDERS, findPlaceholder } from '@/publishing/placeholder-catalog';
 import { placeholderKeys } from '@/publishing/template-render';
 
@@ -25,7 +26,6 @@ interface Team {
 }
 
 const OWNER_LABEL: Record<string, string> = { personal: '개인', team: '팀', global: '공용' };
-const TIME_STEP = 600; // 10분 단위
 
 function ownerText(t: Template): string {
   if (t.ownerType === 'team') return `팀 · ${t.teamName ?? '알 수 없음'}`;
@@ -200,20 +200,10 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
               />
             </Field>
             <Field label="집합 시간">
-              <Input
-                type="time"
-                step={TIME_STEP}
-                value={defaultMeetTime}
-                onChange={(e) => setDefaultMeetTime(e.target.value)}
-              />
+              <TimeSelect value={defaultMeetTime} onChange={setDefaultMeetTime} />
             </Field>
             <Field label="업로드 시각" hint="봉사 며칠 전에 올릴지는 예약에서 날짜로 고릅니다">
-              <Input
-                type="time"
-                step={TIME_STEP}
-                value={defaultPublishTime}
-                onChange={(e) => setDefaultPublishTime(e.target.value)}
-              />
+              <TimeSelect value={defaultPublishTime} onChange={setDefaultPublishTime} />
             </Field>
           </div>
         </div>
