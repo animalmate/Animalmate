@@ -6,6 +6,7 @@ import {
   deleteTemplate,
   parseDefaultPlace,
   parseDefaultCapacity,
+  parseDefaultTime,
   type UpdateTemplatePatch,
 } from '@/publishing/post-templates';
 import { PermissionError } from '@/auth/guard';
@@ -26,6 +27,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (b.bodyTemplate !== undefined) patch.bodyTemplate = String(b.bodyTemplate);
     if (b.defaultPlace !== undefined) patch.defaultPlace = parseDefaultPlace(b.defaultPlace);
     if (b.defaultCapacity !== undefined) patch.defaultCapacity = parseDefaultCapacity(b.defaultCapacity);
+    if (b.defaultMeetTime !== undefined) patch.defaultMeetTime = parseDefaultTime(b.defaultMeetTime);
+    if (b.defaultPublishTime !== undefined) patch.defaultPublishTime = parseDefaultTime(b.defaultPublishTime);
     const tpl = await updateTemplate(db, actor, id, patch);
     return NextResponse.json({ template: tpl });
   } catch (e) {

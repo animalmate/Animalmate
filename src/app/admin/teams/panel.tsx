@@ -44,7 +44,7 @@ export function TeamsPanel() {
     const res = await fetch(`/api/admin/teams/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      if (d.error === 'user_not_found' && d.email) { setError(`${d.email} 은 가입 완료된 회원이 아니에요. 먼저 가입해야 팀장단으로 지정할 수 있어요.`); return; }
+      if (d.error === 'user_not_found' && d.email) { setError(`${d.email} 은 가입 완료된 회원이 아니에요. 먼저 가입해야 담당자로 지정할 수 있어요.`); return; }
       setError(errorMessage(d.error, d.message));
       return;
     }
@@ -97,23 +97,29 @@ export function TeamsPanel() {
           <LeadersEditor team={t} onSave={(leaders) => patch(t.id, { leaders })} />
         </Card>
       ))}
-      <InfoText>회차·예약이 있는 팀은 삭제 대신 비활성화됩니다(기록 보존). 팀장단 명단은 공지 {'{{팀장단}}'}에 자동 삽입됩니다.</InfoText>
+      <InfoText>회차·예약이 있는 팀은 삭제 대신 비활성화됩니다(기록 보존). 활동팀의 팀장단 명단은 봉사 공지 {'{{팀장단}}'}에 자동 삽입됩니다.</InfoText>
     </div>
   );
 }
 
 function LeadersEditor({ team, onSave }: { team: Team; onSave: (leaders: Leader[]) => void }) {
+  // 봉사 공지의 {{팀장단}} 은 활동팀 얘기다. 기능팀(기획·홍보·총무)은 공지와 무관하므로 "담당자"로 부른다.
+  const isActivity = team.kind === 'activity';
   const [rows, setRows] = useState<Leader[]>(team.leaders.length ? team.leaders : [{ label: '팀장', name: '', phone: '', email: '' }]);
   const set = (i: number, k: keyof Leader, v: string) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
-  const add = () => setRows((rs) => [...rs, { label: '부팀장', name: '', phone: '', email: '' }]);
+  const add = () => setRows((rs) => [...rs, { label: isActivity ? '부팀장' : '담당', name: '', phone: '', email: '' }]);
   const del = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
 
   return (
     <div className="space-y-3 rounded-xl bg-cream-100 p-3">
-      <div className="text-sm font-semibold text-ink-700">팀장단 (팀장·부팀장)</div>
-      <InfoText>
-        이메일을 넣으면 그 계정이 이 팀의 예약·템플릿을 관리할 수 있어요(가입 완료된 회원만). 이름·전화는 공지 {'{{팀장단}}'}에 표시됩니다.
-      </InfoText>
+      <div className="text-sm font-semibold text-ink-700">{isActivity ? '팀장단 (팀장·부팀장)' : '팀 담당자'}</div>
+      {isActivity ? (
+        <InfoText>
+          이메일을 넣으면 그 계정이 이 팀의 예약·템플릿을 관리할 수 있어요(가입 완료된 회원만). 이름·전화는 공지 {'{{팀장단}}'}에 표시됩니다.
+        </InfoText>
+      ) : (
+        <InfoText>이메일을 넣으면 그 계정이 이 팀을 관리할 수 있어요(가입 완료된 회원만).</InfoText>
+      )}
       {rows.map((r, i) => (
         <div key={i} className="space-y-2 rounded-lg border border-ink-200 bg-white p-2.5">
           <div className="flex items-center gap-2">
@@ -133,7 +139,7 @@ function LeadersEditor({ team, onSave }: { team: Team; onSave: (leaders: Leader[
       ))}
       <div className="flex gap-2">
         <SecondaryButton onClick={add}>+ 추가</SecondaryButton>
-        <Button onClick={() => onSave(rows)}>팀장단 저장</Button>
+        <Button onClick={() => onSave(rows)}>{isActivity ? '팀장단 저장' : '담당자 저장'}</Button>
       </div>
     </div>
   );

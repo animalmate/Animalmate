@@ -174,10 +174,13 @@ export const postTemplates = pgTable('post_templates', {
   name: text('name').notNull(),
   titleTemplate: text('title_template').notNull(), // {{간결_날짜}} {{전체_날짜}} {{집합시간}} {{팀장단}} {{장소}} {{정원}}
   bodyTemplate: text('body_template').notNull(),
-  // 장소별 양식용 기본값(예: "양주 쉼터 봉사" 양식 → 항상 양주 쉼터/정원 20).
-  // 예약 생성 시 events.place/capacity 의 초기값이 되고, 회차별로 예약 수정에서 덮어쓸 수 있다.
+  // 장소별 양식용 기본값(예: "양주 쉼터 봉사" 양식 → 항상 양주 쉼터/정원 20/집합 10:00/업로드 20:00).
+  // 예약을 만들 때 각 일정 행에 미리 채워지고(회차별로 고칠 수 있다), place/capacity 는 events 초기값이 된다.
+  // 덕분에 예약할 때 실제로 고르는 건 봉사 일자와 업로드 날짜뿐이다.
   defaultPlace: text('default_place'),
   defaultCapacity: integer('default_capacity'),
+  defaultMeetTime: time('default_meet_time'), // 봉사 집합 시간
+  defaultPublishTime: time('default_publish_time'), // 카페 업로드 시각
   updatedBy: uuid('updated_by')
     .notNull()
     .references(() => users.id),

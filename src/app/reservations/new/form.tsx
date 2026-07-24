@@ -18,6 +18,8 @@ interface Template {
   bodyTemplate: string;
   defaultPlace: string | null;
   defaultCapacity: number | null;
+  defaultMeetTime: string | null; // 'HH:MM'
+  defaultPublishTime: string | null; // 'HH:MM'
 }
 
 interface Row {
@@ -28,7 +30,15 @@ interface Row {
   meetTime: string; // 집합 시간
   capacity: string; // 회차별 정원(비우면 양식의 기본 정원)
 }
-const emptyRow = (capacity = ''): Row => ({ publishDate: '', publishTime: '', eventDate: '', meetTime: '', capacity });
+/** 양식에서 가져오는 기본값(집합 시간·업로드 시각·정원)만 미리 채운 빈 일정. 날짜 두 개만 고르면 된다. */
+const emptyRow = (d: Partial<Row> = {}): Row => ({
+  publishDate: '',
+  publishTime: '',
+  eventDate: '',
+  meetTime: '',
+  capacity: '',
+  ...d,
+});
 /** 두 칸으로 나눠 받은 발행 시각 → datetime-local 문자열. 둘 중 하나라도 비면 빈 값. */
 const publishLocalOf = (r: Row): string => (r.publishDate && r.publishTime ? `${r.publishDate}T${r.publishTime}` : '');
 const TIME_STEP = 600; // 10분 단위 — 분 단위까지 고를 일이 없다.
@@ -142,23 +152,37 @@ export function NewReservationForm() {
     return { title: t, body: b, missing: placeholderKeys(t, b), meta: board ? `${when} · ${board}` : when };
   }
 
+  /** 양식이 정해 둔 기본값(집합 시간·업로드 시각·정원). 양식이 없으면 빈 값. */
+  function defaultsOf(tpl: Template | null): Partial<Row> {
+    if (!tpl) return {};
+    return {
+      meetTime: tpl.defaultMeetTime ?? '',
+      publishTime: tpl.defaultPublishTime ?? '',
+      capacity: tpl.defaultCapacity != null ? String(tpl.defaultCapacity) : '',
+    };
+  }
+
   function loadTemplate(id: string) {
     setTemplateId(id);
     const tpl = templates.find((x) => x.id === id);
     if (!tpl) return;
     setTitle(tpl.titleTemplate);
     setContentMd(tpl.bodyTemplate);
-    // 아직 손대지 않은 일정 행에만 기본 정원을 채운다(직접 입력한 값은 보존).
-    if (tpl.defaultCapacity != null) {
-      const cap = String(tpl.defaultCapacity);
-      setRows((rs) => rs.map((r) => (r.capacity ? r : { ...r, capacity: cap })));
-    }
+    // 아직 비어 있는 칸만 채운다(직접 입력한 값은 보존).
+    const d = defaultsOf(tpl);
+    setRows((rs) =>
+      rs.map((r) => ({
+        ...r,
+        meetTime: r.meetTime || (d.meetTime ?? ''),
+        publishTime: r.publishTime || (d.publishTime ?? ''),
+        capacity: r.capacity || (d.capacity ?? ''),
+      }))
+    );
   }
 
   const setRow = (i: number, k: keyof Row, v: string) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
-  const addRow = () =>
-    setRows((rs) => [...rs, emptyRow(selectedTemplate?.defaultCapacity != null ? String(selectedTemplate.defaultCapacity) : '')]);
+  const addRow = () => setRows((rs) => [...rs, emptyRow(defaultsOf(selectedTemplate))]);
   const removeRow = (i: number) => setRows((rs) => (rs.length === 1 ? rs : rs.filter((_, idx) => idx !== i)));
 
   async function submit() {
@@ -250,41 +274,50 @@ export function NewReservationForm() {
           <div className="text-sm font-medium text-ink-700">
             업로드 일정 (여러 개 추가하면 각각 별도 예약으로 생성됩니다)
           </div>
+          {selectedTemplate ? (
+            <p className="text-[13px] text-ink-500">
+              집합 시간·업로드 시각·정원은 "{selectedTemplate.name}" 양식 값으로 채워집니다. 이 회차만 다르면 고치세요.
+            </p>
+          ) : null}
           {rows.map((r, i) => (
             <div key={i} className="space-y-2 rounded-md border border-ink-200 p-2">
-              {kind === 'volunteer' ? (
-                <div className="grid grid-cols-2 gap-2">
+              {/* 실제로 고르는 값 — 날짜 둘. 나머지는 양식에서 채워진다. */}
+              <div className="grid grid-cols-2 gap-2">
+                {kind === 'volunteer' ? (
                   <Field label="봉사 일자">
                     <Input type="date" value={r.eventDate} onChange={(e) => setRow(i, 'eventDate', e.target.value)} />
                   </Field>
-                  <Field label="집합 시간">
-                    <Input
-                      type="time"
-                      step={TIME_STEP}
-                      value={r.meetTime}
-                      onChange={(e) => setRow(i, 'meetTime', e.target.value)}
-                    />
-                  </Field>
-                </div>
-              ) : null}
-              {/* 날짜·시각을 따로 받는다 — datetime-local 한 칸은 선택 도구가 작아 고르기 어렵다. */}
-              <div className="grid grid-cols-2 gap-2">
+                ) : null}
                 <Field label="업로드 날짜">
                   <Input type="date" value={r.publishDate} onChange={(e) => setRow(i, 'publishDate', e.target.value)} />
                 </Field>
-                <Field label="업로드 시각">
-                  <Input
-                    type="time"
-                    step={TIME_STEP}
-                    value={r.publishTime}
-                    onChange={(e) => setRow(i, 'publishTime', e.target.value)}
-                  />
-                </Field>
               </div>
-              <div className="flex items-end gap-2">
+              {/* 양식에서 채워진 값 — 이 회차만 다르면 고치면 된다. */}
+              <div className="flex flex-wrap items-end gap-2">
                 {kind === 'volunteer' ? (
-                  <div className="w-32">
-                    {/* hint 는 입력칸 아래에 붙어 버튼 정렬이 어긋난다 — 같은 안내는 아래 InfoText 에 있다. */}
+                  <div className="w-[104px]">
+                    <Field label="집합 시간">
+                      <Input
+                        type="time"
+                        step={TIME_STEP}
+                        value={r.meetTime}
+                        onChange={(e) => setRow(i, 'meetTime', e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+                <div className="w-[104px]">
+                  <Field label="업로드 시각">
+                    <Input
+                      type="time"
+                      step={TIME_STEP}
+                      value={r.publishTime}
+                      onChange={(e) => setRow(i, 'publishTime', e.target.value)}
+                    />
+                  </Field>
+                </div>
+                {kind === 'volunteer' ? (
+                  <div className="w-20">
                     <Field label="정원">
                       <Input
                         inputMode="numeric"

@@ -7,6 +7,7 @@ import {
   createTemplate,
   parseDefaultPlace,
   parseDefaultCapacity,
+  parseDefaultTime,
   type TemplateOwnerType,
 } from '@/publishing/post-templates';
 import { listAllTeams } from '@/org/teams';
@@ -30,6 +31,9 @@ export async function GET(): Promise<Response> {
     bodyTemplate: t.bodyTemplate,
     defaultPlace: t.defaultPlace,
     defaultCapacity: t.defaultCapacity,
+    // time 컬럼은 'HH:MM:SS' 로 오므로 폼 입력(HH:MM)에 맞춰 잘라 준다.
+    defaultMeetTime: t.defaultMeetTime ? t.defaultMeetTime.slice(0, 5) : null,
+    defaultPublishTime: t.defaultPublishTime ? t.defaultPublishTime.slice(0, 5) : null,
   }));
   return NextResponse.json({ templates });
 }
@@ -53,6 +57,8 @@ export async function POST(req: Request): Promise<Response> {
       bodyTemplate: String(t.bodyTemplate ?? ''),
       defaultPlace: parseDefaultPlace(t.defaultPlace),
       defaultCapacity: parseDefaultCapacity(t.defaultCapacity),
+      defaultMeetTime: parseDefaultTime(t.defaultMeetTime),
+      defaultPublishTime: parseDefaultTime(t.defaultPublishTime),
     });
     return NextResponse.json({ template: tpl });
   } catch (e) {
