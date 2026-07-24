@@ -18,7 +18,7 @@ function VisBadge({ v }: { v: Visibility }) {
 // 공개 범위별 생성 진입점 — 어떤 문서를 넣는지 예시로 안내한다(결정 19).
 const NEW_KINDS: { visibility: Visibility; title: string; examples: string }[] = [
   { visibility: 'member', title: '부원·운영진 공개 문서', examples: '동아리 회칙, 운영진 구성, 가이드북(부원용), 동아리 일정 등' },
-  { visibility: 'staff', title: '운영진 공개 문서', examples: '부원 명단, 가이드북(운영진용), 동아리행사, 신입기수 면접 등' },
+  { visibility: 'staff', title: '운영진 공개 문서', examples: '운영진 회의록, 가이드북(운영진용), 동아리 행사 기획, 신입기수 면접 안내 등' },
 ];
 
 interface DocRow {
@@ -169,7 +169,11 @@ export function DocumentsPanel() {
     <div className="space-y-5">
       <div>
         <h1 className="text-[22px] font-bold text-ink-900">문서</h1>
-        <p className="mt-1 text-[13px] text-ink-500">챗봇이 답변 근거로 쓰는 안내 문서예요. 공개 범위를 골라 새로 만들어요.</p>
+        <p className="mt-1 text-[13px] text-ink-500">
+          챗봇이 답변 근거로 쓰는 안내 문서예요. 공개 범위를 골라 새로 만들어요.
+          <br />
+          <span className="text-ink-400">부원 명단·연락처 같은 개인정보는 넣지 마세요(챗봇 자료가 아니라 회원 관리·드라이브에서 다뤄요).</span>
+        </p>
       </div>
 
       {/* 공개 범위별 생성 진입점 두 개 */}
