@@ -11,9 +11,13 @@ interface NavItem {
   icon: string;
 }
 
+// 챗봇은 로그인 사용자 전원(부원 포함).
+const COMMON_MENU: NavItem[] = [{ href: '/chatbot', label: '챗봇', icon: 'chat' }];
 const STAFF_MENU: NavItem[] = [
+  ...COMMON_MENU,
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
+  { href: '/documents', label: '문서', icon: 'layers' },
 ];
 const BOARD_MENU: NavItem[] = [
   ...STAFF_MENU,
@@ -21,18 +25,22 @@ const BOARD_MENU: NavItem[] = [
   { href: '/admin/members', label: '회원', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', icon: 'key' },
   { href: '/admin/boards', label: '게시판', icon: 'board' },
+  { href: '/admin/chatbot', label: '챗봇설정', icon: 'info' },
 ];
 
 function menuFor(role: string): NavItem[] {
   if (role === 'board' || role === 'sysadmin') return BOARD_MENU;
   if (role === 'staff') return STAFF_MENU;
-  return [];
+  return COMMON_MENU; // 부원도 챗봇은 보인다
 }
 
 // 현재 경로 → 활성 메뉴 키(가장 구체적인 접두사 우선).
 function activeKey(pathname: string): string {
+  if (pathname.startsWith('/chatbot')) return '/chatbot';
+  if (pathname.startsWith('/documents')) return '/documents';
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';
+  if (pathname.startsWith('/admin/chatbot')) return '/admin/chatbot';
   if (pathname.startsWith('/admin/teams')) return '/admin/teams';
   if (pathname.startsWith('/admin/members')) return '/admin/members';
   if (pathname.startsWith('/admin/join-codes')) return '/admin/join-codes';
