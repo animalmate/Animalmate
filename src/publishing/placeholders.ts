@@ -1,5 +1,5 @@
 // 공지 템플릿 플레이스홀더 값 생성.
-//  {{간결_날짜}}  → 07/23
+//  {{간결_날짜}}  → 07/23 목요일
 //  {{전체_날짜}}  → 2026년 7월 23일 목요일
 //  {{집합시간}}   → 14:00
 //  {{팀장단}}     → 여러 줄(직함 이름 전화)
@@ -17,7 +17,8 @@ export function dateVars(dateStr: string | null | undefined): Record<string, str
   const d = Number(m[3]);
   const wd = WEEKDAY[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()]!;
   return {
-    간결_날짜: `${String(mo).padStart(2, '0')}/${String(d).padStart(2, '0')}`,
+    // 요일이 없으면 "07/23" 만 보고 무슨 요일인지 알 수 없어 공지로 쓰기 불편하다.
+    간결_날짜: `${String(mo).padStart(2, '0')}/${String(d).padStart(2, '0')} ${wd}요일`,
     전체_날짜: `${y}년 ${mo}월 ${d}일 ${wd}요일`,
   };
 }

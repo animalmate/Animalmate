@@ -25,7 +25,7 @@ function makeEvent(patch: Partial<EventRow> = {}): EventRow {
 describe('publishVars — 발행 직전 치환 변수', () => {
   it('회차의 일시·장소·정원과 팀장단 명단을 모두 변수로 만든다', () => {
     expect(publishVars(makeEvent(), '팀장 홍길동 010-0000-0000')).toEqual({
-      간결_날짜: '07/23',
+      간결_날짜: '07/23 목요일',
       전체_날짜: '2026년 7월 23일 목요일',
       집합시간: '14:00', // 'HH:MM:SS' → 'HH:MM'
       장소: '양주 쉼터',
@@ -54,7 +54,7 @@ describe('renderFinal — 최종 본문 + 미치환 키', () => {
 
   it('값이 모두 있으면 치환 완료 + 미치환 없음', () => {
     const r = renderFinal(post, publishVars(makeEvent(), '팀장 홍길동'));
-    expect(r.title).toBe('07/23 정기 봉사 안내');
+    expect(r.title).toBe('07/23 목요일 정기 봉사 안내');
     expect(r.contentMd).toContain('장소 양주 쉼터 / 정원 20명');
     expect(r.contentMd).toContain('팀장 홍길동');
     expect(r.unresolved).toEqual([]);
@@ -79,7 +79,7 @@ describe('usedPlaceholders — 예약 큐·수정 화면의 "이렇게 바뀝니
   it('쓰는 키마다 들어갈 값을 등장 순서대로 돌려준다', () => {
     const vars = publishVars(makeEvent(), '팀장 홍길동');
     expect(usedPlaceholders(post, vars)).toEqual([
-      { key: '간결_날짜', value: '07/23' },
+      { key: '간결_날짜', value: '07/23 목요일' },
       { key: '정원', value: '20명' },
       { key: '팀장단', value: '팀장 홍길동' },
     ]);
@@ -90,7 +90,7 @@ describe('usedPlaceholders — 예약 큐·수정 화면의 "이렇게 바뀝니
     const byKey = new Map(usedPlaceholders(post, vars).map((u) => [u.key, u.value]));
     expect(byKey.get('정원')).toBeNull();
     expect(byKey.get('팀장단')).toBeNull();
-    expect(byKey.get('간결_날짜')).toBe('07/23');
+    expect(byKey.get('간결_날짜')).toBe('07/23 목요일');
   });
 });
 
