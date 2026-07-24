@@ -10,6 +10,10 @@ export default defineConfig({
     hookTimeout: 30_000,
   },
   resolve: {
-    alias: { '@': new URL('./src', import.meta.url).pathname },
+    alias: {
+      '@': new URL('./src', import.meta.url).pathname,
+      // 'server-only' 는 서버 컴포넌트 밖 import 를 막는 가드 — 테스트에선 no-op 스텁으로 대체.
+      'server-only': new URL('./test/stubs/server-only.ts', import.meta.url).pathname,
+    },
   },
 });
