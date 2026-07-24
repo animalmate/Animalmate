@@ -135,7 +135,9 @@
       통합 테스트를 함께 제거(화면에서 도달할 수 없는 코드였음).
       DoD(F1 전체): 파일럿 팀이 템플릿→선예약→필드 완성→카페 발행까지 end-to-end (UI 붙이면 완성)
 ### 1D. 챗봇 v1
-- [ ] **(첫 작업) `middleware.ts` nonce 기반 CSP + `unsafe-inline` 제거.**
+- [x] **(첫 작업) `middleware.ts` nonce 기반 CSP + `unsafe-inline` 제거.** → 2026-07-24 완료(07-DECISIONS 16).
+      `src/middleware.ts` 요청별 nonce + strict-dynamic. login/signup 을 page(서버)+form(클라)로 쪼개 동적 전환.
+      script-src 에 unsafe-inline 없음(실측). style-src unsafe-inline·정적 404 는 의도적 잔여(문서화).
       지금 `script-src` 에 `unsafe-inline` 이 남아 있다(Next 하이드레이션 인라인 스크립트 때문).
       현재는 HTML 주입 지점이 0건이라 실익이 없어 보류했지만(아래 결정 기록 10),
       챗봇은 **LLM 이 만든 문자열을 화면에 렌더링**하는 첫 기능이라 전제가 바뀐다.

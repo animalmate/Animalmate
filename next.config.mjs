@@ -1,38 +1,10 @@
-// 보안 헤더 — 모든 응답에 공통 적용.
+// 보안 헤더 — 모든 응답에 공통 적용(정적 헤더). nonce 가 필요한 CSP 는 미들웨어가 담당한다
+// (src/middleware.ts — 요청마다 nonce 발급). CSP 를 여기 두면 nonce 를 매 요청 새로 만들 수 없다.
 //
-// 가장 큰 이유는 클릭재킹이다. 회원 관리·게시판 레지스트리 같은 회장단 화면이 남의 사이트
-// iframe 안에 실릴 수 있으면, 회장단을 유인해 "역할 변경"·"비활성화" 버튼을 대신 누르게 만들 수 있다
-// (세션 쿠키는 SameSite=Lax 라 폼 전송 CSRF 는 막히지만, 프레임 안 실제 클릭은 막지 못한다).
-// frame-ancestors 'none' + X-Frame-Options 로 프레임 자체를 차단한다.
-//
-// CSP script-src 에 'unsafe-inline' 이 남아 있는 것은 Next 하이드레이션 인라인 스크립트 때문이다.
-// nonce 를 쓰려면 미들웨어가 필요해 지금은 두되, 외부 출처 스크립트·connect 는 전부 막아
-// 데이터 유출 경로를 닫는다. 본문은 전부 React 가 이스케이프하며 dangerouslySetInnerHTML 을
-// 쓰는 곳이 없다(HTML 주입 싱크 없음).
-//
-// 폰트(Pretendard)는 jsdelivr CDN 에서 오므로 style-src/font-src 에만 예외를 둔다.
-const FONT_CDN = 'https://cdn.jsdelivr.net';
-
-// dev 서버(HMR)는 eval 을 쓴다 — 개발에서만 허용하고 배포 빌드에서는 뺀다.
-const scriptSrc = ["'self'", "'unsafe-inline'"];
-if (process.env.NODE_ENV !== 'production') scriptSrc.push("'unsafe-eval'");
-
-const CSP = [
-  "default-src 'self'",
-  `script-src ${scriptSrc.join(' ')}`,
-  `style-src 'self' 'unsafe-inline' ${FONT_CDN}`,
-  `font-src 'self' data: ${FONT_CDN}`,
-  "img-src 'self' data: blob:",
-  "connect-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  'upgrade-insecure-requests',
-].join('; ');
-
+// 여기 남는 헤더들은 nonce 와 무관하고 정적 자산에도 붙어야 하므로 next.config 에 둔다.
+// X-Frame-Options: 클릭재킹 차단(회장단 화면을 iframe 에 실어 대신 클릭시키는 공격). CSP frame-ancestors
+// 와 이중으로 건다 — 구형 브라우저는 CSP 를 무시할 수 있어서.
 const SECURITY_HEADERS = [
-  { key: 'Content-Security-Policy', value: CSP },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
