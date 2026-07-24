@@ -15,6 +15,7 @@ export const LIMITS = {
   email: 254, // RFC 상한
   phone: 30,
   label: 50, // 팀장단 직위
+  question: 1000, // 챗봇 질문
 } as const;
 
 export class InputTooLongError extends Error {
