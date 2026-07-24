@@ -8,7 +8,7 @@ import { Modal } from '@/components/modal';
 import { TimeSelect } from '@/components/time-select';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { dateVars, kstDateStr } from '@/publishing/placeholders';
-import { capacityText } from '@/publishing/placeholder-catalog';
+import { capacityText, PLACEHOLDERS } from '@/publishing/placeholder-catalog';
 
 interface Board { menuid: number; name: string; botCanWrite: boolean; isActive: boolean }
 interface Team { id: string; name: string; leaders: string } // leaders = 공지에 들어갈 {{팀장단}} 문구
@@ -44,6 +44,40 @@ const emptyRow = (d: Partial<Row> = {}): Row => ({
 const publishLocalOf = (r: Row): string => (r.publishDate && r.publishTime ? `${r.publishDate}T${r.publishTime}` : '');
 // 게시판 목록은 menuid 순으로 오지만, 고를 때는 이름순이 찾기 쉽다(한글 기준).
 const byName = (a: Board, b: Board) => a.name.localeCompare(b.name, 'ko');
+
+/** 화면 맨 위 안내 — 제목·본문에 쓰는 {{표시}}가 뭔지 처음 보는 사람도 알게. */
+function PlaceholderGuide() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-coral-100 bg-white shadow-card">
+      <div className="border-b border-coral-100 bg-coral-50 px-4 py-3.5">
+        <div className="flex items-center gap-2">
+          <code className="rounded-md bg-white px-1.5 py-0.5 text-[13px] font-bold text-coral-700 shadow-sm">{'{{  }}'}</code>
+          <span className="text-[15px] font-bold text-ink-900">이 표시, 그냥 두면 알아서 채워진다</span>
+        </div>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-700">
+          제목·본문에 아래 표시를 그대로 넣어 두면, 공지가 카페에 올라가는 순간 진짜 값으로 바뀐다.
+          날짜·정원처럼 회차마다 달라지는 건 직접 쓰지 말고 표시만 넣어 둔다.
+        </p>
+      </div>
+      <ul className="grid gap-x-5 gap-y-2.5 px-4 py-3.5 sm:grid-cols-2">
+        {PLACEHOLDERS.map((p) => (
+          <li key={p.key} className="flex items-baseline gap-2">
+            <code className="shrink-0 rounded-md bg-cream-100 px-1.5 py-0.5 text-[12px] font-semibold text-coral-700">
+              {`{{${p.key}}}`}
+            </code>
+            <span className="min-w-0">
+              <span className="text-[13px] font-medium text-ink-900">{p.label}</span>
+              <span className="ml-1.5 text-[12px] text-ink-400">→ {p.example}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="border-t border-cream-200 bg-cream-25 px-4 py-2.5 text-[12px] leading-relaxed text-ink-500">
+        장소처럼 늘 똑같은 내용은 표시 없이 그냥 글자로 적으면 된다.
+      </p>
+    </div>
+  );
+}
 
 /** 미리보기 버튼 — 분홍(coral) 그라디언트 얇은 테두리. 높이는 입력칸(h-control)에 맞춘다. */
 function PreviewButton({ onClick }: { onClick: () => void }) {
@@ -219,6 +253,7 @@ export function NewReservationForm() {
   return (
     <div className="space-y-4">
       <h1 className="text-[22px] font-bold text-ink-900">새 예약</h1>
+      <PlaceholderGuide />
       <Card className="space-y-3">
         <Field label="종류">
           <Select value={kind} onChange={(e) => setKind(e.target.value as 'general' | 'volunteer')}>
