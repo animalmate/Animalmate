@@ -4,9 +4,11 @@ import { useRouter } from 'next/navigation';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
+import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
+import { dateVars, kstDateStr } from '@/publishing/placeholders';
 
 interface Board { menuid: number; name: string; botCanWrite: boolean }
-interface Team { id: string; name: string }
+interface Team { id: string; name: string; leaders: string } // leaders = 공지에 들어갈 {{팀장단}} 문구
 interface Template {
   id: string;
   name: string;
@@ -26,6 +28,22 @@ const emptyRow = (capacity = ''): Row => ({ publishLocal: '', eventDate: '', mee
 // 게시판 목록은 menuid 순으로 오지만, 고를 때는 이름순이 찾기 쉽다(한글 기준).
 const byName = (a: Board, b: Board) => a.name.localeCompare(b.name, 'ko');
 
+/** 한 일정이 실제로 카페에 올라갈 모습(제목 + 본문). 채워지지 않은 값이 있으면 함께 알려준다. */
+function OccurrencePreview({ title, body, missing }: { title: string; body: string; missing: string[] }) {
+  return (
+    <div className="space-y-2 rounded-md bg-cream-100 p-3">
+      <div className="text-xs text-ink-500">실제로 올라갈 글</div>
+      <div className="text-sm font-medium text-ink-900">{title || '(제목 없음)'}</div>
+      <pre className="whitespace-pre-wrap font-sans text-sm text-ink-700">{body || '(본문 없음)'}</pre>
+      {missing.length > 0 ? (
+        <div className="text-[13px] text-warning-700">
+          아직 비어 있음: {missing.map((k) => `{{${k}}}`).join(', ')} — 채우지 않으면 이 예약은 발행되지 않습니다.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function NewReservationForm() {
   const router = useRouter();
   const [boards, setBoards] = useState<Board[]>([]);
@@ -40,6 +58,7 @@ export function NewReservationForm() {
   const [templateId, setTemplateId] = useState(''); // 기본 장소·정원 승계용
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
 
+  const [openPreview, setOpenPreview] = useState<number | null>(null); // 미리보기를 펼친 일정 번호
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -57,6 +76,29 @@ export function NewReservationForm() {
   }, []);
 
   const selectedTemplate = templates.find((x) => x.id === templateId) ?? null;
+  const selectedTeam = teams.find((x) => x.id === teamId) ?? null;
+
+  /**
+   * 이 일정이 카페에 올라갈 실제 모습.
+   * 서버가 생성 시(날짜·집합시간·팀장단) + 발행 직전(정원)에 나눠 치환하는 값을 여기서 한 번에 적용한다.
+   * 최종 결과는 같으므로 이 미리보기가 곧 실제 게시물이다.
+   */
+  function previewOf(r: Row): { title: string; body: string; missing: string[] } {
+    const vars: Record<string, string> = {};
+    if (kind === 'volunteer') {
+      Object.assign(vars, dateVars(r.eventDate));
+      if (r.meetTime) vars['집합시간'] = r.meetTime;
+      if (selectedTeam?.leaders) vars['팀장단'] = selectedTeam.leaders;
+      const cap = r.capacity || (selectedTemplate?.defaultCapacity != null ? String(selectedTemplate.defaultCapacity) : '');
+      if (cap) vars['정원'] = cap;
+      if (selectedTemplate?.defaultPlace) vars['장소'] = selectedTemplate.defaultPlace; // 예전 양식 호환
+    } else if (r.publishLocal) {
+      Object.assign(vars, dateVars(kstDateStr(new Date(r.publishLocal))));
+    }
+    const t = renderTemplate(title, vars);
+    const b = renderTemplate(contentMd, vars);
+    return { title: t, body: b, missing: placeholderKeys(t, b) };
+  }
 
   function loadTemplate(id: string) {
     setTemplateId(id);
@@ -185,7 +227,14 @@ export function NewReservationForm() {
                   <Field label="집합 시간">
                     <Input type="time" value={r.meetTime} onChange={(e) => setRow(i, 'meetTime', e.target.value)} />
                   </Field>
-                  <Field label="정원" hint={selectedTemplate?.defaultCapacity != null ? '양식 기본값' : '비우면 나중에 입력'}>
+                </div>
+              ) : null}
+              <Field label="발행 시각">
+                <Input type="datetime-local" value={r.publishLocal} onChange={(e) => setRow(i, 'publishLocal', e.target.value)} />
+              </Field>
+              <div className="grid grid-cols-2 items-end gap-2">
+                {kind === 'volunteer' ? (
+                  <Field label="정원" hint={selectedTemplate?.defaultCapacity != null ? '비우면 양식 기본값' : undefined}>
                     <Input
                       inputMode="numeric"
                       value={r.capacity}
@@ -193,11 +242,14 @@ export function NewReservationForm() {
                       placeholder="20"
                     />
                   </Field>
-                </div>
-              ) : null}
-              <Field label="발행 시각">
-                <Input type="datetime-local" value={r.publishLocal} onChange={(e) => setRow(i, 'publishLocal', e.target.value)} />
-              </Field>
+                ) : (
+                  <div />
+                )}
+                <SecondaryButton onClick={() => setOpenPreview(openPreview === i ? null : i)}>
+                  {openPreview === i ? '미리보기 닫기' : '미리보기'}
+                </SecondaryButton>
+              </div>
+              {openPreview === i ? <OccurrencePreview {...previewOf(r)} /> : null}
               {rows.length > 1 ? (
                 <button className="text-xs text-coral-600 underline" onClick={() => removeRow(i)}>
                   이 일정 삭제
