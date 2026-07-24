@@ -20,12 +20,14 @@ interface Shortcut {
 const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations', label: '예약', desc: '공지 예약을 만들고 관리해요', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식을 저장해요', icon: 'doc' },
+  { href: '/documents', label: '문서', desc: '챗봇이 답할 안내 문서를 관리해요', icon: 'layers' },
 ];
 const BOARD_SHORTCUTS: Shortcut[] = [
   { href: '/admin/teams', label: '팀', desc: '팀과 팀장단을 관리해요', icon: 'users' },
   { href: '/admin/members', label: '회원 관리', desc: '가입 회원의 역할을 지정해요', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', desc: '학기별 가입코드를 발급해요', icon: 'key' },
   { href: '/admin/boards', label: '게시판', desc: '카페 게시판을 연결해요', icon: 'board' },
+  { href: '/admin/chatbot', label: '챗봇 설정', desc: '사용량·한도를 관리해요', icon: 'info' },
 ];
 
 // 외부 바로가기(새 탭). staffOnly 는 서버에서 걸러 부원의 HTML 에 URL 자체가 나가지 않는다(규칙 #6).
@@ -77,9 +79,23 @@ export default async function HomePage() {
         <div>
           <h1 className="text-[28px] font-bold text-ink-900">안녕하세요, {name}님</h1>
           <p className="mt-1.5 text-[15px] text-ink-500">
-            {staff ? '오늘도 아이들을 위해 한 걸음 — 무엇부터 할까요?' : '동아리 소식은 네이버 카페에서 확인할 수 있어요.'}
+            {staff ? '오늘도 아이들을 위해 한 걸음 — 무엇부터 할까요?' : '궁금한 건 챗봇에게, 소식은 네이버 카페에서.'}
           </p>
         </div>
+
+        {/* 챗봇 = 메인 기능. 전원에게 가장 크게 노출한다. */}
+        <a href="/chatbot" className="no-underline">
+          <Card className="flex items-center gap-4 border-blue-200 bg-blue-50/50 transition-colors hover:border-blue-400">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
+              <Icon name="chat" size={28} />
+            </span>
+            <div className="min-w-0">
+              <strong className="block text-[17px] font-bold text-ink-900">동아리 챗봇에게 물어보기</strong>
+              <span className="text-[14px] text-ink-500">봉사 일정·회비·규정, 무엇이든 물어보면 바로 답해줘요.</span>
+            </div>
+            <Icon name="chevronRight" size={20} className="ml-auto shrink-0 text-blue-400" />
+          </Card>
+        </a>
 
         {shortcuts.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -98,17 +114,7 @@ export default async function HomePage() {
               </a>
             ))}
           </div>
-        ) : (
-          <Card className="flex items-start gap-3.5">
-            <img src="/logo-shapes.png" alt="" className="h-[72px] w-[72px] shrink-0 object-contain" />
-            <div>
-              <h3 className="mb-1 text-base font-semibold text-ink-900">부원 전용 안내</h3>
-              <p className="text-[15px] leading-relaxed text-ink-700">
-                봉사 신청과 공지는 네이버 카페에서 진행돼요. 관리 메뉴는 운영진부터 표시됩니다.
-              </p>
-            </div>
-          </Card>
-        )}
+        ) : null}
 
         {/* 외부 바로가기 — 카페는 전원, 드라이브는 운영진 이상(서버에서 필터). 새 탭으로 연다. */}
         <div className="space-y-2.5">
