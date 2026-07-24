@@ -1,9 +1,10 @@
-// 팀장단 명단 저장 = 공지 연락처(teams.leaders JSONB) + 관리 권한(team_members) 동기화(회장단/시스템관리자 전용).
+// 팀 소속(team_members)과 팀별 미가입자 팀장단(teams.leaders)을 관리한다. 회장단·시스템관리자 전용.
 //
-// 모델(2026-07-24 회장단 지시):
-//  - 팀장단 = 팀장 + 부팀장. 명단 각 행: 직위/이름/전화(공지 표시) + 이메일(관리 권한 계정 연결).
-//  - 이메일이 가입 계정과 연결되면 그 계정에 이 팀 예약·템플릿 관리 권한 부여(회장단/시스템관리자와 함께).
-//  - 명단에 추가된 계정은 운영진(staff)으로 승격, 명단에서 빠지고 남은 팀 소속이 없으면 member 로 강등.
+// 모델(2026-07-25 개편):
+//  - 팀 소속·직함은 "회원 관리"에서 회원별로 배정(setUserTeams). position=leader 면 공지 {{팀장단}}에 노출.
+//  - 팀장단 이름·전화는 users(가입 시 입력·본인 수정)에서 온다 — 팀별로 다시 적지 않는다.
+//  - 앱 미가입자만 팀별 "수동 팀장단"(teams.leaders: 이름·전화)으로 공지에 덧붙인다(setTeamManualLeaders).
+//  - 팀에 배정되면 member→staff 승격, 마지막 팀에서 빠지면 staff→member 강등(board/sysadmin 유지).
 
 import { and, eq } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -17,20 +18,29 @@ import { LIMITS, checkLength } from '@/http/input';
 type Db = PostgresJsDatabase<typeof schema>;
 export type Team = typeof teams.$inferSelect;
 
-export interface RosterEntry {
+export type TeamPosition = 'leader' | 'member';
+
+/** 회원 관리에서 지정하는 한 회원의 팀 배정. */
+export interface UserTeamAssignment {
+  teamId: string;
+  position: TeamPosition; // leader = 팀장단(공지 노출) / member = 관리만
+  label?: string; // 직함(팀장/부팀장 등). leader 일 때만 의미.
+}
+
+/** 팀별 미가입자 수동 팀장단(공지 표시용, 계정 없음). */
+export interface ManualLeader {
   label: string;
   name: string;
   phone: string;
-  email?: string;
 }
 
-/** 팀장단 명단 최대 행 수(팀장 + 부팀장 몇 명 규모). */
+/** 한 팀의 수동 명단 최대 행 수. */
 export const MAX_ROSTER_ENTRIES = 30;
 
 export class TeamMemberError extends Error {
   readonly status = 400;
   constructor(
-    readonly code: 'team_not_found' | 'user_not_found' | 'user_inactive' | 'too_many_entries',
+    readonly code: 'team_not_found' | 'user_not_found' | 'too_many_entries',
     readonly email?: string
   ) {
     super(code);
@@ -42,7 +52,7 @@ function ensureBoard(actor: Actor): void {
   if (!isPrivileged(actor.role)) throw new PermissionError('role_insufficient');
 }
 
-// member 뿐이면 staff 로 승격(팀장단은 운영진). staff/board/sysadmin 은 유지.
+// member 뿐이면 staff 로 승격(팀 소속 = 운영진). staff/board/sysadmin 은 유지.
 async function promoteIfMember(tx: Db, userId: string, actorUserId: string): Promise<void> {
   const active = await tx
     .select({ role: memberships.role })
@@ -53,7 +63,7 @@ async function promoteIfMember(tx: Db, userId: string, actorUserId: string): Pro
       .update(memberships)
       .set({ role: 'staff' })
       .where(and(eq(memberships.userId, userId), eq(memberships.status, 'active'), eq(memberships.role, 'member')));
-    await recordAudit(tx, buildAuditEntry({ actorUserId, action: 'membership.promote', targetTable: 'memberships', targetId: userId, after: { role: 'staff', reason: 'team_leader' } }));
+    await recordAudit(tx, buildAuditEntry({ actorUserId, action: 'membership.promote', targetTable: 'memberships', targetId: userId, after: { role: 'staff', reason: 'team_assigned' } }));
   }
 }
 
@@ -67,78 +77,97 @@ async function demoteIfOrphan(tx: Db, userId: string, actorUserId: string): Prom
     .where(and(eq(memberships.userId, userId), eq(memberships.status, 'active'), eq(memberships.role, 'staff')))
     .returning({ id: memberships.id });
   if (demoted.length > 0) {
-    await recordAudit(tx, buildAuditEntry({ actorUserId, action: 'membership.demote', targetTable: 'memberships', targetId: userId, after: { role: 'member', reason: 'team_leader_removed' } }));
+    await recordAudit(tx, buildAuditEntry({ actorUserId, action: 'membership.demote', targetTable: 'memberships', targetId: userId, after: { role: 'member', reason: 'team_unassigned' } }));
   }
 }
 
+/** 한 회원의 팀 소속 목록(팀 이름 포함). 회원 관리 표시용. */
+export interface UserTeamRow {
+  teamId: string;
+  teamName: string;
+  position: TeamPosition;
+  label: string;
+}
+
 /**
- * 팀장단 명단 저장(회장단/시스템관리자 전용).
- * teams.leaders(공지 표시: 직위/이름/전화/이메일) 저장 + 이메일이 연결된 계정을 team_members(관리 권한)로 동기화.
- * 이메일이 있는 행은 가입 완료 + 활성 멤버십이어야 한다(없으면 TeamMemberError).
+ * 회원의 팀 배정을 원하는 상태로 맞춘다(회장단/시스템관리자 전용).
+ * 추가/직함·직위 변경/해제를 diff 로 처리하고, 그에 따라 운영진 승격/강등을 반영한다.
  */
-export async function setTeamRoster(db: Db, actor: Actor, teamId: string, entries: RosterEntry[]): Promise<Team> {
+export async function setUserTeams(db: Db, actor: Actor, userId: string, assignments: UserTeamAssignment[]): Promise<void> {
+  ensureBoard(actor);
+
+  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!u) throw new TeamMemberError('user_not_found');
+
+  // 원하는 배정 정규화(팀 중복은 마지막 값으로).
+  const desired = new Map<string, { position: TeamPosition; label: string }>();
+  for (const a of assignments) {
+    const teamId = String(a.teamId ?? '').trim();
+    if (!teamId) continue;
+    const position: TeamPosition = a.position === 'member' ? 'member' : 'leader';
+    const label = position === 'leader' ? String(a.label ?? '').trim() : '';
+    checkLength('직함', label, LIMITS.label);
+    desired.set(teamId, { position, label });
+  }
+
+  // 존재하는 팀만 허용(없는 팀 id 는 조용히 무시하지 않고 막는다 — FK 오류 대신 명확한 에러).
+  for (const teamId of desired.keys()) {
+    const [t] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1);
+    if (!t) throw new TeamMemberError('team_not_found');
+  }
+
+  await db.transaction(async (tx) => {
+    const current = await tx
+      .select({ teamId: teamMembers.teamId, position: teamMembers.position, label: teamMembers.label })
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, userId));
+    const currentMap = new Map(current.map((c) => [c.teamId, c]));
+
+    let added = false;
+    for (const [teamId, { position, label }] of desired) {
+      const cur = currentMap.get(teamId);
+      if (!cur) {
+        await tx.insert(teamMembers).values({ teamId, userId, position, label: label || null }).onConflictDoNothing();
+        added = true;
+      } else if (cur.position !== position || (cur.label ?? '') !== label) {
+        await tx.update(teamMembers).set({ position, label: label || null }).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+      }
+    }
+    if (added) await promoteIfMember(tx, userId, actor.userId);
+
+    for (const teamId of currentMap.keys()) {
+      if (desired.has(teamId)) continue;
+      await tx.delete(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+    }
+    // 삭제 후 남은 소속이 없으면 강등.
+    await demoteIfOrphan(tx, userId, actor.userId);
+
+    await recordAudit(tx, buildAuditEntry({ actorUserId: actor.userId, action: 'team.set_user_teams', targetTable: 'team_members', targetId: userId, after: { teams: [...desired.keys()], count: desired.size } }));
+  });
+}
+
+/**
+ * 팀별 미가입자 수동 팀장단 저장(회장단/시스템관리자 전용). teams.leaders(이름·전화)만 갱신.
+ * 계정·권한과 무관 — 공지 {{팀장단}}에 자동 명단 뒤로 덧붙는 표시 항목이다.
+ */
+export async function setTeamManualLeaders(db: Db, actor: Actor, teamId: string, extras: ManualLeader[]): Promise<Team> {
   ensureBoard(actor);
 
   const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).limit(1);
   if (!team) throw new TeamMemberError('team_not_found');
 
-  // 명단은 공지에 그대로 나가고 이름·전화번호(개인정보)를 담는다. 길이·건수를 서버에서 못 박는다.
-  if (entries.length > MAX_ROSTER_ENTRIES) throw new TeamMemberError('too_many_entries');
-  const clean = entries
-    .map((e) => ({
-      label: String(e.label ?? '').trim(),
-      name: String(e.name ?? '').trim(),
-      phone: String(e.phone ?? '').trim(),
-      email: String(e.email ?? '').trim().toLowerCase(),
-    }))
-    .filter((e) => e.name || e.phone || e.email);
+  if (extras.length > MAX_ROSTER_ENTRIES) throw new TeamMemberError('too_many_entries');
+  const clean: TeamLeader[] = extras
+    .map((e) => ({ label: String(e.label ?? '').trim(), name: String(e.name ?? '').trim(), phone: String(e.phone ?? '').trim() }))
+    .filter((e) => e.name || e.phone);
   for (const e of clean) {
-    checkLength('직위', e.label, LIMITS.label);
+    checkLength('직함', e.label, LIMITS.label);
     checkLength('이름', e.name, LIMITS.name);
     checkLength('전화번호', e.phone, LIMITS.phone);
-    checkLength('이메일', e.email, LIMITS.email);
   }
 
-  // 이메일이 있는 행 → 계정 확인(관리 권한 부여 대상).
-  const resolved = new Map<string, { userId: string; name: string }>();
-  for (const e of clean) {
-    if (!e.email || resolved.has(e.email)) continue;
-    const [u] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, e.email)).limit(1);
-    if (!u) throw new TeamMemberError('user_not_found', e.email);
-    const active = await db.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, u.id), eq(memberships.status, 'active')));
-    if (active.length === 0) throw new TeamMemberError('user_inactive', e.email);
-    resolved.set(e.email, { userId: u.id, name: u.name });
-  }
-
-  // JSONB 명단: 이름이 비면 계정 이름으로 채움(공지 표시).
-  const leaders: TeamLeader[] = clean.map((e) => ({
-    label: e.label,
-    name: e.name || (e.email ? (resolved.get(e.email)?.name ?? '') : ''),
-    phone: e.phone,
-    ...(e.email ? { email: e.email } : {}),
-  }));
-
-  const desired = new Set([...resolved.values()].map((v) => v.userId));
-
-  return db.transaction(async (tx) => {
-    const [row] = await tx.update(teams).set({ leaders }).where(eq(teams.id, teamId)).returning();
-    if (!row) throw new TeamMemberError('team_not_found');
-
-    const current = await tx.select({ userId: teamMembers.userId }).from(teamMembers).where(eq(teamMembers.teamId, teamId));
-    const currentSet = new Set(current.map((c) => c.userId));
-
-    for (const userId of desired) {
-      if (currentSet.has(userId)) continue;
-      await promoteIfMember(tx, userId, actor.userId);
-      await tx.insert(teamMembers).values({ teamId, userId, position: 'leader' }).onConflictDoNothing();
-    }
-    for (const userId of currentSet) {
-      if (desired.has(userId)) continue;
-      await tx.delete(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
-      await demoteIfOrphan(tx, userId, actor.userId);
-    }
-
-    await recordAudit(tx, buildAuditEntry({ actorUserId: actor.userId, action: 'team.set_roster', targetTable: 'teams', targetId: teamId, after: { count: leaders.length, managers: desired.size } }));
-    return row;
-  });
+  const [row] = await db.update(teams).set({ leaders: clean }).where(eq(teams.id, teamId)).returning();
+  if (!row) throw new TeamMemberError('team_not_found');
+  await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: 'team.set_manual_leaders', targetTable: 'teams', targetId: teamId, after: { count: clean.length } }));
+  return row;
 }

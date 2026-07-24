@@ -11,6 +11,7 @@ export function SignupForm() {
   const [step, setStep] = useState<'form' | 'code'>('form');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -35,7 +36,7 @@ export function SignupForm() {
   async function verify() {
     setError('');
     setBusy(true);
-    const r = await apiPost('/api/auth/signup/verify', { email: email.trim(), code: code.trim(), name: name.trim() });
+    const r = await apiPost('/api/auth/signup/verify', { email: email.trim(), code: code.trim(), name: name.trim(), phone: phone.trim() });
     setBusy(false);
     if (!r.ok) return setError(errorMessage(r.data.error));
     router.push('/');
@@ -60,11 +61,14 @@ export function SignupForm() {
             <Field label="이메일">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
             </Field>
+            <Field label="전화번호" hint="봉사 공지 팀장단 표시·운영 연락에 쓰여요. 나중에 내 정보에서 고칠 수 있어요.">
+              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-1234-5678" autoComplete="tel" />
+            </Field>
             <Field label="가입코드" hint="동아리 카페 공지의 학기 가입코드">
               <Input value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="가입코드" />
             </Field>
             <ErrorText>{error}</ErrorText>
-            <Button className="w-full" disabled={busy || !name || !email || !joinCode} onClick={request}>
+            <Button className="w-full" disabled={busy || !name || !email || !phone || !joinCode} onClick={request}>
               {busy ? '전송 중…' : '인증 코드 받기'}
             </Button>
             <InfoText>

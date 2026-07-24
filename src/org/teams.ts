@@ -33,7 +33,7 @@ export async function setTeamActive(db: Db, actor: Actor, id: string, isActive: 
   await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: isActive ? 'team.activate' : 'team.deactivate', targetTable: 'teams', targetId: id, after: { isActive } }));
   return row;
 }
-// 팀장단 명단 저장은 org/team-members.ts 의 setTeamRoster 로 이동(명단+관리 권한 동기화).
+// 팀 소속·직함 배정은 org/team-members.ts 의 setUserTeams(회원별), 미가입자 팀장단은 setTeamManualLeaders 로.
 
 export class TeamInUseError extends Error {
   readonly status = 409;

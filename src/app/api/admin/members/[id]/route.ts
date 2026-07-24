@@ -3,8 +3,10 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { setMemberRole, setMemberActive, revokeSessions, MemberError } from '@/auth/members';
+import { setUserTeams, TeamMemberError } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
+import { InputTooLongError } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +26,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       await setMemberActive(db, actor, id, b.active);
       return NextResponse.json({ ok: true });
     }
+    // 팀 배정(팀+직위+직함) 갱신.
+    if (Array.isArray(b.teams)) {
+      await setUserTeams(db, actor, id, b.teams);
+      return NextResponse.json({ ok: true });
+    }
     // 모든 기기에서 로그아웃(users.session_version + 1 → 기존 토큰 전부 무효).
     if (b.revokeSessions === true) {
       await revokeSessions(db, actor, id);
@@ -33,6 +40,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof MemberError) return NextResponse.json({ error: e.code }, { status: 400 });
+    if (e instanceof TeamMemberError) return NextResponse.json({ error: e.code }, { status: 400 });
+    if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
     return internalError('PATCH /api/admin/members/[id]', e);
   }
 }

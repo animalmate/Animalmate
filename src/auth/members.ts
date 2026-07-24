@@ -7,7 +7,8 @@
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { users, memberships, teamMembers } from '@/db/schema';
+import { users, memberships, teamMembers, teams } from '@/db/schema';
+import type { TeamPosition, UserTeamRow } from '@/org/team-members';
 import { isPrivileged, type Actor, type Role } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
@@ -34,9 +35,10 @@ export interface MemberRow {
   userId: string;
   email: string;
   name: string;
+  phone: string | null; // 연락처(본인 입력). 없을 수 있음.
   role: Role; // 멤버십 중 최고 역할(비활성 포함 — 무엇이었는지 표시)
   active: boolean; // 활성 멤버십 존재 여부
-  teamCount: number; // 소속 팀 수
+  teams: UserTeamRow[]; // 소속 팀·직위·직함
 }
 
 export class MemberError extends Error {
@@ -62,9 +64,12 @@ function ensureValidRole(role: string): asserts role is Role {
 
 /** 전체 가입 계정 목록(시스템 계정 제외). 회장단/시스템관리자 전용(라우트에서 게이트). */
 export async function listMembers(db: Db): Promise<MemberRow[]> {
-  const us = await db.select({ id: users.id, email: users.email, name: users.name }).from(users).orderBy(desc(users.createdAt));
+  const us = await db.select({ id: users.id, email: users.email, name: users.name, phone: users.phone }).from(users).orderBy(desc(users.createdAt));
   const ms = await db.select({ userId: memberships.userId, role: memberships.role, status: memberships.status }).from(memberships);
-  const tms = await db.select({ userId: teamMembers.userId }).from(teamMembers);
+  const tms = await db
+    .select({ userId: teamMembers.userId, teamId: teamMembers.teamId, teamName: teams.name, position: teamMembers.position, label: teamMembers.label })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId));
 
   const roleByUser = new Map<string, Role>();
   const activeByUser = new Set<string>();
@@ -73,8 +78,12 @@ export async function listMembers(db: Db): Promise<MemberRow[]> {
     if (!cur || ROLE_RANK[m.role] > ROLE_RANK[cur]) roleByUser.set(m.userId, m.role);
     if (m.status === 'active') activeByUser.add(m.userId);
   }
-  const teamCount = new Map<string, number>();
-  for (const t of tms) teamCount.set(t.userId, (teamCount.get(t.userId) ?? 0) + 1);
+  const teamsByUser = new Map<string, UserTeamRow[]>();
+  for (const t of tms) {
+    const arr = teamsByUser.get(t.userId) ?? [];
+    arr.push({ teamId: t.teamId, teamName: t.teamName, position: t.position as TeamPosition, label: t.label ?? '' });
+    teamsByUser.set(t.userId, arr);
+  }
 
   return us
     .filter((u) => u.email !== SYSTEM_EMAIL)
@@ -82,9 +91,10 @@ export async function listMembers(db: Db): Promise<MemberRow[]> {
       userId: u.id,
       email: u.email,
       name: u.name,
+      phone: u.phone ?? null,
       role: roleByUser.get(u.id) ?? 'member',
       active: activeByUser.has(u.id),
-      teamCount: teamCount.get(u.id) ?? 0,
+      teams: teamsByUser.get(u.id) ?? [],
     }));
 }
 

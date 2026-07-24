@@ -93,7 +93,7 @@ async function sendOtpIgnoringCooldown(
 
 export async function verifySignup(
   db: DB,
-  input: { email: string; code: string; name?: string },
+  input: { email: string; code: string; name?: string; phone?: string | null },
   ctx: AuthCtx
 ): Promise<{ token: string; userId: string }> {
   const email = norm(input.email);
@@ -108,7 +108,7 @@ export async function verifySignup(
     if (await getUserByEmail(tx, email)) throw new AuthError('already_registered', 409);
     const [u] = await tx
       .insert(users)
-      .values({ email, name: input.name?.trim() || email.split('@')[0]! })
+      .values({ email, name: input.name?.trim() || email.split('@')[0]!, phone: input.phone?.trim() || null })
       .returning();
     await tx.insert(memberships).values({ userId: u!.id, role: 'member', termStart, termEnd, status: 'active' });
     return u!;

@@ -61,6 +61,9 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
+  // 연락처(가입 시 입력, 본인 수정 가능). 봉사 공지 {{팀장단}} 표시에 쓰인다(팀장단 배정된 계정).
+  // PII 이므로 RAG 인덱스에 넣지 않는다(규칙 #5). 없을 수 있음(기존 계정·미입력).
+  phone: text('phone'),
   /**
    * 세션 세대 번호. 발급된 JWT 에 이 값을 넣고 요청마다 DB 값과 대조한다(불일치 = 401).
    * 값을 1 올리면 그 계정의 **모든 기기 세션이 즉시 무효**가 된다(기기 분실·계정 양도·유출 대응).
@@ -84,11 +87,12 @@ export const memberships = pgTable('memberships', {
 });
 
 /** 팀장단 1인(공지에 삽입되는 연락처 + 관리 권한 계정). 개인정보 — 런타임 입력이며 코드/시드에 넣지 않는다(규칙 #4). */
+// teams.leaders = 봉사 공지 {{팀장단}}에 덧붙는 "미가입자 수동 항목"(이름·전화만 있는 사람).
+// 가입 계정 팀장단은 team_members(position=leader)로 관리하고 여기 두지 않는다. 표시 순서상 자동 명단 뒤에 붙는다.
 export interface TeamLeader {
   label: string; // 팀장 / 부팀장 등
   name: string;
   phone: string;
-  email?: string; // 있으면 그 계정에 이 팀 관리 권한 부여(team_members 동기화). 없으면 공지 표시용.
 }
 
 export const teams = pgTable('teams', {
@@ -109,7 +113,9 @@ export const teamMembers = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    position: teamPositionEnum('position').notNull(), // leader = 팀장단
+    position: teamPositionEnum('position').notNull(), // leader = 팀장단(공지 {{팀장단}} 노출) / member = 관리만
+    // 공지 {{팀장단}}에 붙는 직함(팀장/부팀장 등). leader 일 때만 의미. 없으면 직함 없이 이름·전화만.
+    label: text('label'),
   },
   (t) => [unique('team_members_team_user_uq').on(t.teamId, t.userId)]
 );

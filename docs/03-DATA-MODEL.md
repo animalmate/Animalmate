@@ -12,18 +12,21 @@
 
 ## 테이블
 ### 조직/계정
-- `users` (id, email, name, session_version, created_at)
+- `users` (id, email, name, phone?, session_version, created_at)
   - `session_version`: 세션 세대(0010). 발급된 JWT 에 이 값을 담고 요청마다 대조 — 값을 1 올리면
     그 계정의 **모든 기기 세션이 즉시 무효**. 세션 테이블 불필요. 올라가는 경우 3가지(07-DECISIONS 11·13):
     ① 회원 관리 > "모든 기기에서 로그아웃" ② **비활성화** ③ **강등**(승격·재활성화는 올리지 않는다).
+  - `phone`: 연락처(0012 추가). **가입 시 입력, 본인이 내 정보에서 수정**. 봉사 공지 `{{팀장단}}`에
+    팀장단 배정된 계정의 이름·전화로 자동 삽입된다. PII — RAG 인덱스 금지(규칙 #5), 코드/시드/커밋 금지(규칙 #4).
 - `memberships` (user_id, role, board_position?, term_start, term_end, status[active|expired])
   - 크론이 매일 term_end 경과 건을 expired로 강등. 회장단만 memberships를 변경 가능.
 - `teams` (id, name, kind[activity|functional], is_active, leaders jsonb)
-  - leaders: 매 학기 교체되는 팀장단 명단 [{label,name,phone,email?}] (공지 `{{팀장단}}` 자동 삽입). 0006 추가.
-    email 은 그 계정에 이 팀 관리 권한 부여용(setTeamRoster 가 저장 시 team_members 로 동기화). 마이그레이션 불필요(JSONB).
-    개인정보 — 런타임 입력이며 코드/시드/커밋에 넣지 않는다(규칙 #4).
-- `team_members` (team_id, user_id, position[leader|member])   ← 관리 권한 인덱스. 팀장단 명단(leaders.email)에서
-    setTeamRoster 가 파생·동기화(별도 UI 없음). 소속 계정 = 회장단/시스템관리자와 함께 그 팀 예약·템플릿 관리 가능.
+  - leaders(0006): **앱 미가입자 전용** 수동 팀장단 [{label,name,phone}] (공지 `{{팀장단}}`에 자동 명단 뒤로 덧붙음).
+    가입 팀장단은 여기 두지 않고 team_members(position=leader)로 관리. 같은 전화번호는 공지에서 자동 명단과 중복 제거.
+    개인정보 — 런타임 입력이며 코드/시드/커밋에 넣지 않는다(규칙 #4). setTeamManualLeaders 가 저장.
+- `team_members` (team_id, user_id, position[leader|member], label?)   ← 팀 소속·직함(0012 label 추가).
+    **회원 관리에서 회원별로 배정**(setUserTeams). position=leader = 공지 `{{팀장단}}` 노출, label = 직함(팀장/부팀장).
+    소속 계정 = 회장단/시스템관리자와 함께 그 팀 예약·템플릿 관리 가능. 배정되면 member→staff, 마지막 팀 해제 시 staff→member.
 - `join_codes` (id, code, semester_label, is_active, created_by, created_at)   ← 부원 가입코드(구현됨, 0003)
   - 학기별 가입코드. **활성 코드는 항상 1개**(부분 유니크 인덱스 `where is_active`). 카페 공지로 배포, 회장단 재발급.
     재발급 = 기존 is_active=false + 신규 발급(트랜잭션), audit 기록. 이력은 비활성 행으로 남긴다.

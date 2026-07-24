@@ -3,8 +3,9 @@
 
 import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { scheduledPosts, events, teams, boards } from '@/db/schema';
-import { dateVars, leadersBlock, kstDateStr } from './placeholders';
+import { scheduledPosts, events, boards } from '@/db/schema';
+import { composeTeamLeaders } from '@/org/team-leaders';
+import { dateVars, kstDateStr } from './placeholders';
 import { isPrivileged, type Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
@@ -154,11 +155,10 @@ export async function createReservationsMulti(
   if (occurrences.length > MAX_OCCURRENCES) {
     throw new Error(`한 번에 만들 수 있는 예약은 최대 ${MAX_OCCURRENCES}건입니다.`);
   }
-  // 봉사 공지면 팀장단 명단을 한 번만 조회.
+  // 봉사 공지면 팀장단 명단(자동+수동)을 한 번만 조회.
   let leaders = '';
   if (shared.kind === 'volunteer' && shared.teamId) {
-    const [team] = await db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, shared.teamId)).limit(1);
-    leaders = leadersBlock(team?.leaders);
+    leaders = await composeTeamLeaders(db, shared.teamId);
   }
   // 양식의 기본 장소·정원(장소별 양식). 없으면 null 로 두고 예약 수정에서 채운다.
   // templateId 는 요청 본문에서 오므로 "이 사용자가 쓸 수 있는 양식인지"를 확인한다.
@@ -302,17 +302,19 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
   } else if (opts.teamId) {
     where = and(eq(scheduledPosts.ownerType, 'team'), eq(scheduledPosts.ownerId, opts.teamId));
   }
-  // 팀장단 명단까지 조인해 "발행하면 실제로 어떤 키가 미치환으로 남는지"를 큐에서 바로 보여준다.
   const rows = await db
-    .select({ post: scheduledPosts, event: events, leaders: teams.leaders, boardName: boards.name })
+    .select({ post: scheduledPosts, event: events, boardName: boards.name })
     .from(scheduledPosts)
     .leftJoin(events, eq(events.id, scheduledPosts.eventId))
-    .leftJoin(teams, and(eq(scheduledPosts.ownerType, 'team'), eq(teams.id, scheduledPosts.ownerId)))
     .leftJoin(boards, eq(boards.menuid, scheduledPosts.boardMenuid))
     .where(where)
     .orderBy(asc(scheduledPosts.publishAt));
 
-  return rows.map(({ post, event, leaders, boardName }) => ({
+  // 팀 소유 예약의 {{팀장단}}(자동+수동)을 팀별로 한 번씩 구성해 "발행 시 미치환 키"를 큐에서 바로 보여준다.
+  const teamIds = [...new Set(rows.filter((r) => r.post.ownerType === 'team' && r.post.status !== 'published').map((r) => r.post.ownerId))];
+  const leadersByTeam = new Map(await Promise.all(teamIds.map(async (id) => [id, await composeTeamLeaders(db, id)] as const)));
+
+  return rows.map(({ post, event, boardName }) => ({
     id: post.id,
     title: post.title,
     status: post.status,
@@ -330,6 +332,6 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
     placeholders:
       post.status === 'published'
         ? [] // 이미 나간 글은 치환이 끝난 최종본이다(카페 수정 API 없음)
-        : usedPlaceholders(post, publishVars(event, leadersBlock(leaders))),
+        : usedPlaceholders(post, publishVars(event, post.ownerType === 'team' ? (leadersByTeam.get(post.ownerId) ?? '') : '')),
   }));
 }

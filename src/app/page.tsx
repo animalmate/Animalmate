@@ -6,6 +6,7 @@ import { ConsoleShell } from '@/components/console-shell';
 import { Banner, Card } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { CursorDog } from '@/components/cursor-dog';
+import { ChatDog } from '@/components/chat-dog';
 import { isStaffPlus, isPrivileged } from '@/auth/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -20,11 +21,10 @@ interface Shortcut {
 const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations', label: '예약', desc: '공지 예약을 만들고 관리해요', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식을 저장해요', icon: 'doc' },
-  { href: '/documents', label: '문서', desc: '챗봇이 답할 안내 문서를 관리해요', icon: 'layers' },
 ];
 const BOARD_SHORTCUTS: Shortcut[] = [
-  { href: '/admin/teams', label: '팀', desc: '팀과 팀장단을 관리해요', icon: 'users' },
-  { href: '/admin/members', label: '회원 관리', desc: '가입 회원의 역할을 지정해요', icon: 'users' },
+  { href: '/documents', label: '문서', desc: '챗봇이 답할 안내 문서를 관리해요', icon: 'layers' },
+  { href: '/admin/members', label: '회원·팀 관리', desc: '역할·팀·직함을 지정해요', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', desc: '학기별 가입코드를 발급해요', icon: 'key' },
   { href: '/admin/boards', label: '게시판', desc: '카페 게시판을 연결해요', icon: 'board' },
   { href: '/admin/chatbot', label: '챗봇 설정', desc: '사용량·한도를 관리해요', icon: 'info' },
@@ -83,17 +83,23 @@ export default async function HomePage() {
           </p>
         </div>
 
-        {/* 챗봇 = 메인 기능. 전원에게 가장 크게 노출한다. */}
-        <a href="/chatbot" className="no-underline">
-          <Card className="flex items-center gap-4 border-blue-200 bg-blue-50/50 transition-colors hover:border-blue-400">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
-              <Icon name="chat" size={28} />
+        {/* 챗봇 = 메인 기능. 전원에게 가장 크게 노출한다. 인사말과 간격을 넉넉히 둔다. */}
+        <a href="/chatbot" className="group block no-underline !mt-9 sm:!mt-11">
+          <Card className="flex items-center gap-4 border-blue-200 bg-gradient-to-r from-blue-50 to-cream-50 transition-colors group-hover:border-blue-400 sm:gap-5">
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white shadow-card ring-1 ring-blue-100">
+              <ChatDog mood="idle" size={50} />
             </span>
             <div className="min-w-0">
-              <strong className="block text-[17px] font-bold text-ink-900">동아리 챗봇에게 물어보기</strong>
-              <span className="text-[14px] text-ink-500">봉사 일정·회비·규정, 무엇이든 물어보면 바로 답해줘요.</span>
+              <strong className="block text-[18px] font-bold text-ink-900">동아리 챗봇에게 물어보기</strong>
+              <span className="mt-0.5 block text-[14px] leading-relaxed text-ink-500">
+                봉사 일정·회비·규정, 무엇이든 물어보면 바로 답해줘요.
+              </span>
             </div>
-            <Icon name="chevronRight" size={20} className="ml-auto shrink-0 text-blue-400" />
+            <span className="ml-auto hidden shrink-0 items-center gap-1 rounded-full bg-blue-600 px-4 py-2 text-[14px] font-semibold text-white transition-colors group-hover:bg-blue-700 sm:inline-flex">
+              물어보기
+              <Icon name="chevronRight" size={16} />
+            </span>
+            <Icon name="chevronRight" size={20} className="ml-auto shrink-0 text-blue-400 sm:hidden" />
           </Card>
         </a>
 

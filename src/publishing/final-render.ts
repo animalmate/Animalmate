@@ -6,9 +6,10 @@
 // 템플릿의 기본 장소·정원은 예약 생성 시 events 에 복사되어 여기서 자연히 반영된다.
 
 import { eq } from 'drizzle-orm';
-import { events, teams } from '@/db/schema';
+import { events } from '@/db/schema';
 import type { Database } from '@/db/types';
-import { dateVars, leadersBlock } from './placeholders';
+import { composeTeamLeaders } from '@/org/team-leaders';
+import { dateVars } from './placeholders';
 import { renderTemplate, placeholderKeys } from './template-render';
 import { capacityText } from './placeholder-catalog';
 
@@ -71,8 +72,7 @@ export async function loadPublishVars(
   }
   let leaders = '';
   if (post.ownerType === 'team') {
-    const [team] = await db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, post.ownerId)).limit(1);
-    leaders = leadersBlock(team?.leaders);
+    leaders = await composeTeamLeaders(db, post.ownerId);
   }
   return publishVars(event, leaders);
 }

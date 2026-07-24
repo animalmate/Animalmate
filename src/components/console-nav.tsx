@@ -17,11 +17,11 @@ const STAFF_MENU: NavItem[] = [
   ...COMMON_MENU,
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
-  { href: '/documents', label: '문서', icon: 'layers' },
 ];
+// 문서(챗봇 지식베이스)는 회장단·시스템관리자만. 팀 배정은 회원 관리 화면으로 통합(별도 팀 메뉴 없음).
 const BOARD_MENU: NavItem[] = [
   ...STAFF_MENU,
-  { href: '/admin/teams', label: '팀', icon: 'users' },
+  { href: '/documents', label: '문서', icon: 'layers' },
   { href: '/admin/members', label: '회원', icon: 'users' },
   { href: '/admin/join-codes', label: '가입코드', icon: 'key' },
   { href: '/admin/boards', label: '게시판', icon: 'board' },
@@ -40,8 +40,8 @@ function activeKey(pathname: string): string {
   if (pathname.startsWith('/documents')) return '/documents';
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';
+  if (pathname.startsWith('/profile')) return '/profile';
   if (pathname.startsWith('/admin/chatbot')) return '/admin/chatbot';
-  if (pathname.startsWith('/admin/teams')) return '/admin/teams';
   if (pathname.startsWith('/admin/members')) return '/admin/members';
   if (pathname.startsWith('/admin/join-codes')) return '/admin/join-codes';
   if (pathname.startsWith('/admin/boards')) return '/admin/boards';
@@ -88,6 +88,10 @@ export function ConsoleNav({ role }: { role: string }) {
         {menus.length > 0 ? <nav className="ml-4 hidden gap-0.5 md:flex">{menus.map((m) => link(m))}</nav> : null}
         <span className="flex-1" />
         <RoleBadge role={role} />
+        <a href="/profile" onClick={() => setOpen(false)} className="hidden items-center gap-1.5 px-1 py-2 text-[13px] text-ink-500 no-underline hover:text-ink-700 md:flex">
+          <Icon name="users" size={16} />
+          내 정보
+        </a>
         <button onClick={logout} className="hidden items-center gap-1.5 px-1 py-2 text-[13px] text-ink-500 hover:text-ink-700 md:flex">
           <Icon name="logout" size={16} />
           로그아웃
@@ -105,6 +109,14 @@ export function ConsoleNav({ role }: { role: string }) {
       {open ? (
         <div className="absolute inset-x-0 top-full z-50 flex flex-col gap-0.5 border-b border-ink-200 bg-white p-3 shadow-raised md:hidden">
           {menus.map((m) => link(m, true))}
+          <a
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className="flex h-[52px] items-center gap-2 rounded-xl px-3.5 text-[15px] font-semibold text-ink-700 no-underline hover:bg-cream-50"
+          >
+            <Icon name="users" size={18} />
+            내 정보
+          </a>
           <button
             onClick={logout}
             className="mt-1.5 flex h-[52px] items-center gap-2 border-t border-ink-100 px-3.5 text-[15px] font-semibold text-ink-500"

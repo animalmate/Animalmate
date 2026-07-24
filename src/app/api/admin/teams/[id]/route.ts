@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { setTeamActive, deleteTeam, TeamInUseError } from '@/org/teams';
-import { setTeamRoster, TeamMemberError } from '@/org/team-members';
+import { setTeamManualLeaders, TeamMemberError } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
 import { InputTooLongError } from '@/http/input';
@@ -10,7 +10,7 @@ import { InputTooLongError } from '@/http/input';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// 활성/비활성 토글 또는 팀장단 명단 갱신.
+// 활성/비활성 토글 또는 미가입자 수동 팀장단 갱신.
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -18,7 +18,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   try {
     const b = await req.json();
     if (Array.isArray(b.leaders)) {
-      const team = await setTeamRoster(db, actor, id, b.leaders);
+      const team = await setTeamManualLeaders(db, actor, id, b.leaders);
       return NextResponse.json({ team });
     }
     const team = await setTeamActive(db, actor, id, Boolean(b.isActive));
