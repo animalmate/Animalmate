@@ -3,7 +3,7 @@
 
 import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { scheduledPosts, events, teams } from '@/db/schema';
+import { scheduledPosts, events, teams, boards } from '@/db/schema';
 import { dateVars, leadersBlock, kstDateStr } from './placeholders';
 import { isPrivileged, type Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
@@ -107,6 +107,7 @@ export interface Occurrence {
   publishAt: Date | null;
   eventDate?: string | null; // 봉사 공지일 때
   meetTime?: string | null;
+  capacity?: number | null; // 회차별 정원. 비우면 양식의 기본 정원을 쓴다.
 }
 
 /**
@@ -155,7 +156,7 @@ export async function createReservationsMulti(
             eventDate: occ.eventDate ?? null,
             meetTime: occ.meetTime ?? null,
             place: template?.defaultPlace ?? null,
-            capacity: template?.defaultCapacity ?? null,
+            capacity: occ.capacity ?? template?.defaultCapacity ?? null, // 회차별 지정 > 양식 기본값
           }
         : { kind: 'general', boardMenuid: shared.boardMenuid, title, contentMd, publishAt: occ.publishAt ?? null };
     const post = await createReservation(db, actor, input);
@@ -224,6 +225,7 @@ export interface ReservationRow {
   title: string;
   status: string;
   boardMenuid: number;
+  boardName: string | null; // 화면 표시용(menuid 는 운영 설정값이라 노출하지 않는다)
   publishAt: string | null;
   cafeArticleUrl: string | null;
   ownerType: string;
@@ -267,18 +269,20 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
   }
   // 팀장단 명단까지 조인해 "발행하면 실제로 어떤 키가 미치환으로 남는지"를 큐에서 바로 보여준다.
   const rows = await db
-    .select({ post: scheduledPosts, event: events, leaders: teams.leaders })
+    .select({ post: scheduledPosts, event: events, leaders: teams.leaders, boardName: boards.name })
     .from(scheduledPosts)
     .leftJoin(events, eq(events.id, scheduledPosts.eventId))
     .leftJoin(teams, and(eq(scheduledPosts.ownerType, 'team'), eq(teams.id, scheduledPosts.ownerId)))
+    .leftJoin(boards, eq(boards.menuid, scheduledPosts.boardMenuid))
     .where(where)
     .orderBy(asc(scheduledPosts.publishAt));
 
-  return rows.map(({ post, event, leaders }) => ({
+  return rows.map(({ post, event, leaders, boardName }) => ({
     id: post.id,
     title: post.title,
     status: post.status,
     boardMenuid: post.boardMenuid,
+    boardName: boardName ?? null,
     publishAt: post.publishAt ? post.publishAt.toISOString() : null,
     cafeArticleUrl: post.cafeArticleUrl,
     ownerType: post.ownerType,

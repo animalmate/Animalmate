@@ -33,11 +33,13 @@ export async function POST(req: Request): Promise<Response> {
     if (!Number.isInteger(shared.boardMenuid)) return NextResponse.json({ error: 'missing_board' }, { status: 400 });
     const rawOcc: unknown[] = Array.isArray(b.occurrences) ? b.occurrences : [];
     const occurrences: Occurrence[] = rawOcc.map((o) => {
-      const oo = o as { publishAt?: string; eventDate?: string; meetTime?: string };
+      const oo = o as { publishAt?: string; eventDate?: string; meetTime?: string; capacity?: string | number };
+      const cap = oo.capacity != null && String(oo.capacity).trim() !== '' ? Number(oo.capacity) : null;
       return {
         publishAt: oo.publishAt ? new Date(oo.publishAt) : null,
         eventDate: oo.eventDate || null,
         meetTime: oo.meetTime || null,
+        capacity: cap != null && Number.isInteger(cap) && cap > 0 ? cap : null,
       };
     });
     if (occurrences.length === 0) return NextResponse.json({ error: 'no_occurrences' }, { status: 400 });

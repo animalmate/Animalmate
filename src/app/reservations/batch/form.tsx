@@ -75,7 +75,7 @@ export function BatchForm() {
         <Field label="게시판">
           <Select value={f.boardMenuid} onChange={set('boardMenuid')}>
             <option value="">선택</option>
-            {boards.map((b) => <option key={b.menuid} value={b.menuid}>{b.name} ({b.menuid})</option>)}
+            {boards.map((b) => <option key={b.menuid} value={b.menuid}>{b.name}</option>)}
           </Select>
         </Field>
         <Field label="양식(선택)" hint="양식의 기본 장소·정원이 생성되는 모든 회차에 채워집니다.">

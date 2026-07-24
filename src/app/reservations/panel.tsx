@@ -7,7 +7,7 @@ interface Reservation {
   id: string;
   title: string;
   status: string;
-  boardMenuid: number;
+  boardName: string | null;
   publishAt: string | null;
   cafeArticleUrl: string | null;
   failReason: string | null;
@@ -73,7 +73,8 @@ export function ReservationsPanel() {
                   <StatusBadge status={r.status} />
                 </div>
                 <div className="text-sm text-ink-500">
-                  {fmt(r.publishAt)} · 게시판 {r.boardMenuid}
+                  {fmt(r.publishAt)}
+                  {r.boardName ? ` · ${r.boardName}` : ''}
                   {r.event?.eventDate ? ` · 봉사 ${r.event.eventDate}` : ''}
                 </div>
                 {r.status === 'draft' && r.missing.length > 0 ? (
