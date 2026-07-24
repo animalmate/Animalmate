@@ -25,9 +25,10 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-// pgvector 임베딩 차원. GEMINI_EMBEDDING_MODEL 확정(Phase 1D) 후 정확한 값으로 핀 고정할 것.
-// 값이 바뀌면 doc_chunks.embedding 재생성 마이그레이션 필요(데이터 없을 때 진행 권장).
-// TODO(Phase 1D): 콘솔에서 임베딩 모델 확인 후 차원 확정.
+// pgvector 임베딩 차원 — **768 확정**(2026-07-24 실측, 07-DECISIONS 15).
+// gemini-embedding-2 는 기본 3072차원을 내지만, 3072 는 pgvector HNSW 한도(2000)를 넘어 인덱스가 불가하다.
+// → 임베딩 호출 시 반드시 outputDimensionality=768 을 지정한다(Matryoshka 축소, 정규화된 채로 반환).
+// 값이 바뀌면 컬럼 재생성 마이그레이션 + **전 문서 재임베딩**이 함께 가야 한다.
 const EMBEDDING_DIM = 768;
 
 // ── enum (03 enum 정의) ────────────────────────────────────────────────
