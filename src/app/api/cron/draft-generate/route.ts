@@ -20,6 +20,8 @@ export async function POST(req: Request): Promise<Response> {
     await pruneRateLimits(db); // 지난 윈도의 레이트 리밋 카운터 정리(테이블이 무한히 자라지 않게)
     return NextResponse.json(summary);
   } catch (e) {
+    // CRON_SECRET 뒤에 있고 응답은 pg_net 로그로만 간다 — 관제 디버깅용으로 원인을 그대로 싣는다
+    // (사용자 대면 라우트는 internalError 로 고정 문구만 내보낸다).
     return NextResponse.json(
       { error: 'readiness_check_failed', message: e instanceof Error ? e.message : String(e) },
       { status: 500 }

@@ -87,6 +87,12 @@
   before_json?, after_json?, created_at)
   - 대상: memberships/teams/boards/documents/scheduled_posts/events 변경, 학기 전환, 토큰 갱신 실패.
     (Phase 2 추가 시 dues/expenses/recruit_applicants 변경도 포함)
+- `rate_limits` (bucket, identifier, window_start, count)   ← 레이트 리밋 카운터(구현됨, 0009)
+  - UNIQUE(bucket, identifier, window_start). 고정 윈도 방식 — 원자적 UPSERT 로 세므로
+    서버리스 인스턴스가 몇 개든 합산된다(메모리 카운터는 Vercel 에서 무력).
+  - 적용 지점: `signup_request`(IP, 10회/시간) · `login_request`(IP, 10회/시간) ·
+    `otp_verify`(IP, 20회/시간 — 가입·로그인 검증이 **같은 버킷을 공유**해 번갈아 써도 상한이 늘지 않는다).
+  - 지난 윈도 행은 일일 크론(`/api/cron/draft-generate`)이 `pruneRateLimits` 로 정리.
 
 ### Phase 2 예정 모듈 (F8 총무 / F9 신입모집) — 설계 확정(2026-07-23), 마이그레이션은 착수 시점
 > 스키마는 아래로 확정. 실제 테이블 생성은 Phase 2 각 모듈 착수 시 마이그레이션으로 반영한다.
@@ -111,6 +117,12 @@
 1. 쓰기 요청마다: 인증 → membership active? → 역할 충족? → 소유권(personal=본인,
    team=team_members 포함) 충족? → 통과 시 실행 + audit 기록.
 2. 회장단/시스템관리자는 소유권 검사 우회 가능(단, audit에 override로 기록).
+2-1. **게시판 게이트**(2026-07-24 보안 QA): 예약은 `boards` 에 등록 + `is_active` + `bot_can_write`
+   인 게시판에만 만들 수 있고(`getWritableBoard`), **발행 직전에도 다시 확인**한다. 예약 뒤 권한이
+   회수되면 게시하지 않고 `failed`(audit `post.blocked`) + 운영진 알림. 카페는 삭제 API 가 없어
+   한번 나간 글을 되돌릴 수 없으므로 두 지점 모두에서 막는다.
+   `boardMenuid` 는 요청 본문에서 오므로 FK(등록 여부)만으로는 부족하다 — 화면에서 목록을
+   걸러 보여주는 것은 권한 검증이 아니다(규칙 #6).
 3. `documents` 저장 시 PII 패턴(전화번호, 주민번호 형식, "계좌") 감지되면 경고 + pii_checked
    확인 요구.
 4. 챗봇 검색 SQL: `WHERE visibility_rank <= 질문자_role_rank` 를 항상 포함.

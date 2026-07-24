@@ -63,6 +63,16 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     not_found: '대상을 찾을 수 없어요.',
     bad_role: '올바르지 않은 역할입니다.',
     no_occurrences: '발행 시각(또는 봉사 일자)을 최소 1개 입력하세요.',
+    // 보안 게이트 관련(서버가 거부한 이유를 사람 말로).
+    rate_limited: '시도가 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
+    too_long: '입력이 너무 깁니다. 길이를 줄여 주세요.',
+    too_many_occurrences: '한 번에 만들 수 있는 예약 수를 넘었습니다. 나눠서 만들어 주세요.',
+    too_many_entries: '명단이 너무 많습니다. 인원을 줄여 주세요.',
+    board_not_writable:
+      '봇이 글을 쓸 수 없는 게시판입니다. 게시판 관리에서 활성 상태와 "봇 쓰기 허용"을 확인해 주세요.',
+    bad_menuid: 'menuid 는 1 이상의 정수여야 합니다.',
+    bad_owner_type: '올바르지 않은 소유 구분입니다.',
+    invalid_join_code_format: '가입코드는 6자 이상의 영문 대문자와 숫자로만 만들 수 있습니다.',
   };
   return (code && map[code]) || fallback;
 }

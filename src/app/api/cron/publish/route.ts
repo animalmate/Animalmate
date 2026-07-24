@@ -18,6 +18,8 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json(summary);
   } catch (e) {
     // 실패해도 크론이 다음 사이클에 재시도. 요약은 워커가 audit 에 남긴다.
+    // 이 라우트는 CRON_SECRET 을 아는 호출자에게만 열려 있고 응답은 pg_net 로그로만 간다 —
+    // 그래서 사용자 대면 라우트와 달리 원인 메시지를 그대로 실어 보낸다(관제 디버깅 채널).
     return NextResponse.json(
       { error: 'worker_failed', message: e instanceof Error ? e.message : String(e) },
       { status: 500 }
