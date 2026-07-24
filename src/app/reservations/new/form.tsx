@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
+import { Modal } from '@/components/modal';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { dateVars, kstDateStr } from '@/publishing/placeholders';
 
@@ -29,17 +30,31 @@ const emptyRow = (capacity = ''): Row => ({ publishLocal: '', eventDate: '', mee
 const byName = (a: Board, b: Board) => a.name.localeCompare(b.name, 'ko');
 
 /** 한 일정이 실제로 카페에 올라갈 모습(제목 + 본문). 채워지지 않은 값이 있으면 함께 알려준다. */
-function OccurrencePreview({ title, body, missing }: { title: string; body: string; missing: string[] }) {
+function OccurrencePreview({
+  title,
+  body,
+  missing,
+  meta,
+}: {
+  title: string;
+  body: string;
+  missing: string[];
+  meta: string;
+}) {
   return (
-    <div className="space-y-2 rounded-md bg-cream-100 p-3">
-      <div className="text-xs text-ink-500">실제로 올라갈 글</div>
-      <div className="text-sm font-medium text-ink-900">{title || '(제목 없음)'}</div>
-      <pre className="whitespace-pre-wrap font-sans text-sm text-ink-700">{body || '(본문 없음)'}</pre>
+    <div className="space-y-3">
+      <div className="text-[13px] text-ink-500">{meta}</div>
+      <div className="space-y-2 rounded-xl bg-cream-100 p-3">
+        <div className="font-medium text-ink-900">{title || '(제목 없음)'}</div>
+        <pre className="whitespace-pre-wrap font-sans text-sm text-ink-700">{body || '(본문 없음)'}</pre>
+      </div>
       {missing.length > 0 ? (
         <div className="text-[13px] text-warning-700">
           아직 비어 있음: {missing.map((k) => `{{${k}}}`).join(', ')} — 채우지 않으면 이 예약은 발행되지 않습니다.
         </div>
-      ) : null}
+      ) : (
+        <div className="text-[13px] text-ink-500">이대로 카페에 올라갑니다.</div>
+      )}
     </div>
   );
 }
@@ -83,7 +98,7 @@ export function NewReservationForm() {
    * 서버가 생성 시(날짜·집합시간·팀장단) + 발행 직전(정원)에 나눠 치환하는 값을 여기서 한 번에 적용한다.
    * 최종 결과는 같으므로 이 미리보기가 곧 실제 게시물이다.
    */
-  function previewOf(r: Row): { title: string; body: string; missing: string[] } {
+  function previewOf(r: Row): { title: string; body: string; missing: string[]; meta: string } {
     const vars: Record<string, string> = {};
     if (kind === 'volunteer') {
       Object.assign(vars, dateVars(r.eventDate));
@@ -97,7 +112,12 @@ export function NewReservationForm() {
     }
     const t = renderTemplate(title, vars);
     const b = renderTemplate(contentMd, vars);
-    return { title: t, body: b, missing: placeholderKeys(t, b) };
+    // 언제 어디에 올라가는지도 함께 확인할 수 있게.
+    const when = r.publishLocal
+      ? new Date(r.publishLocal).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+      : '발행 시각 미정';
+    const board = boards.find((x) => String(x.menuid) === boardMenuid)?.name;
+    return { title: t, body: b, missing: placeholderKeys(t, b), meta: board ? `${when} · ${board}` : when };
   }
 
   function loadTemplate(id: string) {
@@ -245,11 +265,10 @@ export function NewReservationForm() {
                 ) : (
                   <div />
                 )}
-                <SecondaryButton onClick={() => setOpenPreview(openPreview === i ? null : i)}>
-                  {openPreview === i ? '미리보기 닫기' : '미리보기'}
+                <SecondaryButton type="button" onClick={() => setOpenPreview(i)}>
+                  미리보기
                 </SecondaryButton>
               </div>
-              {openPreview === i ? <OccurrencePreview {...previewOf(r)} /> : null}
               {rows.length > 1 ? (
                 <button className="text-xs text-coral-600 underline" onClick={() => removeRow(i)}>
                   이 일정 삭제
@@ -269,6 +288,12 @@ export function NewReservationForm() {
         </Button>
         <InfoText>생성 후 예약 큐에서 각 건을 개별 수정·완성 처리하세요.</InfoText>
       </Card>
+
+      {openPreview !== null && rows[openPreview] ? (
+        <Modal title={`${openPreview + 1}번째 일정 미리보기`} onClose={() => setOpenPreview(null)}>
+          <OccurrencePreview {...previewOf(rows[openPreview])} />
+        </Modal>
+      ) : null}
     </div>
   );
 }
