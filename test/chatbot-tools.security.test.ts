@@ -1,5 +1,5 @@
-// 챗봇 상태 tool — "다가오는 봉사"에는 **공지된 회차만** 나와야 한다.
-// 회귀 방지: 초안(draft 예약글) 회차, 취소로 글만 지워진 고아 event 는 챗봇에 노출되면 안 된다.
+// 챗봇 상태 tool — "다가오는 봉사"는 취소 안 됐고 장소가 정해진 회차만 노출한다.
+// (취소는 event.status=canceled 로, 미완성은 place=null 로 걸러진다. 발행 상태와는 무관 — 07-DECISIONS 24.)
 
 import 'dotenv/config';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -7,44 +7,29 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
-import { events, scheduledPosts, boards, teams, users } from '@/db/schema';
+import { events, teams } from '@/db/schema';
 import { listUpcomingSessions, getSessionsOnDate } from '@/rag/tools';
 
 const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const suite = DIRECT_URL ? describe : describe.skip;
 
-const MENUID = 990095;
 const TEAM = 'TOOLTEST_봉사팀';
-const EMAIL = 'tooltest@example.invalid';
 const FUTURE = '2099-08-01'; // 먼 미래(다른 테스트 데이터와 안 겹치게)
 
-suite('챗봇 봉사 tool — 공지된 회차만 노출', () => {
+suite('챗봇 봉사 tool — 취소 아님 + 장소 있음만 노출', () => {
   let sql: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let teamId: string;
-  let userId: string;
-  const eventIds: string[] = [];
 
   async function cleanup() {
-    await db.delete(scheduledPosts).where(eq(scheduledPosts.boardMenuid, MENUID));
     const evs = await db.select({ id: events.id }).from(events).where(eq(events.eventDate, FUTURE));
     if (evs.length) await db.delete(events).where(inArray(events.id, evs.map((e) => e.id)));
-    await db.delete(boards).where(eq(boards.menuid, MENUID));
-    await db.delete(users).where(eq(users.email, EMAIL));
     const ts = await db.select({ id: teams.id }).from(teams).where(eq(teams.name, TEAM));
     if (ts.length) await db.delete(teams).where(inArray(teams.id, ts.map((t) => t.id)));
   }
 
-  async function mkEvent(title: string, place: string): Promise<string> {
-    const [ev] = await db.insert(events).values({ teamId, title, eventDate: FUTURE, place, capacity: 20, status: 'draft' }).returning();
-    eventIds.push(ev!.id);
-    return ev!.id;
-  }
-  async function mkPost(eventId: string, status: 'draft' | 'scheduled' | 'published') {
-    await db.insert(scheduledPosts).values({
-      ownerType: 'team', ownerId: teamId, authorUserId: userId, boardMenuid: MENUID,
-      eventId, title: 't', contentMd: 'c', status, publishAt: new Date(),
-    });
+  async function mkEvent(title: string, place: string | null, status: 'draft' | 'published' | 'canceled') {
+    await db.insert(events).values({ teamId, title, eventDate: FUTURE, place, capacity: 20, status });
   }
 
   beforeAll(async () => {
@@ -53,17 +38,11 @@ suite('챗봇 봉사 tool — 공지된 회차만 노출', () => {
     await cleanup();
     const [t] = await db.insert(teams).values({ name: TEAM, kind: 'activity' }).returning();
     teamId = t!.id;
-    const [u] = await db.insert(users).values({ email: EMAIL, name: '툴' }).returning();
-    userId = u!.id;
-    await db.insert(boards).values({ menuid: MENUID, name: '툴테스트', botCanWrite: true });
 
-    const published = await mkEvent('공지된 봉사', '보호소A');
-    await mkPost(published, 'published');
-    const scheduled = await mkEvent('예약대기 봉사', '보호소B');
-    await mkPost(scheduled, 'scheduled');
-    const draft = await mkEvent('초안 봉사', '보호소C');
-    await mkPost(draft, 'draft'); // 아직 공지 안 됨
-    await mkEvent('고아 봉사', '보호소D'); // 예약글 없음(취소로 삭제된 상태 재현)
+    await mkEvent('초안이지만 장소 있는 봉사', '보호소A', 'draft'); // 발행 전이어도 장소 있으면 노출
+    await mkEvent('발행된 봉사', '보호소B', 'published');
+    await mkEvent('장소 미정 봉사', null, 'draft'); // 장소 없음 → 제외
+    await mkEvent('취소된 봉사', '보호소D', 'canceled'); // 취소 → 제외
   });
 
   afterAll(async () => {
@@ -71,18 +50,16 @@ suite('챗봇 봉사 tool — 공지된 회차만 노출', () => {
     await sql.end({ timeout: 5 });
   });
 
-  it('공지된(published/scheduled) 회차만 나오고 초안·고아는 빠진다', async () => {
-    const sessions = await listUpcomingSessions(db, { now: new Date('2099-07-01') });
-    const places = sessions.map((s) => s.place);
-    expect(places).toContain('보호소A'); // published
-    expect(places).toContain('보호소B'); // scheduled
-    expect(places).not.toContain('보호소C'); // draft 예약글 → 제외
-    expect(places).not.toContain('보호소D'); // 고아 event → 제외
+  it('취소 아님 + 장소 있음만 나온다(초안이어도 장소 있으면 노출)', async () => {
+    const places = (await listUpcomingSessions(db, { now: new Date('2099-07-01') })).map((s) => s.place);
+    expect(places).toContain('보호소A'); // 초안이지만 장소 있음 → 노출(사용자 기대)
+    expect(places).toContain('보호소B'); // 발행됨
+    expect(places).not.toContain('보호소D'); // 취소 → 제외
+    expect(places).not.toContain(null); // 장소 미정 → 제외
   });
 
-  it('특정 날짜 조회도 공지된 것만', async () => {
-    const sessions = await getSessionsOnDate(db, FUTURE);
-    const places = sessions.map((s) => s.place);
-    expect(places.sort()).toEqual(['보호소A', '보호소B']);
+  it('특정 날짜 조회도 같은 규칙', async () => {
+    const places = (await getSessionsOnDate(db, FUTURE)).map((s) => s.place).sort();
+    expect(places).toEqual(['보호소A', '보호소B']);
   });
 });

@@ -4,16 +4,17 @@
 // **지금 DB 상태**를 물을 때 쓴다. 모델이 스스로 판단해 호출한다(function calling).
 // 봉사 정보(일시·장소·정원)는 부원 이상 전원 공개라 역할 필터 없이 조회한다.
 
-import { and, asc, gte, eq, inArray } from 'drizzle-orm';
+import { and, asc, gte, eq, ne, isNotNull } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { events, teams, scheduledPosts } from '@/db/schema';
+import { events, teams } from '@/db/schema';
 import type { GeminiTool } from './gemini';
 
-// 챗봇에 노출할 회차 = "실제로 공지된(또는 공지 예정)" 것만. 연결된 예약글이 scheduled/published 일 때.
-// 이유: ①event.status 는 draft 에서 전이되지 않아 그 자체로는 공지 여부를 못 가른다
-//      ②취소된 예약은 글만 삭제되고 event 는 남는다(고아) — 그대로 두면 취소된 봉사가 목록에 뜬다.
-//      예약글과 조인해 상태로 거르면 초안·고아·미승인 회차가 자연히 빠진다.
-const ANNOUNCED_POST_STATUS = ['scheduled', 'published'] as const;
+// 챗봇에 노출할 회차 = 다가오는(오늘 이후) + 취소 안 됨 + 장소가 정해진 것.
+// - 취소: cancelPost 가 예약 취소 시 event.status 를 canceled 로 전이한다(고아 없음, 07-DECISIONS 24).
+//   그래서 예약글 상태에 의존하지 않고 event.status 만으로 취소를 거를 수 있다.
+// - 장소(place) 유무로 "안내할 만큼 정해졌는지"를 가른다 — 장소 없는 미완성 초안은 뜨지 않는다.
+//   (예전엔 예약글이 scheduled/published 일 때만 노출했는데, 그러면 "만들어 뒀지만 아직 발행 예약 안 한"
+//    회차가 안 보여 사용자 기대와 어긋났다. 발행(카페 업로드)과 챗봇 안내는 별개 관심사다.)
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -50,30 +51,31 @@ function toView(r: { eventDate: string | null; meetTime: string | null; place: s
   };
 }
 
-// 공지된 회차만 뽑는 공통 select(events + team 이름 + 공지된 예약글 존재 확인).
-function announcedSelect(db: Db) {
+// 취소 안 됐고 장소가 정해진 회차만 뽑는 공통 select(events + team 이름).
+function sessionSelect(db: Db) {
   return db
-    .selectDistinct({ eventDate: events.eventDate, meetTime: events.meetTime, place: events.place, capacity: events.capacity, team: teams.name, title: events.title })
+    .select({ eventDate: events.eventDate, meetTime: events.meetTime, place: events.place, capacity: events.capacity, team: teams.name, title: events.title })
     .from(events)
-    .innerJoin(scheduledPosts, and(eq(scheduledPosts.eventId, events.id), inArray(scheduledPosts.status, [...ANNOUNCED_POST_STATUS])))
     .leftJoin(teams, eq(teams.id, events.teamId));
 }
+// 취소 아님 + 장소 있음(안내할 만큼 정해짐).
+const announceable = () => and(ne(events.status, 'canceled'), isNotNull(events.place));
 
-/** 다가오는 봉사 회차(오늘 이후, 공지된 것만). 날짜 오름차순. */
+/** 다가오는 봉사 회차(오늘 이후, 취소 아님, 장소 정해짐). 날짜 오름차순. */
 export async function listUpcomingSessions(db: Db, opts: { limit?: number; now?: Date } = {}): Promise<SessionView[]> {
   const today = kstToday(opts.now ?? new Date());
-  const rows = await announcedSelect(db)
-    .where(gte(events.eventDate, today))
+  const rows = await sessionSelect(db)
+    .where(and(gte(events.eventDate, today), announceable()))
     .orderBy(asc(events.eventDate))
     .limit(Math.min(opts.limit ?? 10, 20));
   return rows.map(toView);
 }
 
-/** 특정 날짜의 봉사 회차 상세(여러 팀이 같은 날이면 여러 건, 공지된 것만). */
+/** 특정 날짜의 봉사 회차 상세(여러 팀이 같은 날이면 여러 건). */
 export async function getSessionsOnDate(db: Db, dateStr: string, now: Date = new Date()): Promise<SessionView[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return [];
   void now;
-  const rows = await announcedSelect(db).where(eq(events.eventDate, dateStr)).orderBy(asc(events.meetTime));
+  const rows = await sessionSelect(db).where(and(eq(events.eventDate, dateStr), announceable())).orderBy(asc(events.meetTime));
   return rows.map(toView);
 }
 
