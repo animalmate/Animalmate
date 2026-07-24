@@ -121,6 +121,31 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
     expect(alert!.subject).toContain('발행 실패');
   });
 
+  it('미치환 플레이스홀더가 남으면 게시하지 않고 failed 확정(blocked 집계)', async () => {
+    const id = await makeDuePost();
+    // ready 이후 값이 비워진 상황을 재현({{장소}} 를 채울 event 가 없는 개인 공지).
+    await db
+      .update(scheduledPosts)
+      .set({ contentMd: '장소 {{장소}} 에서 만나요', publishAt: new Date(Date.now() - 30 * 86_400_000) })
+      .where(eq(scheduledPosts.id, id));
+    const okRes: CafeWriteResult = { ok: true, status: 200, articleUrl: 'dry-run://ok', raw: {} };
+    const written: string[] = [];
+    const summary = await runPublishWorker(db, {
+      dryRun: true,
+      sleep: async () => {},
+      cafeWrite: async (post) => {
+        written.push(post.id);
+        return okRes;
+      },
+    });
+
+    expect(summary.blocked).toBeGreaterThanOrEqual(1);
+    expect(written).not.toContain(id); // 카페 쓰기 자체를 시도하지 않는다
+    const post = await getPost(db, id);
+    expect(post!.status).toBe('failed');
+    expect(post!.failReason).toContain('{{장소}}');
+  });
+
   it('code 999 주입 → failed 아님, scheduled 유지, 요약 waited 집계', async () => {
     const id = await makeDuePost();
     const rateLimited: CafeWriteResult = {

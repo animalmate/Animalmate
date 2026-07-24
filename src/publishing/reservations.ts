@@ -8,7 +8,8 @@ import { dateVars, leadersBlock, kstDateStr } from './placeholders';
 import { isPrivileged, type Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
-import { renderTemplate } from './post-templates';
+import { getTemplate, renderTemplate } from './post-templates';
+import { publishVars, renderFinal } from './final-render';
 
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
 
@@ -99,6 +100,8 @@ export interface SharedFields {
   boardMenuid: number;
   title: string;
   contentMd: string;
+  /** 불러온 양식. 기본 장소·정원을 각 회차(events)의 초기값으로 복사한다. */
+  templateId?: string | null;
 }
 export interface Occurrence {
   publishAt: Date | null;
@@ -109,7 +112,8 @@ export interface Occurrence {
 /**
  * 발행 시각/봉사 일자를 여러 개 지정해 예약 N건을 한 번에 만든다. 각 건은 이후 개별 수정 가능.
  * 제목/본문의 {{간결_날짜}}{{전체_날짜}}{{집합시간}}{{팀장단}} 을 각 건 값으로 자동 치환(빈 값이면 그대로 둠).
- * {{장소}}{{정원}}은 채우지 않고 남겨 개별 수정에서 입력하게 한다.
+ * {{장소}}{{정원}}은 본문에 남겨 두고 발행 직전에 events 값으로 치환한다(final-render).
+ * 양식에 기본 장소·정원이 있으면 각 회차(events)의 초기값으로 복사된다.
  */
 export async function createReservationsMulti(
   db: Db,
@@ -123,6 +127,8 @@ export async function createReservationsMulti(
     const [team] = await db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, shared.teamId)).limit(1);
     leaders = leadersBlock(team?.leaders);
   }
+  // 양식의 기본 장소·정원(장소별 양식). 없으면 null 로 두고 예약 수정에서 채운다.
+  const template = shared.templateId ? await getTemplate(db, shared.templateId) : null;
 
   const ids: string[] = [];
   for (const occ of occurrences) {
@@ -148,8 +154,8 @@ export async function createReservationsMulti(
             publishAt: occ.publishAt ?? null,
             eventDate: occ.eventDate ?? null,
             meetTime: occ.meetTime ?? null,
-            place: null,
-            capacity: null,
+            place: template?.defaultPlace ?? null,
+            capacity: template?.defaultCapacity ?? null,
           }
         : { kind: 'general', boardMenuid: shared.boardMenuid, title, contentMd, publishAt: occ.publishAt ?? null };
     const post = await createReservation(db, actor, input);
@@ -225,6 +231,7 @@ export interface ReservationRow {
   failReason: string | null; // failed 일 때 실패 사유
   event: { eventDate: string | null; meetTime: string | null; place: string | null; capacity: number | null } | null;
   missing: string[]; // draft 일 때 부족한 필수 필드
+  unresolved: string[]; // 발행 직전에도 채워지지 않는 플레이스홀더 키(발행 차단 대상)
 }
 
 function computeMissing(p: ScheduledPost, ev: typeof events.$inferSelect | null): string[] {
@@ -258,14 +265,16 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
   } else if (opts.teamId) {
     where = and(eq(scheduledPosts.ownerType, 'team'), eq(scheduledPosts.ownerId, opts.teamId));
   }
+  // 팀장단 명단까지 조인해 "발행하면 실제로 어떤 키가 미치환으로 남는지"를 큐에서 바로 보여준다.
   const rows = await db
-    .select({ post: scheduledPosts, event: events })
+    .select({ post: scheduledPosts, event: events, leaders: teams.leaders })
     .from(scheduledPosts)
     .leftJoin(events, eq(events.id, scheduledPosts.eventId))
+    .leftJoin(teams, and(eq(scheduledPosts.ownerType, 'team'), eq(teams.id, scheduledPosts.ownerId)))
     .where(where)
     .orderBy(asc(scheduledPosts.publishAt));
 
-  return rows.map(({ post, event }) => ({
+  return rows.map(({ post, event, leaders }) => ({
     id: post.id,
     title: post.title,
     status: post.status,
@@ -279,5 +288,9 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
       ? { eventDate: event.eventDate, meetTime: event.meetTime, place: event.place, capacity: event.capacity }
       : null,
     missing: computeMissing(post, event),
+    unresolved:
+      post.status === 'published'
+        ? [] // 이미 나간 글은 되돌릴 수 없다(카페 수정 API 없음) — 경고 대상 아님
+        : renderFinal(post, publishVars(event, leadersBlock(leaders))).unresolved,
   }));
 }

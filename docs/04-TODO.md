@@ -99,6 +99,12 @@
 - [x] "매월 N번째 X요일" 날짜 계산 유틸 → `src/recurrence/month-weekday.ts`(단위 12). 일괄 생성이 재사용.
 - [x] post_templates CRUD (팀/개인/global) → `src/publishing/post-templates.ts`(template.manage,
       global=회장단만·사용 전원, renderTemplate 플레이스홀더). 단위(render 3)+통합. UI "양식 불러오기"만 남음.
+- [x] **장소별 양식 + 발행 직전 치환(2026-07-24, 마이그레이션 0007)**: post_templates 에 기본 장소·정원
+      (`default_place/default_capacity`) 추가 → 예약 생성 시 events 초기값으로 복사, 회차별로 다르면 예약
+      수정에서 변경. `{{장소}}{{정원}}` 은 본문에 남겨 두고 **발행 직전** events 값으로 치환
+      (`src/publishing/final-render.ts`, 순수 치환은 `template-render.ts` — 수정 화면 미리보기와 공용).
+      미치환 키가 남으면 완성 처리 차단(markReady) + 워커가 게시 없이 failed 확정(audit `post.blocked`).
+      발행 성공 시 최종 본문을 scheduled_posts 에 저장. 단위 9(final-render).
 - [~] 직접 선예약 + 팀별 예약 큐 → `scheduled-posts.ts`에 event_id 연결·`cancelPost`(published 전 취소)·
       markReady가 event 필수필드(일시/장소/정원) 검증. **예약 큐 화면(프론트)만 남음**.
 - [x] 일괄 생성 도우미 → `src/publishing/batch-generate.ts`(패턴+기간 → 템플릿 렌더 event+post 즉시 생성,

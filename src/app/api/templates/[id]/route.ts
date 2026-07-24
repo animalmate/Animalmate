@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { updateTemplate, deleteTemplate, type UpdateTemplatePatch } from '@/publishing/post-templates';
+import {
+  updateTemplate,
+  deleteTemplate,
+  parseDefaultPlace,
+  parseDefaultCapacity,
+  type UpdateTemplatePatch,
+} from '@/publishing/post-templates';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
@@ -18,6 +24,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (b.name !== undefined) patch.name = String(b.name);
     if (b.titleTemplate !== undefined) patch.titleTemplate = String(b.titleTemplate);
     if (b.bodyTemplate !== undefined) patch.bodyTemplate = String(b.bodyTemplate);
+    if (b.defaultPlace !== undefined) patch.defaultPlace = parseDefaultPlace(b.defaultPlace);
+    if (b.defaultCapacity !== undefined) patch.defaultCapacity = parseDefaultCapacity(b.defaultCapacity);
     const tpl = await updateTemplate(db, actor, id, patch);
     return NextResponse.json({ template: tpl });
   } catch (e) {

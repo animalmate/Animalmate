@@ -9,6 +9,7 @@ import type { Actor, Ownership } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { assertTransition, nextStateForResult, type PublishResult } from './state-machine';
+import { renderForPublish } from './final-render';
 
 type DB = PostgresJsDatabase<typeof schema>;
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
@@ -90,6 +91,11 @@ export async function markReady(db: DB, actor: Actor, id: string): Promise<Sched
       if (ev.capacity == null) missing.push('capacity');
     }
   }
+  // 발행 직전 치환으로도 채워지지 않는 플레이스홀더가 남으면 완성으로 볼 수 없다
+  // ({{장소}} 같은 글자가 그대로 카페에 나가는 사고 방지 — CLAUDE.md 규칙 #6).
+  const rendered = await renderForPublish(db, post);
+  for (const key of rendered.unresolved) missing.push(`{{${key}}}`);
+
   if (missing.length) throw new NotReadyError(missing); // 빈 공지 발행 방지(안전장치)
 
   assertTransition(post.status, 'ready');
@@ -135,7 +141,9 @@ export async function fetchDuePosts(db: DB, now: Date, limit = 5): Promise<Sched
 export async function applyPublishResult(
   db: DB,
   post: ScheduledPost,
-  result: PublishResult
+  result: PublishResult,
+  /** 발행 직전 치환된 최종 제목·본문. 성공 시 DB 에 확정 저장한다(발행된 글은 수정 불가 = 이 기록이 원본). */
+  rendered?: { title: string; contentMd: string }
 ): Promise<ScheduledPost | null> {
   const patch = nextStateForResult({ status: post.status, retryCount: post.retryCount }, result);
   const [row] = await db
@@ -143,6 +151,7 @@ export async function applyPublishResult(
     .set({
       status: patch.status,
       retryCount: patch.retryCount,
+      ...(patch.status === 'published' && rendered ? { title: rendered.title, contentMd: rendered.contentMd } : {}),
       ...(patch.cafeArticleUrl !== undefined ? { cafeArticleUrl: patch.cafeArticleUrl } : {}),
       ...(patch.failReason !== undefined ? { failReason: patch.failReason } : {}),
       updatedAt: new Date(),
@@ -170,6 +179,32 @@ export async function applyPublishResult(
       targetId: post.id,
       before: { status: post.status, retryCount: post.retryCount },
       after: { status: patch.status, retryCount: patch.retryCount, cafeArticleUrl: patch.cafeArticleUrl },
+    })
+  );
+  return row;
+}
+
+/**
+ * 게시 시도 없이 즉시 failed 로 확정한다(발행 워커 전용, 시스템/무액터).
+ * 미치환 플레이스홀더처럼 **재시도해도 저절로 풀리지 않는** 사유에 쓴다 — 운영진이 값을 채운 뒤
+ * 예약 큐에서 "재시도(발행 대기)"로 되돌려야 다시 발행 대상이 된다.
+ */
+export async function markUnpublishable(db: DB, post: ScheduledPost, reason: string): Promise<ScheduledPost | null> {
+  const [row] = await db
+    .update(scheduledPosts)
+    .set({ status: 'failed', failReason: reason, updatedAt: new Date() })
+    .where(eq(scheduledPosts.id, post.id))
+    .returning();
+  if (!row) return null; // 사이클 도중 취소(삭제)됨
+  await recordAudit(
+    db,
+    buildAuditEntry({
+      actorUserId: null, // 시스템(발행 워커)
+      action: 'post.blocked',
+      targetTable: 'scheduled_posts',
+      targetId: post.id,
+      before: { status: post.status },
+      after: { status: 'failed', failReason: reason },
     })
   );
   return row;

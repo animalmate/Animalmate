@@ -13,6 +13,7 @@ interface Reservation {
   failReason: string | null;
   event: { eventDate: string | null; place: string | null; capacity: number | null } | null;
   missing: string[];
+  unresolved: string[];
 }
 
 function fmt(iso: string | null): string {
@@ -77,6 +78,11 @@ export function ReservationsPanel() {
                 </div>
                 {r.status === 'draft' && r.missing.length > 0 ? (
                   <div className="text-sm text-warning-700">미완성: {r.missing.join(', ')}</div>
+                ) : null}
+                {r.unresolved.length > 0 ? (
+                  <div className="text-sm text-warning-700">
+                    본문 미치환: {r.unresolved.map((k) => `{{${k}}}`).join(', ')} — "수정"에서 값을 채우세요(그대로면 발행 보류).
+                  </div>
                 ) : null}
                 {r.status === 'failed' ? (
                   <div className="rounded-md bg-coral-50 p-2 text-sm text-coral-700">

@@ -7,6 +7,7 @@ import * as schema from '@/db/schema';
 import { boards, users, teams, teamMembers, memberships, scheduledPosts, events, postTemplates, noticeCheckLog, auditLogs } from '@/db/schema';
 import { createTemplate } from '@/publishing/post-templates';
 import { batchGenerate, type BatchPreset } from '@/publishing/batch-generate';
+import { renderForPublish } from '@/publishing/final-render';
 import { runReadinessCheck } from '@/publishing/readiness-check';
 import { createDraft } from '@/publishing/scheduled-posts';
 import { PermissionError } from '@/auth/guard';
@@ -116,6 +117,56 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
     expect(post.contentMd).toContain('2026년 3월 1일 일요일'); // {{전체_날짜}} 렌더
     expect(post.contentMd).toContain('집합 14:00'); // {{집합시간}} 렌더
     expect(post.contentMd).toContain('{{장소}}'); // 미치환(개별 수정에서 채움)
+  });
+
+  it('장소별 양식: 기본 장소·정원이 회차에 채워지고 발행 직전에 본문으로 치환된다', async () => {
+    const tpl = await createTemplate(db, leader, {
+      ownerType: 'team',
+      ownerId: teamId,
+      name: '양주 쉼터 봉사',
+      titleTemplate: '{{간결_날짜}} 양주 쉼터 봉사',
+      bodyTemplate: '장소 {{장소}} / 정원 {{정원}}',
+      defaultPlace: '양주 쉼터',
+      defaultCapacity: 20,
+    });
+    const preset: BatchPreset = {
+      teamId,
+      monthWeek: '2',
+      weekday: 6, // 둘째 토요일
+      meetTime: '10:00',
+      boardMenuid: MENUID,
+      templateId: tpl.id,
+      noticeLeadDays: 7,
+      publishTime: '20:00',
+    };
+    const res = await batchGenerate(
+      db,
+      leader,
+      preset,
+      { startYear: 2026, startMonth: 12, endYear: 2026, endMonth: 12 },
+      new Date('2026-02-01T00:00:00Z')
+    );
+    expect(res.created).toHaveLength(1);
+
+    // 기본값이 회차(events)에 복사된다 — 이후 회차별 수정의 출발점.
+    const ev = (await db.select().from(events).where(eq(events.id, res.created[0]!.eventId!)))[0]!;
+    expect(ev.place).toBe('양주 쉼터');
+    expect(ev.capacity).toBe(20);
+
+    // 본문에는 플레이스홀더가 그대로 남고, 발행 직전 치환에서만 값이 들어간다.
+    const post = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, res.created[0]!.postId!)))[0]!;
+    expect(post.contentMd).toBe('장소 {{장소}} / 정원 {{정원}}');
+    const rendered = await renderForPublish(db, post);
+    expect(rendered.contentMd).toBe('장소 양주 쉼터 / 정원 20');
+    expect(rendered.unresolved).toEqual([]);
+
+    // 회차별로 장소만 바꾸면(예약 수정) 본문 텍스트를 건드리지 않아도 최종본이 따라온다.
+    await db.update(events).set({ place: '파주 쉼터' }).where(eq(events.id, ev.id));
+    expect((await renderForPublish(db, post)).contentMd).toBe('장소 파주 쉼터 / 정원 20');
+
+    // 값을 비우면 미치환으로 보고되어 발행이 차단된다.
+    await db.update(events).set({ place: null }).where(eq(events.id, ev.id));
+    expect((await renderForPublish(db, post)).unresolved).toEqual(['장소']);
   });
 
   it('미완성 점검: D-3 draft 예약 → 팀장단 알림 + 중복 방지', async () => {

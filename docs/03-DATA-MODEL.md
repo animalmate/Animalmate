@@ -40,9 +40,17 @@
 
 ### 봉사 워크플로 (F1 수동 선예약 중심, 2026-07-23 개정)
 - `post_templates` (id, owner_type[personal|team|global], owner_id?, name, title_template, body_template,
-  updated_by, updated_at, created_at)   ← 발행 양식(구현됨, 0004)
-  - 제목/본문에 `{{날짜}} {{장소}} {{집합시간}} {{정원}}` 플레이스홀더. **global**(owner_id=null)=회장단만
-    편집·전원 사용. team/personal=소유권 규칙(template.manage). 렌더 시 값 없는 키는 그대로 둔다.
+  **default_place?, default_capacity?**, updated_by, updated_at, created_at)   ← 발행 양식(구현됨, 0004 / 0007)
+  - 제목/본문에 `{{간결_날짜}} {{전체_날짜}} {{집합시간}} {{팀장단}} {{장소}} {{정원}}` 플레이스홀더.
+    **global**(owner_id=null)=회장단만 편집·전원 사용. team/personal=소유권 규칙(template.manage).
+    렌더 시 값 없는 키는 그대로 둔다.
+  - **default_place/default_capacity(0007)** = 장소별 양식의 고정 장소·정원(예: "양주 쉼터 봉사" 양식).
+    예약 생성 시 `events.place/capacity` 의 **초기값으로 복사**되며, 회차별로 다르면 예약 수정에서 덮어쓴다.
+  - **치환 2단계(결정 2026-07-24)**: ① 생성 시 = 회차가 정해지는 값(날짜/집합시간/팀장단)을 본문에 굳힘
+    (`batch-generate.ts`, `reservations.ts`). ② 발행 직전 = `{{장소}}{{정원}}` 등 남은 키를 **events 값으로**
+    치환(`final-render.ts`). events 가 장소·정원의 유일한 저장소이므로 회차별 수정이 본문과 어긋날 수 없다.
+    치환 후에도 남은 키가 있으면 **게시하지 않는다**(markReady 차단 + 워커가 failed 확정, audit `post.blocked`).
+    발행 성공 시 치환된 최종 제목·본문을 `scheduled_posts` 에 저장한다(발행된 글은 수정 불가 = 이 기록이 원본).
 - `recurring_rules` (id, team_id, label, month_week[1..4|last], weekday, time(봉사 집합시간),
   board_menuid, template_id?, notice_lead_days default 7, publish_time default 20:00, is_active)   ← 0004/0005
   - **역할 = 일괄 생성 도우미의 저장된 프리셋**(크론 자동 생성 아님). template_md→template_id 이관,

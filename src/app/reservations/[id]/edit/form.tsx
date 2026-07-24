@@ -3,10 +3,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, Textarea } from '@/components/ui';
+import { renderTemplate, unresolvedKeys } from '@/publishing/template-render';
 
 interface Detail {
   post: { id: string; title: string; contentMd: string; publishAt: string | null; status: string; eventId: string | null };
   event: { eventDate: string | null; meetTime: string | null; place: string | null; capacity: number | null } | null;
+  /** 발행 직전 치환에 쓰일 서버 값(팀장단 명단 등). 장소·정원은 아래 입력값으로 덮어쓴다. */
+  vars: Record<string, string>;
 }
 
 function toLocalInput(iso: string | null): string {
@@ -28,6 +31,7 @@ export function EditReservationForm({ id }: { id: string }) {
   const [meetTime, setMeetTime] = useState('');
   const [place, setPlace] = useState('');
   const [capacity, setCapacity] = useState('');
+  const [vars, setVars] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -37,6 +41,7 @@ export function EditReservationForm({ id }: { id: string }) {
       setLoaded(true);
       if (!r.ok) return setError(errorMessage(r.data.error));
       const { post, event } = r.data;
+      setVars(r.data.vars ?? {});
       setStatus(post.status);
       setTitle(post.title);
       setContentMd(post.contentMd);
@@ -72,6 +77,19 @@ export function EditReservationForm({ id }: { id: string }) {
     router.push('/reservations');
     router.refresh();
   }
+
+  // 카페에 실제로 나갈 최종본 — 발행 워커와 같은 치환 규칙(template-render)을 폼의 현재 값으로 적용.
+  const previewVars: Record<string, string> = { ...vars };
+  if (hasEvent) {
+    if (place.trim()) previewVars['장소'] = place.trim();
+    else delete previewVars['장소'];
+    if (capacity.trim()) previewVars['정원'] = capacity.trim();
+    else delete previewVars['정원'];
+    if (meetTime) previewVars['집합시간'] = meetTime;
+  }
+  const previewTitle = renderTemplate(title, previewVars);
+  const previewBody = renderTemplate(contentMd, previewVars);
+  const previewMissing = unresolvedKeys(previewTitle, previewBody);
 
   if (!loaded) return <InfoText>불러오는 중…</InfoText>;
   if (status === 'published')
@@ -115,6 +133,22 @@ export function EditReservationForm({ id }: { id: string }) {
         <Button disabled={busy || !title.trim()} onClick={save}>
           {busy ? '저장 중…' : '저장'}
         </Button>
+      </Card>
+
+      <Card className="space-y-2">
+        <div className="font-medium">카페에 나갈 최종 본문</div>
+        <InfoText>
+          {'{{장소}} {{정원}}'} 같은 플레이스홀더는 발행 직전에 위 값으로 치환됩니다. 본문 글자를 직접 고칠 필요 없어요.
+        </InfoText>
+        <div className="rounded-md bg-cream-100 p-3 text-sm">
+          <div className="font-medium text-ink-900">{previewTitle}</div>
+          <pre className="mt-2 whitespace-pre-wrap font-sans text-ink-700">{previewBody}</pre>
+        </div>
+        {previewMissing.length > 0 ? (
+          <div className="text-sm text-warning-700">
+            채워지지 않은 항목: {previewMissing.map((k) => `{{${k}}}`).join(', ')} — 그대로 두면 발행이 보류됩니다.
+          </div>
+        ) : null}
       </Card>
     </div>
   );

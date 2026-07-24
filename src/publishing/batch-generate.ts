@@ -105,6 +105,7 @@ export async function batchGenerate(
       continue;
     }
 
+    // 회차가 정하는 값만 여기서 굳힌다. {{장소}}{{정원}}은 남겨 두고 발행 직전에 events 값으로 치환(final-render).
     const vars: Record<string, string> = { ...dateVars(eventDate), 집합시간: preset.meetTime };
     if (leaders) vars['팀장단'] = leaders;
     const title = template ? renderTemplate(template.titleTemplate, vars) : `${eventDate} 봉사 공지`;
@@ -118,7 +119,16 @@ export async function batchGenerate(
     const created = await db.transaction(async (tx) => {
       const [ev] = await tx
         .insert(events)
-        .values({ teamId: preset.teamId, title, eventDate, meetTime: preset.meetTime, status: 'draft' })
+        .values({
+          teamId: preset.teamId,
+          title,
+          eventDate,
+          meetTime: preset.meetTime,
+          // 장소별 양식의 고정 장소·정원을 초기값으로. 회차별로 다르면 예약 수정에서 덮어쓴다.
+          place: template?.defaultPlace ?? null,
+          capacity: template?.defaultCapacity ?? null,
+          status: 'draft',
+        })
         .returning();
       const [post] = await tx
         .insert(scheduledPosts)

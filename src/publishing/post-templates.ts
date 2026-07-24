@@ -9,6 +9,9 @@ import { isPrivileged } from '@/auth/permissions';
 import { requireAuthorized, PermissionError } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 
+// 치환 로직은 순수 모듈에 있다(클라이언트 미리보기 공용). 기존 호출부 호환을 위해 재수출.
+export { renderTemplate, unresolvedKeys } from './template-render';
+
 export type PostTemplate = typeof postTemplates.$inferSelect;
 export type TemplateOwnerType = 'personal' | 'team' | 'global';
 
@@ -18,9 +21,14 @@ export interface CreateTemplateInput {
   name: string;
   titleTemplate: string;
   bodyTemplate: string;
+  /** 장소별 양식의 고정 장소·정원(예약 생성 시 events 초기값. 회차별로 예약 수정에서 덮어씀). */
+  defaultPlace?: string | null;
+  defaultCapacity?: number | null;
 }
 
-export type UpdateTemplatePatch = Partial<Pick<CreateTemplateInput, 'name' | 'titleTemplate' | 'bodyTemplate'>>;
+export type UpdateTemplatePatch = Partial<
+  Pick<CreateTemplateInput, 'name' | 'titleTemplate' | 'bodyTemplate' | 'defaultPlace' | 'defaultCapacity'>
+>;
 
 // global 은 회장단만, team/personal 은 소유권(소유자/회장단) 검사.
 function authorizeTemplate(actor: Actor, ownerType: TemplateOwnerType, ownerId: string | null | undefined): void {
@@ -30,6 +38,22 @@ function authorizeTemplate(actor: Actor, ownerType: TemplateOwnerType, ownerId: 
   }
   if (!ownerId) throw new PermissionError('not_owner');
   requireAuthorized(actor, { kind: 'template.manage', owner: { ownerType, ownerId } });
+}
+
+// ── 폼 입력 정규화 ─────────────────────────────────────────────────────
+// undefined = 이번 요청에서 다루지 않음(패치 시 유지), null = 비움.
+export function parseDefaultPlace(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  const s = String(v ?? '').trim();
+  return s === '' ? null : s;
+}
+
+export function parseDefaultCapacity(v: unknown): number | null | undefined {
+  if (v === undefined) return undefined;
+  const s = String(v ?? '').trim();
+  if (s === '') return null;
+  const n = Number(s);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 export async function getTemplate(db: Database, id: string): Promise<PostTemplate | null> {
@@ -73,6 +97,8 @@ export async function createTemplate(db: Db, actor: Actor, input: CreateTemplate
       name: input.name,
       titleTemplate: input.titleTemplate,
       bodyTemplate: input.bodyTemplate,
+      defaultPlace: input.defaultPlace ?? null,
+      defaultCapacity: input.defaultCapacity ?? null,
       updatedBy: actor.userId,
     })
     .returning();
@@ -91,6 +117,8 @@ export async function updateTemplate(db: Db, actor: Actor, id: string, patch: Up
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.titleTemplate !== undefined) set.titleTemplate = patch.titleTemplate;
   if (patch.bodyTemplate !== undefined) set.bodyTemplate = patch.bodyTemplate;
+  if (patch.defaultPlace !== undefined) set.defaultPlace = patch.defaultPlace;
+  if (patch.defaultCapacity !== undefined) set.defaultCapacity = patch.defaultCapacity;
   const [row] = await db.update(postTemplates).set(set).where(eq(postTemplates.id, id)).returning();
   await recordAudit(
     db,
@@ -109,9 +137,4 @@ export async function deleteTemplate(db: Db, actor: Actor, id: string): Promise<
     db,
     buildAuditEntry({ actorUserId: actor.userId, action: 'template.delete', targetTable: 'post_templates', targetId: id, before })
   );
-}
-
-/** 플레이스홀더 치환. 값이 없는 키는 그대로 둔다(팀장단이 이후 채움). */
-export function renderTemplate(text: string, vars: Record<string, string>): string {
-  return text.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (m, key: string) => vars[key] ?? m);
 }
