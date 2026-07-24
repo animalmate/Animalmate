@@ -59,8 +59,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (e instanceof PiiBlockedError) return NextResponse.json({ error: 'pii', findings: e.findings }, { status: 422 });
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
     if (e instanceof GeminiError) {
-      console.error('[api] PATCH /api/documents/[id] embed', e.message);
-      return NextResponse.json({ error: 'embed_failed' }, { status: 503 });
+      console.error('[api] PATCH /api/documents/[id] embed', e.status, e.message);
+      return NextResponse.json({ error: 'embed_failed', detail: e.message, status: e.status }, { status: 503 });
     }
     return internalError('PATCH /api/documents/[id]', e);
   }

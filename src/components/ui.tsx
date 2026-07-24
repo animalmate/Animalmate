@@ -85,7 +85,7 @@ export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
   return (
-    <p className="text-[13px] text-error" role="alert">
+    <p className="whitespace-pre-line text-[13px] text-error" role="alert">
       {children}
     </p>
   );

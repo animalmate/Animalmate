@@ -49,8 +49,9 @@ export async function POST(req: Request): Promise<Response> {
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
     // 임베딩(Gemini) 실패·미설정 — 문서 저장은 색인이 필수라 여기서 갈린다. 원인은 서버 로그.
     if (e instanceof GeminiError) {
-      console.error('[api] POST /api/documents embed', e.message);
-      return NextResponse.json({ error: 'embed_failed' }, { status: 503 });
+      console.error('[api] POST /api/documents embed', e.status, e.message);
+      // 운영진 전용 화면이라 진단용으로 실제 사유를 함께 준다(키·모델·설정 원인 구분).
+      return NextResponse.json({ error: 'embed_failed', detail: e.message, status: e.status }, { status: 503 });
     }
     return internalError('POST /api/documents', e);
   }

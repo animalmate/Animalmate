@@ -87,7 +87,12 @@ export function DocumentsPanel() {
       setPii((r.data as { findings?: PiiFinding[] }).findings ?? []);
       return;
     }
-    if (!r.ok) return setError(errorMessage(r.data.error));
+    if (!r.ok) {
+      // 임베딩 실패는 진단 사유(detail)를 함께 보여준다(설정/키/모델 원인 구분 — 운영진 전용 화면).
+      const detail = (r.data as { detail?: string }).detail;
+      const base = errorMessage(r.data.error);
+      return setError(r.data.error === 'embed_failed' && detail ? `${base}\n[원인] ${detail}` : base);
+    }
     setDraft(null);
     void load();
   }
