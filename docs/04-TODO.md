@@ -135,28 +135,24 @@
       통합 테스트를 함께 제거(화면에서 도달할 수 없는 코드였음).
       DoD(F1 전체): 파일럿 팀이 템플릿→선예약→필드 완성→카페 발행까지 end-to-end (UI 붙이면 완성)
 ### 1D. 챗봇 v1
-- [x] **(첫 작업) `middleware.ts` nonce 기반 CSP + `unsafe-inline` 제거.** → 2026-07-24 완료(07-DECISIONS 16).
-      `src/middleware.ts` 요청별 nonce + strict-dynamic. login/signup 을 page(서버)+form(클라)로 쪼개 동적 전환.
-      script-src 에 unsafe-inline 없음(실측). style-src unsafe-inline·정적 404 는 의도적 잔여(문서화).
-      지금 `script-src` 에 `unsafe-inline` 이 남아 있다(Next 하이드레이션 인라인 스크립트 때문).
-      현재는 HTML 주입 지점이 0건이라 실익이 없어 보류했지만(아래 결정 기록 10),
-      챗봇은 **LLM 이 만든 문자열을 화면에 렌더링**하는 첫 기능이라 전제가 바뀐다.
-      요청마다 nonce 를 발급해 `script-src 'nonce-...' 'strict-dynamic'` 으로 바꾸고
-      `unsafe-inline` 을 뺀다. 챗봇 코드보다 **먼저** 넣어야 순서가 뒤집히지 않는다.
-- [ ] LLM 클라이언트: **Gemini 3.1 Flash-Lite(유료 티어)** 생성 + 최신 임베딩 모델.
-      **구형 2.0 계열 모델명 사용 금지**. 모델 ID는 `GEMINI_MODEL`·`GEMINI_EMBEDDING_MODEL`
-      환경변수로 읽음(기본값 하드코딩 금지, Phase 1에서 콘솔 확인 후 핀 고정). 프롬프트 캐싱 적용
-      (반복 시스템 프롬프트 프리픽스 재사용, 캐시 키에 PII/가변 검색결과 제외)
-- [ ] documents CRUD + visibility + 소유권 + PII 경고, 저장 시 재임베딩 파이프라인
-- [ ] 검색 API(retrieval = visibility 필터 SQL 강제, 질문자 역할 기준) + 챗봇 UI(출처 표시,
-      핸드오프 문구, 입력창 고지는 **'개인정보 입력 금지' 하나만**)
-      **로그인 사용자 전용**(비로그인 접근 차단) + 사용자별 일일 쿼터 + 전역 일일 상한(chat_logs 기준)
-      DoD: 부원 질문에 staff/board 문서가 검색되지 않음(visibility 필터 테스트로 증명) +
-      쿼터 초과 시 차단 + 비로그인 호출 거부 +
-      **LLM 응답은 마크다운 파서를 거쳐 렌더링(원시 HTML 삽입 금지 — `dangerouslySetInnerHTML` 사용 불가)** +
-      **CSP 에 `unsafe-inline` 없음**(위 첫 작업 완료 상태로 배포)
-- [ ] 핵심 문서 5개 입력(회칙, 봉사 FAQ, 회비, 봉사시간 인정, 연락처 안내)
-      DoD: 운영진 전용 문서 내용이 부원 계정 답변에 등장하지 않음(테스트로 증명)
+> **1D 챗봇 v1 — 코드·테스트 전부 구현·배포(2026-07-24, 커밋 03bd006~24ab22a).** 남은 것은 운영(문서 입력)뿐.
+- [x] **(첫 작업) `middleware.ts` nonce 기반 CSP + `unsafe-inline` 제거** → 07-DECISIONS 16. (커밋 03bd006)
+- [x] LLM 클라이언트(`src/rag/gemini.ts`): 생성 `gemini-3.1-flash-lite` + 임베딩 `gemini-embedding-2`
+      (outputDimensionality=768). 모델 ID env 전용, 구형 배제. function calling(thoughtSignature 처리).
+      모델 확정 근거·차원 결정은 07-DECISIONS 14·15. (커밋 ea04125, 24ab22a)
+      ※ 프롬프트 캐싱은 미적용 — Gemini 무료/기본 API 는 명시적 캐시 API 가 별도라 v1 범위 밖(아래 잔여).
+- [x] documents CRUD + visibility + 소유권 + PII 경고 + 저장 시 재청킹·재임베딩(`src/rag/documents.ts`,
+      chunking·pii). API + 관리 UI(`/documents`). (커밋 ea04125, 1a8019c, 6048084)
+- [x] 검색(`src/rag/search.ts`, visibility SQL WHERE 강제) + 챗봇 UI(`/chatbot`, 출처·핸드오프·개인정보 고지).
+      로그인 전용, 인당 일일 + 전역 분기 쿼터(`src/rag/quota.ts`) + 킬스위치. 상태 tool 2개(`src/rag/tools.ts`).
+      마크다운 안전 렌더(`src/lib/markdown.ts`, 원시 HTML 금지). 평가셋 러너(`npm run eval`).
+      **DoD 전부 충족·실측 검증**: 부원에 staff/board 문서 미노출(rag-visibility 통합) · 쿼터 차단(quota 통합) ·
+      비로그인 401 · 마크다운 파서 경유 · CSP unsafe-inline 없음 · 근거 없으면 핸드오프 · 개인정보 거절 ·
+      인젝션 방어 · 정답+출처(chatbot-answer 통합). (커밋 7cc8396, 6048084, 24ab22a)
+- [ ] **핵심 문서 5개 입력(운영 작업 — 사용자)**: 회칙, 봉사 FAQ, 회비, 봉사시간 인정, 연락처 안내.
+      `/documents` 에서 공개 범위 지정해 입력. 입력 후 `npm run eval` 로 품질 점검.
+- [ ] **(잔여) 프롬프트 캐싱**: 반복 시스템 프롬프트를 Gemini explicit context cache 로 재사용해 비용 절감.
+      캐시 키에 PII·가변 검색결과 제외. v1 은 미적용(정확성·보안 우선), 사용량 늘면 도입.
 
 ## Phase 2 — 확산 & 고도화 (10월 하순 ~ 11월)
 - [ ] 5개 팀 반복 규칙 등록, 팀장단 온보딩(가이드 1페이지)
