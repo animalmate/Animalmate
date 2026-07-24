@@ -21,13 +21,18 @@ export interface CreateTemplateInput {
   name: string;
   titleTemplate: string;
   bodyTemplate: string;
-  /** 장소별 양식의 고정 장소·정원(예약 생성 시 events 초기값. 회차별로 예약 수정에서 덮어씀). */
+  /** 양식별 기본값 — 예약을 만들 때 각 일정에 미리 채워지고 회차별로 고칠 수 있다. */
   defaultPlace?: string | null;
   defaultCapacity?: number | null;
+  defaultMeetTime?: string | null; // 'HH:MM'
+  defaultPublishTime?: string | null; // 'HH:MM'
 }
 
 export type UpdateTemplatePatch = Partial<
-  Pick<CreateTemplateInput, 'name' | 'titleTemplate' | 'bodyTemplate' | 'defaultPlace' | 'defaultCapacity'>
+  Pick<
+    CreateTemplateInput,
+    'name' | 'titleTemplate' | 'bodyTemplate' | 'defaultPlace' | 'defaultCapacity' | 'defaultMeetTime' | 'defaultPublishTime'
+  >
 >;
 
 // global 은 회장단만, team/personal 은 소유권(소유자/회장단) 검사.
@@ -46,6 +51,13 @@ export function parseDefaultPlace(v: unknown): string | null | undefined {
   if (v === undefined) return undefined;
   const s = String(v ?? '').trim();
   return s === '' ? null : s;
+}
+
+/** 'HH:MM'(폼 time 입력) 만 받는다. 형식이 아니면 비운 것으로 본다. */
+export function parseDefaultTime(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  const s = String(v ?? '').trim();
+  return /^\d{2}:\d{2}$/.test(s) ? s : null;
 }
 
 export function parseDefaultCapacity(v: unknown): number | null | undefined {
@@ -99,6 +111,8 @@ export async function createTemplate(db: Db, actor: Actor, input: CreateTemplate
       bodyTemplate: input.bodyTemplate,
       defaultPlace: input.defaultPlace ?? null,
       defaultCapacity: input.defaultCapacity ?? null,
+      defaultMeetTime: input.defaultMeetTime ?? null,
+      defaultPublishTime: input.defaultPublishTime ?? null,
       updatedBy: actor.userId,
     })
     .returning();
@@ -119,6 +133,8 @@ export async function updateTemplate(db: Db, actor: Actor, id: string, patch: Up
   if (patch.bodyTemplate !== undefined) set.bodyTemplate = patch.bodyTemplate;
   if (patch.defaultPlace !== undefined) set.defaultPlace = patch.defaultPlace;
   if (patch.defaultCapacity !== undefined) set.defaultCapacity = patch.defaultCapacity;
+  if (patch.defaultMeetTime !== undefined) set.defaultMeetTime = patch.defaultMeetTime;
+  if (patch.defaultPublishTime !== undefined) set.defaultPublishTime = patch.defaultPublishTime;
   const [row] = await db.update(postTemplates).set(set).where(eq(postTemplates.id, id)).returning();
   await recordAudit(
     db,

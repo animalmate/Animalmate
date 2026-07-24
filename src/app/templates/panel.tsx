@@ -16,6 +16,8 @@ interface Template {
   bodyTemplate: string;
   defaultPlace: string | null;
   defaultCapacity: number | null;
+  defaultMeetTime: string | null;
+  defaultPublishTime: string | null;
 }
 interface Team {
   id: string;
@@ -23,6 +25,7 @@ interface Team {
 }
 
 const OWNER_LABEL: Record<string, string> = { personal: '개인', team: '팀', global: '공용' };
+const TIME_STEP = 600; // 10분 단위
 
 function ownerText(t: Template): string {
   if (t.ownerType === 'team') return `팀 · ${t.teamName ?? '알 수 없음'}`;
@@ -40,6 +43,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
   const [bodyTemplate, setBodyTemplate] = useState('');
   const [defaultPlace, setDefaultPlace] = useState('');
   const [defaultCapacity, setDefaultCapacity] = useState('');
+  const [defaultMeetTime, setDefaultMeetTime] = useState('');
+  const [defaultPublishTime, setDefaultPublishTime] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -64,6 +69,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
     setBodyTemplate('');
     setDefaultPlace('');
     setDefaultCapacity('');
+    setDefaultMeetTime('');
+    setDefaultPublishTime('');
   }
 
   function startEdit(t: Template) {
@@ -75,6 +82,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
     setBodyTemplate(t.bodyTemplate);
     setDefaultPlace(t.defaultPlace ?? '');
     setDefaultCapacity(t.defaultCapacity != null ? String(t.defaultCapacity) : '');
+    setDefaultMeetTime(t.defaultMeetTime ?? '');
+    setDefaultPublishTime(t.defaultPublishTime ?? '');
     setError('');
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -88,6 +97,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
       bodyTemplate: bodyTemplate.trim(),
       defaultPlace: defaultPlace.trim(),
       defaultCapacity,
+      defaultMeetTime,
+      defaultPublishTime,
     };
     const r = editingId
       ? await apiPost(`/api/templates/${editingId}`, fields, 'PATCH')
@@ -171,18 +182,40 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
             placeholder={'{{전체_날짜}} 양주 쉼터 봉사\n집합 {{집합시간}} / 정원 {{정원}}\n\n문의:\n{{팀장단}}'}
           />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="봉사 장소" hint="공지 본문에는 직접 적고, 이 값은 회차 기록용입니다">
-            <Input value={defaultPlace} onChange={(e) => setDefaultPlace(e.target.value)} placeholder="양주 쉼터" />
-          </Field>
-          <Field label="기본 정원" hint="예약마다 바꿀 수 있어요">
-            <Input
-              inputMode="numeric"
-              value={defaultCapacity}
-              onChange={(e) => setDefaultCapacity(e.target.value.replace(/\D/g, ''))}
-              placeholder="20"
-            />
-          </Field>
+        <div className="rounded-md bg-cream-100 p-3">
+          <div className="text-sm font-medium text-ink-700">예약할 때 미리 채워질 값</div>
+          <p className="mt-0.5 text-xs text-ink-500">
+            여기 넣어 두면 예약을 만들 때 봉사 일자와 업로드 날짜만 고르면 됩니다. 회차마다 다르면 그때 고치면 돼요.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <Field label="봉사 장소" hint="공지 본문에는 직접 적고, 이 값은 회차 기록용입니다">
+              <Input value={defaultPlace} onChange={(e) => setDefaultPlace(e.target.value)} placeholder="양주 쉼터" />
+            </Field>
+            <Field label="정원">
+              <Input
+                inputMode="numeric"
+                value={defaultCapacity}
+                onChange={(e) => setDefaultCapacity(e.target.value.replace(/\D/g, ''))}
+                placeholder="20"
+              />
+            </Field>
+            <Field label="집합 시간">
+              <Input
+                type="time"
+                step={TIME_STEP}
+                value={defaultMeetTime}
+                onChange={(e) => setDefaultMeetTime(e.target.value)}
+              />
+            </Field>
+            <Field label="업로드 시각" hint="봉사 며칠 전에 올릴지는 예약에서 날짜로 고릅니다">
+              <Input
+                type="time"
+                step={TIME_STEP}
+                value={defaultPublishTime}
+                onChange={(e) => setDefaultPublishTime(e.target.value)}
+              />
+            </Field>
+          </div>
         </div>
         {usedKeys.length > 0 ? (
           <div className="text-[13px] text-ink-500">
@@ -221,12 +254,16 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
                     {t.name} <span className="text-xs text-ink-500">({ownerText(t)})</span>
                   </div>
                   <div className="truncate text-ink-500">{t.titleTemplate}</div>
-                  {t.defaultPlace || t.defaultCapacity != null ? (
-                    <div className="text-xs text-ink-500">
-                      {t.defaultPlace ?? '장소 미지정'}
-                      {t.defaultCapacity != null ? ` · 기본 정원 ${t.defaultCapacity}명` : ''}
-                    </div>
-                  ) : null}
+                  <div className="text-xs text-ink-500">
+                    {[
+                      t.defaultPlace,
+                      t.defaultCapacity != null ? `${t.defaultCapacity}명` : null,
+                      t.defaultMeetTime ? `집합 ${t.defaultMeetTime}` : null,
+                      t.defaultPublishTime ? `업로드 ${t.defaultPublishTime}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
                   <ul className="mt-1 space-y-0.5 text-xs text-ink-500">
                     {placeholderKeys(t.titleTemplate, t.bodyTemplate).map((k) => {
                       const info = findPlaceholder(k);
