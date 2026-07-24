@@ -23,7 +23,8 @@ function actor(role: Role, opts: Partial<Actor> = {}): Actor {
 
 const personalSelf: Action = { kind: 'post.modify', owner: { ownerType: 'personal', ownerId: 'u-self' } };
 const personalOther: Action = { kind: 'post.modify', owner: { ownerType: 'personal', ownerId: 'u-other' } };
-const teamOwned: Action = { kind: 'document.modify', owner: { ownerType: 'team', ownerId: 't-1' } };
+const teamOwned: Action = { kind: 'post.modify', owner: { ownerType: 'team', ownerId: 't-1' } };
+const teamDoc: Action = { kind: 'document.modify', owner: { ownerType: 'team', ownerId: 't-1' } };
 
 describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () => {
   // DoD 예시: 부원이 운영진 API 호출 시 거부(403).
@@ -72,14 +73,22 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     });
   });
 
-  it('9. 소속 팀원(운영진)의 팀 소유 문서 수정 → 허용', () => {
+  it('9. 소속 팀원(운영진)의 팀 소유 게시물 수정 → 허용', () => {
     const a = actor('staff', { teams: [{ teamId: 't-1', position: 'member' }] });
     expect(authorize(a, teamOwned)).toMatchObject({ allowed: true, override: false });
   });
 
-  it('10. 비소속 운영진의 팀 소유 문서 수정 → 거부(not_owner)', () => {
+  it('10. 비소속 운영진의 팀 소유 게시물 수정 → 거부(not_owner)', () => {
     const a = actor('staff', { teams: [{ teamId: 't-2', position: 'leader' }] });
     expect(authorize(a, teamOwned)).toMatchObject({ allowed: false, reason: 'not_owner' });
+  });
+
+  it('10-1. 챗봇 문서 관리는 회장단 전용: 운영진(소속 팀원)도 거부, 회장단은 허용', () => {
+    const staffOwner = actor('staff', { teams: [{ teamId: 't-1', position: 'leader' }] });
+    expect(authorize(staffOwner, teamDoc)).toMatchObject({ allowed: false, reason: 'role_insufficient' });
+    expect(authorize(actor('member'), teamDoc).reason).toBe('role_insufficient');
+    expect(authorize(actor('board'), teamDoc).allowed).toBe(true);
+    expect(authorize(actor('sysadmin'), teamDoc).allowed).toBe(true);
   });
 
   it('11. 시스템관리자의 봇 토큰 관리 → 허용', () => {

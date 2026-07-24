@@ -92,10 +92,9 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'post.create':
       return isStaffPlus(actor.role) ? ALLOW : deny('role_insufficient');
 
-    // 게시물/문서 수정·삭제: 부원 불가. 회장단·시스템관리자는 소유권 우회(override).
+    // 게시물 수정·삭제, 반복 규칙/템플릿 관리: 부원 불가. 회장단·시스템관리자는 소유권 우회(override).
     // 운영진은 소유자(본인/소속팀)일 때만.
     case 'post.modify':
-    case 'document.modify':
     case 'recurring.manage':
     case 'template.manage': {
       if (!isStaffPlus(actor.role)) return deny('role_insufficient');
@@ -104,6 +103,10 @@ export function authorize(actor: Actor, action: Action): Decision {
       }
       return ownsResource(actor, action.owner) ? ALLOW : deny('not_owner');
     }
+
+    // 챗봇 지식베이스 문서: 관리(생성·수정·삭제)는 회장단·시스템관리자 전용(운영진·부원 불가).
+    case 'document.modify':
+      return isPrivileged(actor.role) ? ALLOW : deny('role_insufficient');
 
     // 회장단·시스템관리자 전용.
     case 'membership.manage':

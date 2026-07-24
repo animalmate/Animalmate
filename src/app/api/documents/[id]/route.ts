@@ -1,8 +1,8 @@
-// 문서 조회(편집용)·수정·삭제 — 소유자/회장단. PII 확인·재임베딩은 서비스가 처리.
+// 문서 조회(편집용)·수정·삭제 — 회장단·시스템관리자 전용. PII 확인·재임베딩은 서비스가 처리.
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus, isPrivileged, ownsResource } from '@/auth/permissions';
+import { isPrivileged } from '@/auth/permissions';
 import { getDocument, updateDocument, deleteDocument, PiiBlockedError, type DocumentPatch, type Visibility } from '@/rag/documents';
 import { GeminiError } from '@/rag/gemini';
 import { PermissionError } from '@/auth/guard';
@@ -16,14 +16,10 @@ const VIS: readonly unknown[] = ['member', 'staff', 'board'];
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
-  if (!actor || !isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!actor || !isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   const { id } = await ctx.params;
   const doc = await getDocument(db, id);
   if (!doc) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  // 비회장단은 소유(본인/소속 팀) 문서만 편집 열람.
-  if (!isPrivileged(actor.role) && !ownsResource(actor, { ownerType: doc.ownerType, ownerId: doc.ownerId })) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  }
   return NextResponse.json({
     document: {
       id: doc.id,

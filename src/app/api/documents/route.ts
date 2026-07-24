@@ -1,8 +1,8 @@
-// 문서(RAG 지식베이스) 목록·생성 — 운영진 이상. 소유권·visibility·PII 는 서비스가 검증.
+// 문서(RAG 지식베이스) 목록·생성 — 회장단·시스템관리자 전용. 소유권·visibility·PII 는 서비스가 검증.
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus } from '@/auth/permissions';
+import { isPrivileged } from '@/auth/permissions';
 import { listDocuments, createDocument, PiiBlockedError, type Visibility } from '@/rag/documents';
 import { GeminiError } from '@/rag/gemini';
 import { PermissionError } from '@/auth/guard';
@@ -16,7 +16,7 @@ const VIS: readonly unknown[] = ['member', 'staff', 'board'];
 
 export async function GET(): Promise<Response> {
   const actor = await getCurrentActor();
-  if (!actor || !isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!actor || !isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   return NextResponse.json({ documents: await listDocuments(db, actor) });
 }
 
