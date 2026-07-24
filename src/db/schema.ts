@@ -319,6 +319,27 @@ export const emailCodes = pgTable(
   (t) => [index('email_codes_email_purpose_idx').on(t.email, t.purpose)]
 );
 
+/**
+ * 레이트 리밋 카운터(고정 윈도). 인증 전 엔드포인트(가입/로그인 요청·검증)를 보호한다.
+ *
+ * 왜 DB 인가: Vercel 서버리스는 인스턴스가 요청마다 바뀔 수 있어 메모리 카운터는 사실상 무력하다.
+ * (bucket, identifier, window_start) 한 행에 원자적 UPSERT 로 세면 인스턴스가 몇 개든 합산된다.
+ * 지난 윈도 행은 일일 크론이 정리한다(pruneRateLimits).
+ */
+export const rateLimits = pgTable(
+  'rate_limits',
+  {
+    bucket: text('bucket').notNull(), // 보호 대상 이름(예: 'signup_request')
+    identifier: text('identifier').notNull(), // IP 또는 이메일 등 주체 식별자
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex('rate_limits_pk').on(t.bucket, t.identifier, t.windowStart),
+    index('rate_limits_window_idx').on(t.windowStart), // 오래된 행 정리용
+  ]
+);
+
 // ── 운영 공통 ──────────────────────────────────────────────────────────
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').primaryKey().defaultRandom(),

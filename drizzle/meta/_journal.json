@@ -64,6 +64,13 @@
       "when": 1784859800621,
       "tag": "0008_lively_kat_farrell",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784862388400,
+      "tag": "0009_rich_silver_samurai",
+      "breakpoints": true
     }
   ]
 }

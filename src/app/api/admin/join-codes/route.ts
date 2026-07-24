@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { issueJoinCode, getActiveJoinCode } from '@/auth/join-codes';
+import { issueJoinCode, getActiveJoinCode, InvalidJoinCodeError } from '@/auth/join-codes';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
+import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,10 +27,13 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const { semesterLabel, code } = await req.json();
     if (!semesterLabel) return NextResponse.json({ error: 'semester_label_required' }, { status: 400 });
-    const jc = await issueJoinCode(db, actor, { semesterLabel, code });
+    checkLength('학기 이름', String(semesterLabel), LIMITS.semesterLabel);
+    const jc = await issueJoinCode(db, actor, { semesterLabel: String(semesterLabel), code: code ? String(code) : undefined });
     return NextResponse.json({ ok: true, code: jc.code, semesterLabel: jc.semesterLabel });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    return NextResponse.json({ error: 'internal' }, { status: 500 });
+    if (e instanceof InvalidJoinCodeError) return NextResponse.json({ error: 'invalid_join_code_format', message: e.message }, { status: 400 });
+    if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    return internalError('POST /api/admin/join-codes', e);
   }
 }

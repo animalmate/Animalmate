@@ -4,6 +4,8 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { listAllTeams, createTeam, type TeamKind } from '@/org/teams';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
+import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,10 +22,14 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const b = await req.json();
     const kind: TeamKind = b.kind === 'functional' ? 'functional' : 'activity';
-    const team = await createTeam(db, actor, { name: String(b.name), kind });
+    const name = String(b.name ?? '').trim();
+    if (!name) return NextResponse.json({ error: 'missing_name' }, { status: 400 });
+    checkLength('팀 이름', name, LIMITS.name);
+    const team = await createTeam(db, actor, { name, kind });
     return NextResponse.json({ team });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    return internalError('POST /api/admin/teams', e);
   }
 }

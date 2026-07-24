@@ -12,6 +12,10 @@ import {
 } from '@/publishing/post-templates';
 import { listAllTeams } from '@/org/teams';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
+import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
+
+const OWNER_TYPES: readonly unknown[] = ['personal', 'team', 'global'];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,15 +47,20 @@ export async function POST(req: Request): Promise<Response> {
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   try {
     const t = await req.json();
+    // ownerType 은 요청 본문에서 오므로 화이트리스트로 확정한다(모르는 값이 enum 컬럼까지 내려가지 않게).
+    if (!OWNER_TYPES.includes(t.ownerType)) return NextResponse.json({ error: 'bad_owner_type' }, { status: 400 });
     const ownerType = t.ownerType as TemplateOwnerType;
     const name = String(t.name ?? '').trim();
     const titleTemplate = String(t.titleTemplate ?? '').trim();
     if (!name) return NextResponse.json({ error: 'missing_name' }, { status: 400 });
     if (!titleTemplate) return NextResponse.json({ error: 'missing_title' }, { status: 400 });
     if (ownerType === 'team' && !t.ownerId) return NextResponse.json({ error: 'missing_team' }, { status: 400 });
+    checkLength('이름', name, LIMITS.name);
+    checkLength('제목', titleTemplate, LIMITS.title);
+    checkLength('본문', String(t.bodyTemplate ?? ''), LIMITS.contentMd);
     const tpl = await createTemplate(db, actor, {
       ownerType,
-      ownerId: ownerType === 'personal' ? actor.userId : ownerType === 'team' ? t.ownerId : null,
+      ownerId: ownerType === 'personal' ? actor.userId : ownerType === 'team' ? String(t.ownerId) : null,
       name,
       titleTemplate,
       bodyTemplate: String(t.bodyTemplate ?? ''),
@@ -63,6 +72,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ template: tpl });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    return internalError('POST /api/templates', e);
   }
 }

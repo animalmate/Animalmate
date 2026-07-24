@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { markReady, schedulePost, cancelPost, NotReadyError } from '@/publishing/scheduled-posts';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof NotReadyError) return NextResponse.json({ error: 'not_ready', missing: e.missing }, { status: 422 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return internalError('POST /api/reservations/[id]/action', e);
   }
 }

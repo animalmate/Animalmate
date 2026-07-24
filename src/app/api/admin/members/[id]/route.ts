@@ -4,6 +4,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { setMemberRole, setMemberActive, MemberError } from '@/auth/members';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof MemberError) return NextResponse.json({ error: e.code }, { status: 400 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return internalError('PATCH /api/admin/members/[id]', e);
   }
 }

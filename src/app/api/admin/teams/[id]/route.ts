@@ -4,6 +4,8 @@ import { getCurrentActor } from '@/auth/current-user';
 import { setTeamActive, deleteTeam, TeamInUseError } from '@/org/teams';
 import { setTeamRoster, TeamMemberError } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
+import { InputTooLongError } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +26,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof TeamMemberError) return NextResponse.json({ error: e.code, email: e.email }, { status: 400 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    return internalError('PATCH /api/admin/teams/[id]', e);
   }
 }
 
@@ -39,6 +42,6 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof TeamInUseError) return NextResponse.json({ error: 'team_in_use', counts: e.counts }, { status: 409 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return internalError('DELETE /api/admin/teams/[id]', e);
   }
 }

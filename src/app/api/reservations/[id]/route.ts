@@ -5,6 +5,8 @@ import { isStaffPlus, isPrivileged, ownsResource } from '@/auth/permissions';
 import { getReservation, updateReservation } from '@/publishing/reservations';
 import { loadPublishVars } from '@/publishing/final-render';
 import { PermissionError } from '@/auth/guard';
+import { internalError } from '@/http/errors';
+import { LIMITS, InputTooLongError, checkLength, parseDate } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,18 +32,25 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   try {
     const b = await req.json();
+    const title = b.title !== undefined ? String(b.title) : undefined;
+    const contentMd = b.contentMd !== undefined ? String(b.contentMd) : undefined;
+    const place = b.place !== undefined ? (b.place === null ? null : String(b.place)) : undefined;
+    checkLength('제목', title, LIMITS.title);
+    checkLength('본문', contentMd, LIMITS.contentMd);
+    checkLength('장소', place, LIMITS.place);
     await updateReservation(db, actor, id, {
-      title: b.title,
-      contentMd: b.contentMd,
-      publishAt: b.publishAt !== undefined ? (b.publishAt ? new Date(b.publishAt) : null) : undefined,
+      title,
+      contentMd,
+      publishAt: b.publishAt !== undefined ? parseDate(b.publishAt) : undefined,
       eventDate: b.eventDate,
       meetTime: b.meetTime,
-      place: b.place,
+      place,
       capacity: b.capacity !== undefined && b.capacity !== '' ? Number(b.capacity) : b.capacity === '' ? null : undefined,
     });
     return NextResponse.json({ ok: true });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    return NextResponse.json({ error: 'internal', message: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    return internalError('PATCH /api/reservations/[id]', e);
   }
 }
