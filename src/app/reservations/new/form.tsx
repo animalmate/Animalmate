@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select, Textarea } from '@/components/ui';
+import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select } from '@/components/ui';
+import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 
 interface Board { menuid: number; name: string; botCanWrite: boolean }
 interface Team { id: string; name: string }
@@ -167,7 +168,7 @@ export function NewReservationForm() {
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
         <Field label="본문">
-          <Textarea rows={4} value={contentMd} onChange={(e) => setContentMd(e.target.value)} />
+          <AutoGrowTextarea value={contentMd} onChange={(e) => setContentMd(e.target.value)} />
         </Field>
 
         <div className="space-y-2">

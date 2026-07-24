@@ -1,5 +1,5 @@
 // 애니멀메이트 디자인 시스템 UI 프리미티브(Tailwind). 토큰: docs/06-DESIGN.md / design/handoff.
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, ComponentPropsWithRef, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 import { Icon } from './icon';
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -73,7 +73,8 @@ export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInpu
   return <input className={`h-control px-3.5 ${CONTROL} ${className}`} {...props} />;
 }
 
-export function Textarea({ className = '', ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+// ref 를 받는다(AutoGrowTextarea 가 높이를 재기 위해 필요 — React 19 는 ref 도 일반 prop).
+export function Textarea({ className = '', ...props }: ComponentPropsWithRef<'textarea'>) {
   return <textarea className={`px-3.5 py-2.5 leading-relaxed ${CONTROL} ${className}`} {...props} />;
 }
 
