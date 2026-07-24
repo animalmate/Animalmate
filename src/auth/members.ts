@@ -18,6 +18,18 @@ const SYSTEM_EMAIL = 'system@animalmate.local';
 const ROLE_RANK: Record<Role, number> = { member: 0, staff: 1, board: 2, sysadmin: 2 };
 export const ASSIGNABLE_ROLES: Role[] = ['member', 'staff', 'board', 'sysadmin'];
 
+/**
+ * 권한이 **줄어드는** 변경인가(강등). 강등·비활성화 시 세션을 끊는 판단에 쓴다.
+ *
+ * ROLE_RANK 에서 board 와 sysadmin 은 같은 등급이지만, sysadmin 에게만 열린 조작
+ * (sysadmin 부여·회수, sysadmin 계정 비활성화)이 있으므로 sysadmin → 그 외는 축소로 본다.
+ */
+export function isDemotion(from: Role, to: Role): boolean {
+  if (from === to) return false;
+  if (from === 'sysadmin') return true; // sysadmin 전용 권한 상실
+  return ROLE_RANK[to] < ROLE_RANK[from];
+}
+
 export interface MemberRow {
   userId: string;
   email: string;
@@ -194,6 +206,13 @@ export async function setMemberRole(db: Db, actor: Actor, targetUserId: string, 
   if (currentRole === newRole) return;
 
   await db.update(memberships).set({ role: newRole }).where(and(eq(memberships.userId, targetUserId), eq(memberships.status, 'active')));
+
+  // 강등이면 세션도 끊는다 — 역할이 줄었는데 이전 역할로 발급된 토큰이 살아 있을 이유가 없다.
+  // (인가는 이미 매 요청 DB 에서 역할을 다시 읽으므로 권한 상승이 남아 있진 않지만,
+  //  퇴출·계정 이상 상황에서 읽기 접근이 그대로 유지되는 것 자체가 리스크다. 2026-07-24 결정 13)
+  const demoted = isDemotion(currentRole, newRole);
+  if (demoted) await bumpSessionVersion(db, targetUserId);
+
   // 회장단이 관여된 변경(강등이든 승격이든)은 눈에 띄게 남긴다.
   const touchesPrivileged = isPrivileged(currentRole) || isPrivileged(newRole);
   await recordAudit(
@@ -204,7 +223,7 @@ export async function setMemberRole(db: Db, actor: Actor, targetUserId: string, 
       targetTable: 'memberships',
       targetId: targetUserId,
       before: { role: currentRole },
-      after: { role: newRole },
+      after: { role: newRole, sessionsRevoked: demoted },
       severity: touchesPrivileged ? 'high' : undefined,
     })
   );
@@ -214,6 +233,19 @@ export async function setMemberRole(db: Db, actor: Actor, targetUserId: string, 
       summary: `회장단 권한이 변경되었습니다: ${currentRole} → ${newRole}`,
     });
   }
+}
+
+/**
+ * 세션 세대를 1 올린다 = 그 계정의 모든 기기 로그아웃. 새 세대 값을 돌려준다.
+ * 명시적인 "모든 기기에서 로그아웃" 과 강등·비활성화가 공유한다.
+ */
+async function bumpSessionVersion(db: Db, userId: string): Promise<number | undefined> {
+  const [row] = await db
+    .update(users)
+    .set({ sessionVersion: sql`${users.sessionVersion} + 1` })
+    .where(eq(users.id, userId))
+    .returning({ sessionVersion: users.sessionVersion });
+  return row?.sessionVersion;
 }
 
 /**
@@ -233,11 +265,7 @@ export async function revokeSessions(db: Db, actor: Actor, targetUserId: string)
   // sysadmin 의 세션을 끊는 것은 sysadmin 만(회장단이 시스템관리자를 밀어내지 못하게).
   if (currentRole === 'sysadmin' && actor.role !== 'sysadmin') throw new MemberError('sysadmin_only');
 
-  const [row] = await db
-    .update(users)
-    .set({ sessionVersion: sql`${users.sessionVersion} + 1` })
-    .where(eq(users.id, targetUserId))
-    .returning({ sessionVersion: users.sessionVersion });
+  const newVersion = await bumpSessionVersion(db, targetUserId);
 
   await recordAudit(
     db,
@@ -246,7 +274,7 @@ export async function revokeSessions(db: Db, actor: Actor, targetUserId: string)
       action: 'session.revoke_all',
       targetTable: 'users',
       targetId: targetUserId,
-      after: { sessionVersion: row?.sessionVersion },
+      after: { sessionVersion: newVersion },
       // 회장단 이상을 강제 로그아웃시키는 것은 눈에 띄어야 한다.
       severity: currentRole && isPrivileged(currentRole) ? 'high' : undefined,
     })
@@ -281,6 +309,12 @@ export async function setMemberActive(db: Db, actor: Actor, targetUserId: string
   }
 
   await db.update(memberships).set({ status: active ? 'active' : 'expired' }).where(eq(memberships.userId, targetUserId));
+
+  // 비활성화의 의도는 "이 사람의 접근을 지금 끊는다" 다. 세션을 남겨 두면 쓰기는 막혀도
+  // 화면 열람이 계속되어 의도와 어긋난다 — 특히 운영진 퇴출·계정 이상 상황에서 읽기 접근이
+  // 그대로면 그 자체가 리스크다. 재활성화는 끊을 이유가 없으므로 올리지 않는다. (결정 13)
+  if (!active) await bumpSessionVersion(db, targetUserId);
+
   const touchesPrivileged = currentRole != null && isPrivileged(currentRole);
   await recordAudit(
     db,
@@ -289,7 +323,7 @@ export async function setMemberActive(db: Db, actor: Actor, targetUserId: string
       action: active ? 'membership.activate' : 'membership.deactivate',
       targetTable: 'memberships',
       targetId: targetUserId,
-      after: { active },
+      after: { active, sessionsRevoked: !active },
       severity: touchesPrivileged ? 'high' : undefined,
     })
   );

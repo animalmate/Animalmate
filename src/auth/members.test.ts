@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { wouldRemoveLastPrivileged } from './members';
+import { wouldRemoveLastPrivileged, isDemotion } from './members';
+
+// 강등 판정 = "권한이 줄었는가". 줄었으면 세션을 끊는다(결정 13).
+describe('isDemotion — 강등 판정', () => {
+  it('등급이 내려가면 강등', () => {
+    expect(isDemotion('board', 'staff')).toBe(true);
+    expect(isDemotion('board', 'member')).toBe(true);
+    expect(isDemotion('staff', 'member')).toBe(true);
+  });
+
+  it('등급이 올라가면 강등이 아니다(승격은 세션을 끊지 않는다)', () => {
+    expect(isDemotion('member', 'staff')).toBe(false);
+    expect(isDemotion('staff', 'board')).toBe(false);
+    expect(isDemotion('member', 'sysadmin')).toBe(false);
+    expect(isDemotion('board', 'sysadmin')).toBe(false); // 같은 등급이지만 권한은 늘어난다
+  });
+
+  it('sysadmin → 그 외는 등급이 같아도 강등(sysadmin 전용 조작을 잃는다)', () => {
+    expect(isDemotion('sysadmin', 'board')).toBe(true);
+    expect(isDemotion('sysadmin', 'staff')).toBe(true);
+  });
+
+  it('역할이 그대로면 강등이 아니다', () => {
+    for (const r of ['member', 'staff', 'board', 'sysadmin'] as const) {
+      expect(isDemotion(r, r)).toBe(false);
+    }
+  });
+});
 
 // 회장단끼리는 상호 신뢰가 전제다(회장단 교체·유고 대응을 회장단이 스스로 해야 하므로).
 // 코드가 막는 것은 딱 하나 — "아무도 권한을 되돌릴 수 없게 되는" 전원 잠금뿐이다.
