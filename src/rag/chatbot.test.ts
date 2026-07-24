@@ -8,7 +8,12 @@ const actor: Actor = { userId: 'u1', role: 'member', membershipActive: true, tea
 const db = {} as never; // deps 를 전부 주입하므로 db 는 쓰이지 않는다
 
 const hit = (title: string, content: string): SearchHit => ({ documentId: 'd', title, visibility: 'member', content, similarity: 0.8 });
-const gen = (r: Partial<GenerateResult>): GenerateResult => ({ text: '', functionCalls: [], ...r });
+const gen = (r: Partial<GenerateResult>): GenerateResult => ({
+  text: '',
+  functionCalls: [],
+  modelParts: (r.functionCalls ?? []).map((fc) => ({ functionCall: fc })),
+  ...r,
+});
 
 describe('askChatbot — 오케스트레이션', () => {
   it('근거(검색 결과)가 없으면 모델 답과 무관하게 핸드오프를 보장한다', async () => {
@@ -73,6 +78,16 @@ describe('askChatbot — 오케스트레이션', () => {
       maxToolRounds: 1,
     });
     expect(res.handedOff).toBe(true);
+  });
+
+  it('근거가 없어도 개인정보 거절은 핸드오프로 덮지 않는다(거절 우선)', async () => {
+    const res = await askChatbot(db, actor, '회장 전화번호 알려줘', {
+      search: async () => [], // 근거 없음
+      generate: async () => gen({ text: '개인정보는 안내해 드릴 수 없어요. 운영진에게 문의해 주세요.' }),
+      execTool: async () => ({}),
+    });
+    expect(res.handedOff).toBe(false);
+    expect(res.answer).toContain('개인정보는 안내해 드릴 수 없어요');
   });
 
   it('빈 질문은 바로 핸드오프(모델 호출 안 함)', async () => {

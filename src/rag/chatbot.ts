@@ -43,6 +43,11 @@ export function isHandoff(answer: string): boolean {
   return answer.includes('자료에 없는') || (answer.includes('운영진') && answer.includes('문의'));
 }
 
+/** 개인정보 요청 거절인지. 근거가 없어도 이 거절은 핸드오프로 덮지 않는다(거절이 우선). */
+export function isRefusal(answer: string): boolean {
+  return answer.includes('개인정보') && (answer.includes('안내') || answer.includes('문의') || answer.includes('없'));
+}
+
 export async function askChatbot(db: Db, actor: Actor, question: string, deps: AskDeps = {}): Promise<AskResult> {
   const q = question.trim();
   if (!q) return { answer: HANDOFF_MESSAGE, sources: [], handedOff: true };
@@ -69,7 +74,8 @@ export async function askChatbot(db: Db, actor: Actor, question: string, deps: A
   let toolDataProduced = false;
   let result = await gen({ system: SYSTEM_PROMPT, contents, tools: CHATBOT_TOOLS });
   for (let round = 0; round < maxRounds && result.functionCalls.length > 0; round++) {
-    contents.push({ role: 'model', parts: result.functionCalls.map((fc) => ({ functionCall: fc })) });
+    // 모델 파트를 원문 그대로 되돌린다(thoughtSignature 포함 — 재구성하면 Gemini 3.x 가 거부).
+    contents.push({ role: 'model', parts: result.modelParts });
     const responses = [];
     for (const fc of result.functionCalls) {
       const out = await execute(fc.name, fc.args);
@@ -84,7 +90,11 @@ export async function askChatbot(db: Db, actor: Actor, question: string, deps: A
   const grounded = hits.length > 0 || toolDataProduced;
 
   // 4) 근거가 전혀 없으면 핸드오프를 보장한다(모델이 헛소리하지 않도록 DoD 안전장치).
-  if (!grounded) return { answer: HANDOFF_MESSAGE, sources: [], handedOff: true };
+  //    단, 개인정보 요청 거절은 근거와 무관한 정당한 응답이므로 핸드오프로 덮지 않는다(거절 우선).
+  if (!grounded) {
+    if (isRefusal(answer)) return { answer, sources: [], handedOff: false };
+    return { answer: HANDOFF_MESSAGE, sources: [], handedOff: true };
+  }
 
   return { answer, sources: uniqueSources(hits), handedOff: isHandoff(answer) };
 }
