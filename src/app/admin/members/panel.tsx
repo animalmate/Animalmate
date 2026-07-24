@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, RoleBadge, SecondaryButton, Select } from '@/components/ui';
 
@@ -19,12 +19,14 @@ interface Team { id: string; name: string; kind: string; isActive: boolean; lead
 const ROLE_LABEL: Record<string, string> = { member: '부원', staff: '운영진', board: '회장단', sysadmin: '시스템관리자' };
 const ROLES = ['member', 'staff', 'board', 'sysadmin'];
 const KIND_LABEL: Record<string, string> = { activity: '활동팀', functional: '기능팀' };
+const byName = (a: Member, b: Member) => a.name.localeCompare(b.name, 'ko');
 
 export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; selfUserId: string }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
 
   async function load() {
     const [m, t] = await Promise.all([
@@ -47,40 +49,76 @@ export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; 
     await load();
   }
 
+  // 이름·이메일·전화로 검색. 가나다 순 정렬 후 역할별로 나눈다.
+  const buckets = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const match = (m: Member) => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || (m.phone ?? '').includes(q);
+    const filtered = members.filter(match).sort(byName);
+    return {
+      member: filtered.filter((m) => m.role === 'member'),
+      staff: filtered.filter((m) => m.role === 'staff'),
+      board: filtered.filter((m) => m.role === 'board' || m.role === 'sysadmin'),
+    };
+  }, [members, query]);
+
+  const searching = query.trim() !== '';
+
+  const section = (title: string, list: Member[]) => (
+    <RoleSection key={title} title={title} count={list.length} forceOpen={searching}>
+      {list.length === 0 ? (
+        <p className="px-1 py-2 text-[13px] text-ink-500">{searching ? '검색 결과 없음' : '없음'}</p>
+      ) : (
+        <ul className="space-y-2">
+          {list.map((m) => (
+            <li key={m.userId}>
+              <MemberCard m={m} teams={teams} isSelf={m.userId === selfUserId} isSysadmin={isSysadmin} onPatch={(b) => patchMember(m.userId, b)} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </RoleSection>
+  );
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-[22px] font-bold text-ink-900">회원·팀 관리</h1>
-        <InfoText>가입 회원의 역할·소속 팀·직함을 지정하고, 팀을 만들거나 없앨 수 있어요. 회장단·시스템관리자만 들어올 수 있어요.</InfoText>
+        <InfoText>역할·소속 팀·직함을 지정하고 팀을 관리해요. 회장단·시스템관리자만 들어올 수 있어요.</InfoText>
       </div>
       <ErrorText>{error}</ErrorText>
 
       <TeamsSection teams={teams} onChange={load} onError={setError} />
 
-      <div className="space-y-2">
-        <h2 className="text-base font-semibold text-ink-900">회원</h2>
-        {loading ? (
-          <InfoText>불러오는 중…</InfoText>
-        ) : members.length === 0 ? (
-          <Card>
-            <InfoText>가입한 회원이 없습니다.</InfoText>
-          </Card>
-        ) : (
-          <ul className="space-y-2">
-            {members.map((m) => (
-              <li key={m.userId}>
-                <MemberCard
-                  m={m}
-                  teams={teams}
-                  isSelf={m.userId === selfUserId}
-                  isSysadmin={isSysadmin}
-                  onPatch={(body) => patchMember(m.userId, body)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+      <Field label="회원 검색">
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름·이메일·전화로 검색" />
+      </Field>
+
+      {loading ? (
+        <InfoText>불러오는 중…</InfoText>
+      ) : (
+        <div className="space-y-2">
+          {section('부원', buckets.member)}
+          {section('운영진', buckets.staff)}
+          {section('회장단', buckets.board)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 접이식 명단 섹션 ────────────────────────────────────────────────────
+function RoleSection({ title, count, forceOpen, children }: { title: string; count: number; forceOpen: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const isOpen = forceOpen || open;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-ink-900">
+          {title} 명단 <span className="text-ink-400">({count})</span>
+        </h2>
+        {!forceOpen ? <SecondaryButton onClick={() => setOpen((v) => !v)}>{open ? '접기' : '열기'}</SecondaryButton> : null}
       </div>
+      {isOpen ? children : null}
     </div>
   );
 }
@@ -100,12 +138,6 @@ function MemberCard({
   onPatch: (body: Record<string, unknown>) => void;
 }) {
   const [confirmRevoke, setConfirmRevoke] = useState(false);
-
-  // 현재 배정을 서버가 이해하는 형태로.
-  const assignments = m.teams.map((t) => ({ teamId: t.teamId, position: t.position, label: t.label }));
-  const saveTeams = (next: { teamId: string; position: string; label: string }[]) => onPatch({ teams: next });
-
-  const addable = teams.filter((t) => t.isActive && !m.teams.some((mt) => mt.teamId === t.id));
 
   return (
     <Card className="space-y-3">
@@ -151,79 +183,83 @@ function MemberCard({
         </div>
       </div>
 
-      {/* 팀 배정 */}
-      <div className="rounded-xl bg-cream-100 p-3">
-        <div className="text-sm font-semibold text-ink-700">소속 팀 · 직함</div>
-        {m.teams.length === 0 ? (
-          <p className="mt-1 text-[13px] text-ink-500">소속 팀 없음</p>
-        ) : (
-          <ul className="mt-2 space-y-1.5">
-            {m.teams.map((t) => (
-              <li key={t.teamId} className="flex flex-wrap items-center gap-2 text-[13px]">
-                <span className="font-medium text-ink-900">{t.teamName}</span>
-                <span className="rounded-full bg-white px-2 py-0.5 text-[12px] text-ink-600">
-                  {t.position === 'leader' ? `팀장단${t.label ? ` · ${t.label}` : ''}` : '팀원'}
-                </span>
-                <button
-                  className="text-xs text-coral-600 underline"
-                  onClick={() => saveTeams(assignments.filter((a) => a.teamId !== t.teamId))}
-                >
-                  빼기
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {addable.length > 0 ? (
-          <AddTeamRow teams={addable} onAdd={(a) => saveTeams([...assignments, a])} />
-        ) : (
-          <p className="mt-2 text-[12px] text-ink-400">배정할 수 있는 활성 팀이 더 없어요.</p>
-        )}
-      </div>
+      {/* 소속 팀 · 직함 — 회원당 하나. */}
+      <TeamAssign
+        key={`${m.userId}:${m.teams[0]?.teamId ?? ''}:${m.teams[0]?.position ?? ''}:${m.teams[0]?.label ?? ''}`}
+        current={m.teams[0]}
+        teams={teams}
+        onSave={(a) => onPatch({ teams: a })}
+      />
     </Card>
   );
 }
 
-// 팀 배정 추가 한 줄(팀 + 팀장단/팀원 + 직함).
-function AddTeamRow({ teams, onAdd }: { teams: Team[]; onAdd: (a: { teamId: string; position: string; label: string }) => void }) {
-  const [teamId, setTeamId] = useState('');
-  const [position, setPosition] = useState('leader');
-  const [label, setLabel] = useState('팀장');
+// 소속 팀 + 직위/직함(하나). 팀을 고르면 바로 저장, 직함은 입력 후 포커스가 떠날 때 저장.
+function TeamAssign({
+  current,
+  teams,
+  onSave,
+}: {
+  current: UserTeam | undefined;
+  teams: Team[];
+  onSave: (assignments: { teamId: string; position: string; label: string }[]) => void;
+}) {
+  const [teamId, setTeamId] = useState(current?.teamId ?? '');
+  const [position, setPosition] = useState(current?.position ?? 'leader');
+  const [label, setLabel] = useState(current?.label ?? '');
+  const active = teams.filter((t) => t.isActive || t.id === teamId);
+
+  const commit = (t: string, p: string, l: string) => onSave(t ? [{ teamId: t, position: p, label: p === 'leader' ? l.trim() : '' }] : []);
+
   return (
-    <div className="mt-2 flex flex-wrap items-end gap-2">
+    <div className="flex flex-wrap items-end gap-2 rounded-xl bg-cream-100 p-3">
       <div className="min-w-[8rem] flex-1">
-        <Select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-          <option value="">팀 선택</option>
-          {teams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </Select>
+        <Field label="소속 팀">
+          <Select
+            value={teamId}
+            onChange={(e) => {
+              setTeamId(e.target.value);
+              commit(e.target.value, position, label);
+            }}
+          >
+            <option value="">소속 없음</option>
+            {active.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
       </div>
-      <div className="w-28">
-        <Select value={position} onChange={(e) => setPosition(e.target.value)}>
-          <option value="leader">팀장단</option>
-          <option value="member">팀원</option>
-        </Select>
-      </div>
-      {position === 'leader' ? (
-        <div className="w-24">
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="직함" />
+      {teamId ? (
+        <div className="w-28">
+          <Field label="직위">
+            <Select
+              value={position}
+              onChange={(e) => {
+                const p = e.target.value as 'leader' | 'member';
+                setPosition(p);
+                commit(teamId, p, label);
+              }}
+            >
+              <option value="leader">팀장단</option>
+              <option value="member">팀원</option>
+            </Select>
+          </Field>
         </div>
       ) : null}
-      <SecondaryButton
-        disabled={!teamId}
-        onClick={() => {
-          if (!teamId) return;
-          onAdd({ teamId, position, label: position === 'leader' ? label.trim() : '' });
-          setTeamId('');
-          setPosition('leader');
-          setLabel('팀장');
-        }}
-      >
-        추가
-      </SecondaryButton>
+      {teamId && position === 'leader' ? (
+        <div className="w-24">
+          <Field label="직함">
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onBlur={() => commit(teamId, position, label)}
+              placeholder="팀장"
+            />
+          </Field>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -272,7 +308,9 @@ function TeamsSection({ teams, onChange, onError }: { teams: Team[]; onChange: (
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-ink-900">팀 ({teams.length})</h2>
+        <h2 className="text-base font-semibold text-ink-900">
+          팀 <span className="text-ink-400">({teams.length})</span>
+        </h2>
         <SecondaryButton onClick={() => setOpen((v) => !v)}>{open ? '접기' : '팀 관리 열기'}</SecondaryButton>
       </div>
       {open ? (
