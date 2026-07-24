@@ -57,6 +57,9 @@ export function ReservationsPanel() {
           <Button>새 예약</Button>
         </a>
       </div>
+      <p className="rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5 text-[13px] leading-relaxed text-ink-700">
+        예약한 시각이 되면 네이버 카페에 글이 자동으로 올라갑니다. 여러 회차를 한 번에 예약할 수 있습니다.
+      </p>
       <ErrorText>{error}</ErrorText>
       {loading ? (
         <InfoText>불러오는 중…</InfoText>
