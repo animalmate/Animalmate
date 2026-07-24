@@ -102,17 +102,45 @@ export async function markReady(db: DB, actor: Actor, id: string): Promise<Sched
   return updateStatus(db, id, { status: 'ready' }, actor, 'post.ready', post);
 }
 
-/** 예약 취소 — published 전까지 소유자/회장단이 하드 삭제. 연결된 event 는 유지(팀장단이 별도 관리). */
+/**
+ * 예약 취소 — published 전까지 소유자/회장단이 하드 삭제.
+ * 연결된 event 가 다른 예약글을 더 갖지 않으면 event.status 도 canceled 로 전이한다(고아 방지).
+ * (예전엔 event 를 그대로 남겼는데, 그 고아 event 가 챗봇 봉사 목록에 뜨는 원인이었다 — 07-DECISIONS 20.
+ *  삭제가 아니라 status 전이 = 소프트. FK·이력은 보존된다.)
+ */
 export async function cancelPost(db: DB, actor: Actor, id: string): Promise<void> {
   const post = await getPost(db, id);
   if (!post) throw new Error(`scheduled_post not found: ${id}`);
   requireAuthorized(actor, { kind: 'post.modify', owner: ownershipOf(post) });
   if (post.status === 'published') throw new Error('이미 발행된 예약은 취소할 수 없습니다.');
-  await db.delete(scheduledPosts).where(eq(scheduledPosts.id, id));
-  await recordAudit(
-    db,
-    buildAuditEntry({ actorUserId: actor.userId, action: 'post.cancel', targetTable: 'scheduled_posts', targetId: id, before: { status: post.status, title: post.title } })
-  );
+
+  await db.transaction(async (tx) => {
+    await tx.delete(scheduledPosts).where(eq(scheduledPosts.id, id));
+    let eventCanceled = false;
+    if (post.eventId) {
+      // 이 event 를 참조하는 예약글이 더 남아 있는지(없으면 고아 → canceled).
+      const [other] = await tx
+        .select({ id: scheduledPosts.id })
+        .from(scheduledPosts)
+        .where(eq(scheduledPosts.eventId, post.eventId))
+        .limit(1);
+      if (!other) {
+        await tx.update(events).set({ status: 'canceled' }).where(eq(events.id, post.eventId));
+        eventCanceled = true;
+      }
+    }
+    await recordAudit(
+      tx,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: 'post.cancel',
+        targetTable: 'scheduled_posts',
+        targetId: id,
+        before: { status: post.status, title: post.title },
+        after: eventCanceled ? { eventCanceled: true, eventId: post.eventId } : undefined,
+      })
+    );
+  });
 }
 
 /** ready → scheduled(발행 대기 큐 진입). */

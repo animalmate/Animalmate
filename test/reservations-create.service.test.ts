@@ -6,6 +6,7 @@ import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { teams, users, boards, scheduledPosts, events, postTemplates, auditLogs } from '@/db/schema';
 import { createReservation, createReservationsMulti } from '@/publishing/reservations';
+import { cancelPost } from '@/publishing/scheduled-posts';
 import { createTemplate } from '@/publishing/post-templates';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
@@ -118,5 +119,21 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
   it('소속 팀 없는 운영진: 봉사 예약 생성 거부', async () => {
     const staffNoTeam: Actor = { userId, role: 'staff', membershipActive: true, teams: [] };
     await expect(createReservation(db, staffNoTeam, vol(teamAId))).rejects.toBeInstanceOf(PermissionError);
+  });
+
+  // 07-DECISIONS 20: 예약 취소 시 고아 event 를 남기지 않는다(챗봇 봉사 목록 누출 방지).
+  it('봉사 예약 취소: 예약글 삭제 + 연결 event 도 canceled 로 전이(고아 방지)', async () => {
+    const post = await createReservation(db, board(), vol(teamAId));
+    createdPosts.push(post.id);
+    const eventId = post.eventId!;
+    expect(eventId).toBeTruthy();
+
+    await cancelPost(db, board(), post.id);
+
+    // 예약글은 사라지고, event 는 남되 status=canceled.
+    const [gonePost] = await db.select({ id: scheduledPosts.id }).from(scheduledPosts).where(eq(scheduledPosts.id, post.id));
+    expect(gonePost).toBeUndefined();
+    const [ev] = await db.select({ status: events.status }).from(events).where(eq(events.id, eventId));
+    expect(ev!.status).toBe('canceled');
   });
 });

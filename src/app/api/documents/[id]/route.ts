@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus, isPrivileged, ownsResource } from '@/auth/permissions';
 import { getDocument, updateDocument, deleteDocument, PiiBlockedError, type DocumentPatch, type Visibility } from '@/rag/documents';
+import { GeminiError } from '@/rag/gemini';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
 import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
@@ -57,6 +58,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof PiiBlockedError) return NextResponse.json({ error: 'pii', findings: e.findings }, { status: 422 });
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    if (e instanceof GeminiError) {
+      console.error('[api] PATCH /api/documents/[id] embed', e.message);
+      return NextResponse.json({ error: 'embed_failed' }, { status: 503 });
+    }
     return internalError('PATCH /api/documents/[id]', e);
   }
 }

@@ -11,17 +11,17 @@ export const EMBED_DIM = 768;
 
 function apiKey(): string {
   const k = process.env.GEMINI_API_KEY?.trim();
-  if (!k) throw new Error('GEMINI_API_KEY 가 설정되지 않았습니다(서버 환경변수).');
+  if (!k) throw new GeminiError('GEMINI_API_KEY 가 설정되지 않았습니다(서버 환경변수).', 0);
   return k;
 }
 function embeddingModel(): string {
   const m = process.env.GEMINI_EMBEDDING_MODEL?.trim();
-  if (!m) throw new Error('GEMINI_EMBEDDING_MODEL 이 설정되지 않았습니다.');
+  if (!m) throw new GeminiError('GEMINI_EMBEDDING_MODEL 이 설정되지 않았습니다.', 0);
   return m;
 }
 function generationModel(): string {
   const m = process.env.GEMINI_MODEL?.trim();
-  if (!m) throw new Error('GEMINI_MODEL 이 설정되지 않았습니다.');
+  if (!m) throw new GeminiError('GEMINI_MODEL 이 설정되지 않았습니다.', 0);
   return m;
 }
 

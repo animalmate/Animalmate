@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
 import { listDocuments, createDocument, PiiBlockedError, type Visibility } from '@/rag/documents';
+import { GeminiError } from '@/rag/gemini';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
 import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
@@ -46,6 +47,11 @@ export async function POST(req: Request): Promise<Response> {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof PiiBlockedError) return NextResponse.json({ error: 'pii', findings: e.findings }, { status: 422 });
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    // 임베딩(Gemini) 실패·미설정 — 문서 저장은 색인이 필수라 여기서 갈린다. 원인은 서버 로그.
+    if (e instanceof GeminiError) {
+      console.error('[api] POST /api/documents embed', e.message);
+      return NextResponse.json({ error: 'embed_failed' }, { status: 503 });
+    }
     return internalError('POST /api/documents', e);
   }
 }
