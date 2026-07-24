@@ -89,6 +89,9 @@ export interface GenPart {
   text?: string;
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
+  // Gemini 3.x 은 function calling 시 thoughtSignature 를 돌려주고, 다음 턴에 model 파트를
+  // 되돌릴 때 이 값을 그대로 실어야 한다(빠지면 400). 그래서 model 파트는 재구성하지 말고 원문을 쓴다.
+  thoughtSignature?: string;
 }
 export interface GenContent {
   role: 'user' | 'model';
@@ -104,6 +107,8 @@ export interface GenerateArgs {
 export interface GenerateResult {
   text: string;
   functionCalls: { name: string; args: Record<string, unknown> }[];
+  /** 모델이 돌려준 원본 파트(thoughtSignature 포함). 다음 턴에 model 파트로 그대로 되돌린다. */
+  modelParts: GenPart[];
 }
 
 /** 한 번의 생성 호출. 함수 호출이 있으면 functionCalls 로 돌려준다(호출부가 tool 실행 후 재호출). */
@@ -130,5 +135,5 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
   const parts = body.candidates?.[0]?.content?.parts ?? [];
   const text = parts.map((p) => p.text ?? '').join('').trim();
   const functionCalls = parts.filter((p) => p.functionCall).map((p) => p.functionCall!);
-  return { text, functionCalls };
+  return { text, functionCalls, modelParts: parts };
 }

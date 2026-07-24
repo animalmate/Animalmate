@@ -40,3 +40,4 @@ tmp/
 
 # 에이전트 도구 상태
 .omc/
+eval/results/
