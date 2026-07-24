@@ -52,11 +52,11 @@ function PlaceholderGuide() {
       <div className="border-b border-coral-100 bg-coral-50 px-4 py-3.5">
         <div className="flex items-center gap-2">
           <code className="rounded-md bg-white px-1.5 py-0.5 text-[13px] font-bold text-coral-700 shadow-sm">{'{{  }}'}</code>
-          <span className="text-[15px] font-bold text-ink-900">이 표시, 그냥 두면 알아서 채워진다</span>
+          <span className="text-[15px] font-bold text-ink-900">이 표시, 그냥 두면 알아서 채워집니다</span>
         </div>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-700">
-          제목·본문에 아래 표시를 그대로 넣어 두면, 공지가 카페에 올라가는 순간 진짜 값으로 바뀐다.
-          날짜·정원처럼 회차마다 달라지는 건 직접 쓰지 말고 표시만 넣어 둔다.
+          제목·본문에 아래 표시를 그대로 넣어 두면, 공지가 카페에 올라가는 순간 진짜 값으로 바뀝니다.
+          날짜·정원처럼 회차마다 달라지는 건 직접 쓰지 말고 표시만 넣어 두면 됩니다.
         </p>
       </div>
       <ul className="grid gap-x-5 gap-y-2.5 px-4 py-3.5 sm:grid-cols-2">
@@ -73,7 +73,7 @@ function PlaceholderGuide() {
         ))}
       </ul>
       <p className="border-t border-cream-200 bg-cream-25 px-4 py-2.5 text-[12px] leading-relaxed text-ink-500">
-        장소처럼 늘 똑같은 내용은 표시 없이 그냥 글자로 적으면 된다.
+        장소처럼 늘 똑같은 내용은 표시 없이 그냥 글자로 적으면 됩니다.
       </p>
     </div>
   );
