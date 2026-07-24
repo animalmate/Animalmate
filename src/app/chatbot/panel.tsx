@@ -8,13 +8,11 @@ import { ChatDog, type DogMood } from '@/components/chat-dog';
 interface Msg {
   role: 'user' | 'bot';
   text: string;
-  sources?: string[];
   pending?: boolean;
 }
 
 interface AskResponse {
   answer?: string;
-  sources?: string[];
   handedOff?: boolean;
   message?: string;
   error?: string;
@@ -50,7 +48,7 @@ export function ChatbotPanel() {
 
     setMsgs((m) => {
       const next = m.slice(0, -1); // pending 제거
-      return [...next, { role: 'bot', text: answer, sources: r.ok ? data.sources : undefined }];
+      return [...next, { role: 'bot', text: answer }];
     });
     setBusy(false);
     setMood('answer'); // 대답하며 폴짝
@@ -105,15 +103,7 @@ export function ChatbotPanel() {
                       <Dot /> <Dot delay={150} /> <Dot delay={300} />
                     </span>
                   ) : (
-                    <>
-                      <Markdown>{m.text}</Markdown>
-                      {m.sources && m.sources.length > 0 ? (
-                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-2 text-[12px] text-ink-400">
-                          <Icon name="doc" size={13} />
-                          출처: {m.sources.join(', ')}
-                        </div>
-                      ) : null}
-                    </>
+                    <Markdown>{m.text}</Markdown>
                   )}
                 </div>
               </div>
