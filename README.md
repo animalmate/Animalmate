@@ -3,7 +3,9 @@
 대학생 봉사 동아리의 운영을 자동화하는 웹 서비스. 네이버 카페(콘텐츠 아카이브)는 그대로 두고,
 그 위에 **정기 봉사 공지 발행 자동화**와 **RAG 챗봇**, **운영진 권한 관리**를 얹는다.
 
-> 상태: Phase 1 구현·배포 완료(반복 공지 발행 루프·권한/보안·인증·운영 화면). 남은 것 = 실카페 발행 전환, RAG 챗봇.
+> 상태: **Phase 1 전부 구현·배포 완료** — 반복 공지 발행 루프, 권한/보안, 인증, 운영 화면,
+> **실카페 발행 전환**(봇 카페스탭 임명 + `NAVER_PUBLISH_DRY_RUN=false`), **RAG 챗봇**까지 라이브.
+> 남은 것 = 운영 작업(안내 문서 입력)과 Phase 2(총무 F8·신입모집 F9).
 
 ## 무엇을 / 왜
 
@@ -11,8 +13,12 @@
   (회차별 완성본 미리보기) → 필드 완성 → 예약 시각에 봇 계정이 카페 글쓰기 API로 자동 발행.
   회차마다 달라지는 값은 플레이스홀더로 두고 **게시 직전에 치환**하며, 값이 비면 발행을 보류한다.
   발행 D-3에 필수 필드가 비면 크론이 팀장단에게 점검 알림.
-- **RAG 챗봇**(로그인 전용): 회칙·FAQ 등 문서 기반 응답. 역할별 공개범위(visibility) 필터,
-  출처 표시, 모르면 운영진 핸드오프.
+- **RAG 챗봇**(로그인 전용, 전원): 운영진이 올린 안내 문서(마크다운)를 임베딩·검색해 답한다.
+  **역할별 공개범위(visibility) 필터를 검색 SQL에서 강제**(부원에게 운영진 문서 미노출), 근거가
+  없으면 지어내지 않고 운영진 핸드오프, 개인정보 질의 거절, 프롬프트 인젝션 방어(시스템 지시와
+  사용자 데이터 분리). 봉사 일정 같은 상태 질의는 events 기반 tool로 답한다. 인당 일일 + 전역
+  분기 사용량 상한(회장단 콘솔 조정)과 킬스위치. LLM 응답은 안전한 마크다운 렌더러로만 표시(원시
+  HTML 금지). 답변은 마스코트 강아지가 반응한다.
 - **운영진 관리**: 학기별 가입코드 가입, 소유권/역할 기반 권한, 임기 자동 만료, 전 관리행위 감사 로그.
 
 **하지 않는 것**: 카페 글 읽기/수정/댓글 자동화(API·약관), 봉사 신청 수합 자동화(신청은 카페 댓글 유지),
@@ -40,9 +46,9 @@
 
 ```
 브라우저 ──(로그인/조회/질문만)──► Next.js @ Vercel ──► Supabase Postgres (RLS 기본 거부)
-                                        │                    ├─ pgvector (문서 임베딩)
-                                        ├─ 카페 글쓰기 API(봇, 쓰기 전용)
-                                        └─ LLM API(서버에서만)
+                                        │                    ├─ pgvector (문서 임베딩·검색)
+                                        ├─ 카페 글쓰기 API(봇, 쓰기 전용, 실발행)
+                                        └─ Gemini API(임베딩+생성, 서버에서만)
 Supabase pg_cron ──pg_net(CRON_SECRET)──► /api/cron/publish(매분), /api/cron/draft-generate(매일)
 UptimeRobot ──5분──► /api/health (일시정지 방지 + 감시)
 ```
@@ -57,6 +63,8 @@ UptimeRobot ──5분──► /api/health (일시정지 방지 + 감시)
 | [`docs/03-DATA-MODEL.md`](docs/03-DATA-MODEL.md) | 데이터 모델(테이블·enum·접근 규칙) |
 | [`docs/04-TODO.md`](docs/04-TODO.md) | 개발 TODO(Phase별 진행 상황) |
 | [`docs/05-ASSET-REGISTRY.md`](docs/05-ASSET-REGISTRY.md) | 자산 대장(계정·키 위치·갱신, 값은 미기재) |
+| [`design/docs/06-DESIGN.md`](design/docs/06-DESIGN.md) | 디자인 시스템·UI 프리미티브 규칙 |
+| [`docs/07-DECISIONS.md`](docs/07-DECISIONS.md) | 보안·아키텍처 결정 기록(왜 그렇게 했는지) |
 
 ## 로컬 실행
 
@@ -152,9 +160,13 @@ $$);
 2. Vercel에서 Import → Next.js 자동 감지.
 3. 환경변수 등록: `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_*`, `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`/
    `NAVER_CAFE_CLUB_ID`, `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`, `SESSION_SECRET`, `SMTP_*`,
-   `NAVER_PUBLISH_DRY_RUN=true`, `NEXT_PUBLIC_APP_URL`.
+   `GEMINI_API_KEY`/`GEMINI_MODEL`/`GEMINI_EMBEDDING_MODEL`, `NEXT_PUBLIC_APP_URL`,
+   `NAVER_PUBLISH_DRY_RUN`.
+   - **`GEMINI_MODEL`/`GEMINI_EMBEDDING_MODEL` 3개 다 필수** — 하나라도 빠지면 문서 저장·챗봇이 실패한다
+     (값은 `gemini-3.1-flash-lite` / `gemini-embedding-2`, `07-DECISIONS.md` 14·15).
+   - **실카페 발행 전환됨**: Production `NAVER_PUBLISH_DRY_RUN=false`(실제 게시). 로컬 `.env`는 `true` 유지
+     (개발 중 실수 게시 방지). 카페는 삭제 API가 없어 되돌릴 수 없다.
    - **제외**: `NAVER_REFRESH_TOKEN`(DB `naver_tokens`로 이관됨), `BACKUP_ENCRYPTION_KEY`(GitHub Actions 시크릿 전용).
-   - **`GEMINI_API_KEY`/`GEMINI_MODEL`/`GEMINI_EMBEDDING_MODEL`은 챗봇(1D) 구현 시점에 추가**(그 전까진 불필요).
 4. 배포 후 `/api/health`가 `{ok:true,db:"up"}`인지 확인.
 5. `NEXT_PUBLIC_APP_URL`을 실제 도메인으로 갱신 후 재배포, pg_cron SQL의 `<APP_URL>`도 갱신.
 6. UptimeRobot 5분 모니터를 `/api/health`에 등록.
