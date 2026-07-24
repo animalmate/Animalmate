@@ -10,7 +10,7 @@ import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { dateVars, kstDateStr } from '@/publishing/placeholders';
 import { capacityText } from '@/publishing/placeholder-catalog';
 
-interface Board { menuid: number; name: string; botCanWrite: boolean }
+interface Board { menuid: number; name: string; botCanWrite: boolean; isActive: boolean }
 interface Team { id: string; name: string; leaders: string } // leaders = 공지에 들어갈 {{팀장단}} 문구
 interface Template {
   id: string;
@@ -115,7 +115,8 @@ export function NewReservationForm() {
         apiGet<{ teams: Team[] }>('/api/teams'),
         apiGet<{ templates: Template[] }>('/api/templates'),
       ]);
-      if (b.ok) setBoards((b.data.boards ?? []).filter((x) => x.botCanWrite).sort(byName));
+      // 서버 게이트(getWritableBoard)와 같은 조건 — 목록에 있는데 저장에서 거부되는 일이 없게.
+      if (b.ok) setBoards((b.data.boards ?? []).filter((x) => x.botCanWrite && x.isActive).sort(byName));
       if (t.ok) setTeams(t.data.teams ?? []);
       if (tpl.ok) setTemplates(tpl.data.templates ?? []);
     })();
