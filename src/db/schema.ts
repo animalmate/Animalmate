@@ -185,8 +185,9 @@ export const postTemplates = pgTable('post_templates', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// recurring_rules: 이제 "일괄 생성 도우미의 저장된 프리셋"(크론 자동 생성 아님). 실체 = generation preset.
-// 이름은 마이그레이션 안정성을 위해 유지(리네임 회피).
+// recurring_rules: **미사용(2026-07-24)**. 일괄 생성 기능을 없애면서 이 테이블을 읽고 쓰는 코드도 전부 제거했다.
+// (정기 봉사가 "매월 첫째 주 토요일"처럼 고정되는 경우가 드물어 새 예약에서 회차를 직접 넣는 편이 낫다.)
+// 테이블은 데이터 보존을 위해 남겨 둔다 — 다시 쓸 일이 없다고 확정되면 DROP 마이그레이션으로 정리할 것.
 export const recurringRules = pgTable('recurring_rules', {
   id: uuid('id').primaryKey().defaultRandom(),
   teamId: uuid('team_id')

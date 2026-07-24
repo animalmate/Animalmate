@@ -14,7 +14,6 @@ interface NavItem {
 const STAFF_MENU: NavItem[] = [
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
-  { href: '/reservations/batch', label: '일괄 생성', icon: 'layers' },
 ];
 const BOARD_MENU: NavItem[] = [
   ...STAFF_MENU,
@@ -32,7 +31,6 @@ function menuFor(role: string): NavItem[] {
 
 // 현재 경로 → 활성 메뉴 키(가장 구체적인 접두사 우선).
 function activeKey(pathname: string): string {
-  if (pathname.startsWith('/reservations/batch')) return '/reservations/batch';
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';
   if (pathname.startsWith('/admin/teams')) return '/admin/teams';

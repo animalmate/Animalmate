@@ -57,7 +57,7 @@ export function TeamsPanel() {
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       if (d.error === 'team_in_use') {
-        setError(`삭제 불가: 이 팀에 회차 ${d.counts?.events ?? 0} · 프리셋 ${d.counts?.presets ?? 0} · 예약 ${d.counts?.reservations ?? 0}건이 있습니다. 대신 "비활성화"하세요.`);
+        setError(`삭제 불가: 이 팀에 회차 ${d.counts?.events ?? 0} · 예약 ${d.counts?.reservations ?? 0}건이 있습니다. 대신 "비활성화"하세요.`);
         return;
       }
       setError(errorMessage(d.error, d.message));
