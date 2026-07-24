@@ -6,7 +6,14 @@ import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Selec
 
 interface Board { menuid: number; name: string; botCanWrite: boolean }
 interface Team { id: string; name: string }
-interface Template { id: string; name: string; titleTemplate: string; bodyTemplate: string }
+interface Template {
+  id: string;
+  name: string;
+  titleTemplate: string;
+  bodyTemplate: string;
+  defaultPlace: string | null;
+  defaultCapacity: number | null;
+}
 
 interface Row {
   publishLocal: string; // 발행 시각 datetime-local
@@ -26,6 +33,7 @@ export function NewReservationForm() {
   const [boardMenuid, setBoardMenuid] = useState('');
   const [title, setTitle] = useState('');
   const [contentMd, setContentMd] = useState('');
+  const [templateId, setTemplateId] = useState(''); // 기본 장소·정원 승계용
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
 
   const [error, setError] = useState('');
@@ -44,7 +52,10 @@ export function NewReservationForm() {
     })();
   }, []);
 
+  const selectedTemplate = templates.find((x) => x.id === templateId) ?? null;
+
   function loadTemplate(id: string) {
+    setTemplateId(id);
     const tpl = templates.find((x) => x.id === id);
     if (!tpl) return;
     setTitle(tpl.titleTemplate);
@@ -74,6 +85,7 @@ export function NewReservationForm() {
       boardMenuid: Number(boardMenuid),
       title,
       contentMd,
+      templateId: templateId || null,
       occurrences,
     });
     setBusy(false);
@@ -96,8 +108,17 @@ export function NewReservationForm() {
         </Field>
 
         {templates.length > 0 ? (
-          <Field label="양식 불러오기">
-            <Select defaultValue="" onChange={(e) => loadTemplate(e.target.value)}>
+          <Field
+            label="양식 불러오기"
+            hint={
+              selectedTemplate && (selectedTemplate.defaultPlace || selectedTemplate.defaultCapacity != null)
+                ? `기본 ${selectedTemplate.defaultPlace ?? '장소 미지정'}${
+                    selectedTemplate.defaultCapacity != null ? ` · 정원 ${selectedTemplate.defaultCapacity}` : ''
+                  } 이 각 예약에 채워집니다.`
+                : undefined
+            }
+          >
+            <Select value={templateId} onChange={(e) => loadTemplate(e.target.value)}>
               <option value="">선택 안 함</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -167,7 +188,10 @@ export function NewReservationForm() {
           ))}
           <SecondaryButton onClick={addRow}>+ 일정 추가</SecondaryButton>
           {kind === 'volunteer' ? (
-            <InfoText>장소·정원은 생성 후 각 예약을 개별 수정해서 채우면 됩니다.</InfoText>
+            <InfoText>
+              장소·정원은 양식의 기본값으로 채워집니다. 회차별로 다르면 생성 후 각 예약을 수정하세요(발행 직전 본문에
+              반영).
+            </InfoText>
           ) : null}
         </div>
 

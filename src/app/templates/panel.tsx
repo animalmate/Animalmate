@@ -11,6 +11,8 @@ interface Template {
   name: string;
   titleTemplate: string;
   bodyTemplate: string;
+  defaultPlace: string | null;
+  defaultCapacity: number | null;
 }
 interface Team {
   id: string;
@@ -33,6 +35,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
   const [name, setName] = useState('');
   const [titleTemplate, setTitleTemplate] = useState('');
   const [bodyTemplate, setBodyTemplate] = useState('');
+  const [defaultPlace, setDefaultPlace] = useState('');
+  const [defaultCapacity, setDefaultCapacity] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -55,6 +59,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
     setName('');
     setTitleTemplate('');
     setBodyTemplate('');
+    setDefaultPlace('');
+    setDefaultCapacity('');
   }
 
   function startEdit(t: Template) {
@@ -64,6 +70,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
     setName(t.name);
     setTitleTemplate(t.titleTemplate);
     setBodyTemplate(t.bodyTemplate);
+    setDefaultPlace(t.defaultPlace ?? '');
+    setDefaultCapacity(t.defaultCapacity != null ? String(t.defaultCapacity) : '');
     setError('');
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -71,14 +79,19 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
   async function save() {
     setError('');
     setBusy(true);
+    const fields = {
+      name: name.trim(),
+      titleTemplate: titleTemplate.trim(),
+      bodyTemplate: bodyTemplate.trim(),
+      defaultPlace: defaultPlace.trim(),
+      defaultCapacity,
+    };
     const r = editingId
-      ? await apiPost(`/api/templates/${editingId}`, { name: name.trim(), titleTemplate: titleTemplate.trim(), bodyTemplate: bodyTemplate.trim() }, 'PATCH')
+      ? await apiPost(`/api/templates/${editingId}`, fields, 'PATCH')
       : await apiPost('/api/templates', {
           ownerType,
           ownerId: ownerType === 'team' ? teamId : undefined,
-          name: name.trim(),
-          titleTemplate: titleTemplate.trim(),
-          bodyTemplate: bodyTemplate.trim(),
+          ...fields,
         });
     setBusy(false);
     if (!r.ok) return setError(errorMessage(r.data.error, r.data.message));
@@ -113,7 +126,8 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
           <code className="rounded bg-cream-100 px-1">{'{{집합시간}}'}</code>{' '}
           <code className="rounded bg-cream-100 px-1">{'{{팀장단}}'}</code>(팀별 명단).{' '}
           <code className="rounded bg-cream-100 px-1">{'{{장소}}'}</code>{' '}
-          <code className="rounded bg-cream-100 px-1">{'{{정원}}'}</code> 은 각 예약 수정에서 채웁니다.
+          <code className="rounded bg-cream-100 px-1">{'{{정원}}'}</code> 은 아래 기본값으로 채워지고, 회차별로 다르면 각
+          예약 수정에서 바꾸면 됩니다(발행 직전에 반영).
         </InfoText>
         <Field label="소유">
           <Select value={ownerType} onChange={(e) => setOwnerType(e.target.value)} disabled={editingId !== null}>
@@ -143,6 +157,19 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
         <Field label="본문 양식">
           <Textarea rows={5} value={bodyTemplate} onChange={(e) => setBodyTemplate(e.target.value)} placeholder={'{{전체_날짜}} 봉사\n집합 {{집합시간}} / 장소 {{장소}} / 정원 {{정원}}\n\n문의:\n{{팀장단}}'} />
         </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="기본 장소" hint="이 양식으로 만든 예약의 기본값">
+            <Input value={defaultPlace} onChange={(e) => setDefaultPlace(e.target.value)} placeholder="양주 쉼터" />
+          </Field>
+          <Field label="기본 정원" hint="비우면 예약마다 직접 입력">
+            <Input
+              inputMode="numeric"
+              value={defaultCapacity}
+              onChange={(e) => setDefaultCapacity(e.target.value.replace(/\D/g, ''))}
+              placeholder="20"
+            />
+          </Field>
+        </div>
         <ErrorText>{error}</ErrorText>
         <div className="flex gap-2">
           <Button disabled={busy || !canSave} onClick={save}>
@@ -165,6 +192,12 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
                     {t.name} <span className="text-xs text-ink-500">({ownerText(t)})</span>
                   </div>
                   <div className="truncate text-ink-500">{t.titleTemplate}</div>
+                  {t.defaultPlace || t.defaultCapacity != null ? (
+                    <div className="text-xs text-ink-500">
+                      기본 {t.defaultPlace ?? '장소 미지정'}
+                      {t.defaultCapacity != null ? ` · 정원 ${t.defaultCapacity}` : ''}
+                    </div>
+                  ) : null}
                 </div>
                 {isBoard || t.ownerType !== 'global' ? (
                   <span className="flex shrink-0 gap-2">

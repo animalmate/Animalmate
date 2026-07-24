@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus, isPrivileged, ownsResource } from '@/auth/permissions';
 import { getReservation, updateReservation } from '@/publishing/reservations';
+import { loadPublishVars } from '@/publishing/final-render';
 import { PermissionError } from '@/auth/guard';
 
 export const runtime = 'nodejs';
@@ -18,7 +19,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!isPrivileged(actor.role) && !ownsResource(actor, { ownerType: detail.post.ownerType, ownerId: detail.post.ownerId })) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
-  return NextResponse.json(detail);
+  // 수정 화면 미리보기용 치환 변수(팀장단 명단 등). 장소·정원은 폼의 현재 입력값으로 클라이언트가 덮어쓴다.
+  const vars = await loadPublishVars(db, detail.post);
+  return NextResponse.json({ ...detail, vars });
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {

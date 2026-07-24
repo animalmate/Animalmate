@@ -26,6 +26,7 @@ export async function POST(req: Request): Promise<Response> {
       boardMenuid: Number(b.boardMenuid),
       title: String(b.title ?? '').trim(),
       contentMd: String(b.contentMd ?? ''),
+      templateId: b.templateId ? String(b.templateId) : null, // 양식의 기본 장소·정원 승계
     };
     if (shared.kind === 'volunteer' && !shared.teamId) return NextResponse.json({ error: 'missing_team' }, { status: 400 });
     if (!shared.title) return NextResponse.json({ error: 'missing_title' }, { status: 400 });

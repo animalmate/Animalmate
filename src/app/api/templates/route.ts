@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
-import { listUsableTemplates, createTemplate, type TemplateOwnerType } from '@/publishing/post-templates';
+import {
+  listUsableTemplates,
+  createTemplate,
+  parseDefaultPlace,
+  parseDefaultCapacity,
+  type TemplateOwnerType,
+} from '@/publishing/post-templates';
 import { listAllTeams } from '@/org/teams';
 import { PermissionError } from '@/auth/guard';
 
@@ -22,6 +28,8 @@ export async function GET(): Promise<Response> {
     name: t.name,
     titleTemplate: t.titleTemplate,
     bodyTemplate: t.bodyTemplate,
+    defaultPlace: t.defaultPlace,
+    defaultCapacity: t.defaultCapacity,
   }));
   return NextResponse.json({ templates });
 }
@@ -43,6 +51,8 @@ export async function POST(req: Request): Promise<Response> {
       name,
       titleTemplate,
       bodyTemplate: String(t.bodyTemplate ?? ''),
+      defaultPlace: parseDefaultPlace(t.defaultPlace),
+      defaultCapacity: parseDefaultCapacity(t.defaultCapacity),
     });
     return NextResponse.json({ template: tpl });
   } catch (e) {

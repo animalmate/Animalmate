@@ -172,8 +172,12 @@ export const postTemplates = pgTable('post_templates', {
   ownerType: ownerTypeEnum('owner_type').notNull(), // personal | team | global
   ownerId: uuid('owner_id'), // global 이면 null
   name: text('name').notNull(),
-  titleTemplate: text('title_template').notNull(), // {{날짜}} {{장소}} {{집합시간}} {{정원}} 플레이스홀더
+  titleTemplate: text('title_template').notNull(), // {{간결_날짜}} {{전체_날짜}} {{집합시간}} {{팀장단}} {{장소}} {{정원}}
   bodyTemplate: text('body_template').notNull(),
+  // 장소별 양식용 기본값(예: "양주 쉼터 봉사" 양식 → 항상 양주 쉼터/정원 20).
+  // 예약 생성 시 events.place/capacity 의 초기값이 되고, 회차별로 예약 수정에서 덮어쓸 수 있다.
+  defaultPlace: text('default_place'),
+  defaultCapacity: integer('default_capacity'),
   updatedBy: uuid('updated_by')
     .notNull()
     .references(() => users.id),

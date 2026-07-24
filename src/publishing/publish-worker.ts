@@ -8,8 +8,9 @@
 
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type * as schema from '@/db/schema';
-import { fetchDuePosts, applyPublishResult, type ScheduledPost } from './scheduled-posts';
+import { fetchDuePosts, applyPublishResult, markUnpublishable, type ScheduledPost } from './scheduled-posts';
 import { classifyPublishResponse } from './state-machine';
+import { renderForPublish } from './final-render';
 import { postArticle, type CafeWriteResult } from '@/naver/cafe-write';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import type { Mailer } from '@/auth/mailer';
@@ -25,6 +26,7 @@ export interface PublishSummary {
   published: number;
   waited: number; // code 999 rate_limited — 대기 후 재시도
   failed: number;
+  blocked: number; // 미치환 플레이스홀더로 게시하지 않고 차단한 건수
   articleUrls: string[];
 }
 
@@ -63,6 +65,7 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
     published: 0,
     waited: 0,
     failed: 0,
+    blocked: 0,
     articleUrls: [],
   };
 
@@ -90,12 +93,28 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
   // 이번 사이클에 최종 실패(failed)로 확정된 예약 — 재시도 소진분만 알림 대상.
   const failedNow: { title: string; reason: string }[] = [];
 
+  let written = 0; // 실제 게시 시도 횟수 — 차단된 건에는 대기 간격을 쓰지 않는다.
   for (let i = 0; i < due.length; i++) {
-    if (!dryRun && i > 0) await sleep(delayMs); // 연속 게시 방지 간격(실게시만)
     const post = due[i]!;
-    const res = await write(post, { accessToken, dryRun });
+
+    // 발행 직전 최종 치환({{장소}}{{정원}} 등). events 가 값의 원천이므로 회차별 수정이 그대로 반영된다.
+    const rendered = await renderForPublish(db, post);
+    if (rendered.unresolved.length > 0) {
+      // 재시도해도 저절로 풀리지 않는다 — 게시하지 않고 즉시 failed 로 확정 + 운영진 알림.
+      const reason = `미치환 플레이스홀더: ${rendered.unresolved.map((k) => `{{${k}}}`).join(', ')}`;
+      if (!(await markUnpublishable(db, post, reason))) continue; // 사이클 도중 취소됨
+      summary.processed += 1;
+      summary.blocked += 1;
+      summary.failed += 1;
+      failedNow.push({ title: post.title, reason });
+      continue;
+    }
+
+    if (!dryRun && written > 0) await sleep(delayMs); // 연속 게시 방지 간격(실게시만)
+    written += 1;
+    const res = await write({ ...post, title: rendered.title, contentMd: rendered.contentMd }, { accessToken, dryRun });
     const result = classifyPublishResponse(res);
-    const updated = await applyPublishResult(db, post, result);
+    const updated = await applyPublishResult(db, post, result, rendered);
     if (!updated) continue; // 사이클 도중 취소(삭제)된 예약 — 집계·알림 대상 아님.
 
     summary.processed += 1;
