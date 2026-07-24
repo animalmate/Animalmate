@@ -4,56 +4,60 @@ import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Card, Button, SecondaryButton, DangerButton, Field, Input, Textarea, Select, ErrorText, Banner } from '@/components/ui';
 import { Icon } from '@/components/icon';
 
-const VIS_TONE: Record<'member' | 'staff' | 'board', string> = {
+type Visibility = 'member' | 'staff' | 'board';
+const VIS_LABEL: Record<Visibility, string> = { member: '전체 부원', staff: '운영진', board: '회장단' };
+const VIS_TONE: Record<Visibility, string> = {
   member: 'bg-success-100 text-success',
   staff: 'bg-blue-50 text-blue-600',
   board: 'bg-amber-50 text-amber-600',
 };
-function VisBadge({ v }: { v: 'member' | 'staff' | 'board' }) {
+function VisBadge({ v }: { v: Visibility }) {
   return <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${VIS_TONE[v]}`}>{VIS_LABEL[v]}</span>;
 }
+
+// 공개 범위별 생성 진입점 — 어떤 문서를 넣는지 예시로 안내한다(결정 19).
+const NEW_KINDS: { visibility: Visibility; title: string; examples: string }[] = [
+  { visibility: 'member', title: '부원·운영진 공개 문서', examples: '동아리 회칙, 운영진 구성, 가이드북(부원용), 동아리 일정 등' },
+  { visibility: 'staff', title: '운영진 공개 문서', examples: '부원 명단, 가이드북(운영진용), 동아리행사, 신입기수 면접 등' },
+];
 
 interface DocRow {
   id: string;
   title: string;
-  visibility: 'member' | 'staff' | 'board';
-  ownerType: string;
+  visibility: Visibility;
   updatedAt: string;
-}
-interface Team {
-  id: string;
-  name: string;
 }
 interface PiiFinding {
   label: string;
   sample: string;
 }
-
-const VIS_LABEL: Record<DocRow['visibility'], string> = { member: '전체 부원', staff: '운영진', board: '회장단' };
-
 interface Draft {
   id: string | null;
   title: string;
   contentMd: string;
-  visibility: DocRow['visibility'];
-  ownerType: 'personal' | 'team';
-  ownerId: string;
+  visibility: Visibility;
 }
-const EMPTY: Draft = { id: null, title: '', contentMd: '', visibility: 'member', ownerType: 'personal', ownerId: '' };
 
-export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
+export function DocumentsPanel() {
   const [docs, setDocs] = useState<DocRow[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
   const [pii, setPii] = useState<PiiFinding[] | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // 파일 업로드(.md/.txt) — 본문을 파일에서 채운다. 제목이 비어 있으면 파일명으로 채운다.
+  async function load() {
+    const r = await apiGet<{ documents: DocRow[] }>('/api/documents');
+    if (r.ok) setDocs(r.data.documents ?? []);
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  // 파일 업로드(.md/.txt) — 본문을 채우고, 제목이 비어 있으면 파일명으로.
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // 같은 파일 다시 선택 가능하게
+    e.target.value = '';
     if (!file || !draft) return;
     const text = await file.text();
     const nameNoExt = file.name.replace(/\.(md|markdown|txt)$/i, '');
@@ -62,20 +66,11 @@ export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
     setError('');
   }
 
-  async function load() {
-    const [d, t] = await Promise.all([apiGet<{ documents: DocRow[] }>('/api/documents'), apiGet<{ teams: Team[] }>('/api/teams')]);
-    if (d.ok) setDocs(d.data.documents ?? []);
-    if (t.ok) setTeams(t.data.teams ?? []);
-  }
-  useEffect(() => {
-    void load();
-  }, []);
-
   async function openEdit(id: string) {
     setError('');
     setPii(null);
     const r = await apiGet<{ document: Draft }>(`/api/documents/${id}`);
-    if (r.ok) setDraft({ ...r.data.document });
+    if (r.ok) setDraft({ id: r.data.document.id, title: r.data.document.title, contentMd: r.data.document.contentMd, visibility: r.data.document.visibility });
     else setError(errorMessage(r.data.error));
   }
 
@@ -84,17 +79,9 @@ export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
     setError('');
     setPii(null);
     setBusy(true);
-    const body = {
-      title: draft.title,
-      contentMd: draft.contentMd,
-      visibility: draft.visibility,
-      ownerType: draft.ownerType,
-      ownerId: draft.ownerType === 'team' ? draft.ownerId : undefined,
-      piiAck,
-    };
-    const r = draft.id
-      ? await apiPost(`/api/documents/${draft.id}`, body, 'PATCH')
-      : await apiPost('/api/documents', body);
+    // 소유는 받지 않는다 — 서버가 생성자(개인) 소유로 둔다. 회장단·시스템관리자는 전체 편집 가능.
+    const body = { title: draft.title, contentMd: draft.contentMd, visibility: draft.visibility, piiAck };
+    const r = draft.id ? await apiPost(`/api/documents/${draft.id}`, body, 'PATCH') : await apiPost('/api/documents', body);
     setBusy(false);
     if (r.status === 422 && r.data.error === 'pii') {
       setPii((r.data as { findings?: PiiFinding[] }).findings ?? []);
@@ -114,13 +101,18 @@ export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
     }
   }
 
+  // ── 에디터 ──────────────────────────────────────────────────────────
   if (draft) {
+    const kind = NEW_KINDS.find((k) => k.visibility === draft.visibility);
     return (
       <div className="mx-auto max-w-2xl space-y-4">
         <button onClick={() => setDraft(null)} className="flex items-center gap-1 text-[14px] text-ink-500">
           <Icon name="chevronRight" size={16} className="rotate-180" /> 목록으로
         </button>
-        <h1 className="text-[22px] font-bold text-ink-900">{draft.id ? '문서 수정' : '새 문서'}</h1>
+        <div>
+          <h1 className="text-[22px] font-bold text-ink-900">{draft.id ? '문서 수정' : '새 문서'}</h1>
+          {kind && !draft.id ? <p className="mt-1 text-[13px] text-ink-500">예: {kind.examples}</p> : null}
+        </div>
         {pii ? (
           <Banner kind="warning" title="개인정보로 보이는 내용이 있어요">
             <div className="space-y-1 text-[13px]">
@@ -140,34 +132,12 @@ export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
           <Field label="제목">
             <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="예: 회비 안내" />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="공개 범위" hint="이 등급 이상만 챗봇에서 검색돼요">
-              <Select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value as DocRow['visibility'] })}>
-                <option value="member">전체 부원</option>
-                <option value="staff">운영진</option>
-                <option value="board">회장단</option>
-              </Select>
-            </Field>
-            <Field label="소유">
-              <Select
-                value={draft.ownerType === 'team' ? `team:${draft.ownerId}` : 'personal'}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === 'personal') setDraft({ ...draft, ownerType: 'personal', ownerId: '' });
-                  else setDraft({ ...draft, ownerType: 'team', ownerId: v.slice(5) });
-                }}
-              >
-                <option value="personal">개인(나)</option>
-                {canChooseTeam
-                  ? teams.map((t) => (
-                      <option key={t.id} value={`team:${t.id}`}>
-                        {t.name} 팀
-                      </option>
-                    ))
-                  : null}
-              </Select>
-            </Field>
-          </div>
+          <Field label="공개 범위" hint="부원 공개면 전원이, 운영진 공개면 운영진·회장단만 챗봇에서 검색해요">
+            <Select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value as Visibility })}>
+              <option value="member">부원·운영진 공개</option>
+              <option value="staff">운영진 공개</option>
+            </Select>
+          </Field>
           <Field label="내용 (마크다운)" hint="헤딩(##)으로 나누면 챗봇이 더 잘 찾아요. 직접 쓰거나 파일을 올려도 돼요.">
             <div className="mb-2">
               <input ref={fileRef} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={onFile} hidden />
@@ -194,20 +164,38 @@ export function DocumentsPanel({ canChooseTeam }: { canChooseTeam: boolean }) {
     );
   }
 
+  // ── 목록 ────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[22px] font-bold text-ink-900">문서</h1>
-          <p className="text-[13px] text-ink-500">챗봇이 답변 근거로 쓰는 안내 문서예요.</p>
-        </div>
-        <Button onClick={() => setDraft({ ...EMPTY })}>
-          <Icon name="plus" size={16} /> 새 문서
-        </Button>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-[22px] font-bold text-ink-900">문서</h1>
+        <p className="mt-1 text-[13px] text-ink-500">챗봇이 답변 근거로 쓰는 안내 문서예요. 공개 범위를 골라 새로 만들어요.</p>
       </div>
+
+      {/* 공개 범위별 생성 진입점 두 개 */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {NEW_KINDS.map((k) => (
+          <button
+            key={k.visibility}
+            onClick={() => setDraft({ id: null, title: '', contentMd: '', visibility: k.visibility })}
+            className="text-left"
+          >
+            <Card className="flex h-full items-start gap-3 transition-colors hover:border-blue-300">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Icon name="plus" size={18} />
+              </span>
+              <span className="min-w-0">
+                <strong className="block text-[15px] font-semibold text-ink-900">{k.title}</strong>
+                <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-400">{k.examples}</span>
+              </span>
+            </Card>
+          </button>
+        ))}
+      </div>
+
       {docs.length === 0 ? (
         <Card>
-          <p className="text-[14px] text-ink-500">아직 문서가 없어요. 회비·봉사 안내 같은 문서를 만들어 두면 챗봇이 답할 수 있어요.</p>
+          <p className="text-[14px] text-ink-500">아직 문서가 없어요. 위에서 공개 범위를 골라 첫 문서를 만들어 보세요.</p>
         </Card>
       ) : (
         <div className="space-y-2">

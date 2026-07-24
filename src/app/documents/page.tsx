@@ -9,7 +9,7 @@ export default async function DocumentsPage() {
   const actor = await requireStaff();
   return (
     <ConsoleShell actor={actor}>
-      <DocumentsPanel canChooseTeam={actor.role === 'board' || actor.role === 'sysadmin' || actor.teams.length > 0} />
+      <DocumentsPanel />
     </ConsoleShell>
   );
 }
