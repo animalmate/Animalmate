@@ -40,7 +40,7 @@
 | 정보 | info / -100 / -700 | `#3E6FB9` / `#DFEAF8` / `#2C4B7C` |
 
 ### 예약 상태 배지 5종
-`작성중`(ink-100/500) · `완성`(blue-100/700) · `발행 대기`(amber-100/700) · `발행됨`(success) · `실패`(coral). → CSS 변수 `--status-*` (globals.css).
+`작성중`(ink-100/500) · `완성`(blue-100/700) · `업로드 대기`(amber-100/700) · `업로드됨`(success) · `실패`(coral). → CSS 변수 `--status-*` (globals.css). 문구는 2026-07-24 "발행"→"업로드"로 개칭(§4).
 
 ### 타이포 (Pretendard Variable)
 | 이름 | weight / size / line | 용도 | Tailwind |
@@ -73,11 +73,14 @@
 각 컴포넌트의 props는 동일 폴더 `*.d.ts`, 사용 예시는 `*.prompt.md` 참고.
 
 ## 3. 화면 (ui_kits/console/)
-Auth(로그인·가입 2단계), Home(역할별 바로가기), Queue(예약 큐), ReservationForm(새 예약), ReservationEdit(수정/발행됨), BulkCreate(일괄 생성), Templates, Teams(조직·팀장단), JoinCode(가입코드), Boards(게시판). 각각 데스크톱/모바일 대응.
-- 권한: 부원=홈만 / 운영진=+예약·템플릿·일괄 / 회장단·관리자=+조직·가입코드·게시판.
+Auth(로그인·가입 2단계), Home(역할별 바로가기), Queue(예약 큐), ReservationForm(새 예약), ReservationEdit(수정/업로드됨), ~~BulkCreate~~, Templates, Teams(조직·팀장단), JoinCode(가입코드), Boards(게시판). 각각 데스크톱/모바일 대응.
+- **BulkCreate(일괄 생성)는 폐기됨(2026-07-24)** — 시안 파일은 남아 있으나 구현하지 않는다. 여러 회차는 새 예약 화면에서 일정 행을 추가해 만든다.
+- 권한: 부원=홈만 / 운영진=+예약·템플릿 / 회장단·관리자=+조직·가입코드·게시판.
 - `index.html` = 전 화면 클릭 데모(역할·디바이스 토글). `home.html` = 홈 단독.
 
 ## 4. 카피 규칙
+- **"발행" 대신 "업로드"**(2026-07-24) — 화면에 보이는 문구는 쉬운 말로. 업로드 일정/날짜/시각,
+  업로드 대기·완료·실패, 상태 배지도 동일. 코드·문서의 publish/발행 용어는 그대로 둔다.
 - 해요체, 따뜻하되 짧고 명료. 버튼은 동사형 2~5자("예약 생성","완성 처리","발급").
 - 오류는 원인+행동: "코드가 맞지 않아요. 다시 확인해 주세요."
 - 이모지·주어("당신") 없음. 시스템 1인칭 없음.
@@ -95,3 +98,14 @@ Auth(로그인·가입 2단계), Home(역할별 바로가기), Queue(예약 큐)
 - **토글**: 우측 하단 🐾 버튼, `localStorage['am:cursor-dog']` 저장, 기본 on.
 - **주의**: `z-index:-1`이 콘텐츠 아래에 보이려면 상위에 불투명 배경이 없어야 한다. 이 때문에 `ConsoleShell` 루트의 중복 `bg-cream-50`을 제거하고 배경을 `body`(globals)로 일원화했다. 홈에 장식을 붙이는 전제이므로 되돌리지 말 것.
 - `/recruit`(미구현)에도 대상. 생기면 `<CursorDog />` 한 줄만 추가하면 된다.
+
+## 8. 디자인 킷 이후 추가된 앱 컴포넌트 (2026-07-24)
+시안(`design/components/`)에 없지만 실제 화면에서 쓰는 프리미티브. 새로 만들지 말고 이걸 재사용한다.
+- `src/components/modal.tsx` — 팝업. 배경 클릭·Esc·닫기 버튼 셋 다로 닫히고, 열려 있는 동안 배경 스크롤을 잠근다. `shadow-modal` + `Icon name="x"`. 최대 높이 85vh, 내용만 스크롤.
+- `src/components/time-select.tsx` — 시각 선택. **`input[type=time]` 을 쓰지 말 것**(step 을 브라우저가 무시해 1분 단위가 들어간다). 10분 간격 목록(`src/lib/time-options.ts`, 단위 테스트로 간격 고정), 표기는 "오후 2:30". 기존 값이 간격에 안 맞으면 그 값만 목록에 남긴다.
+- `src/components/auto-grow-textarea.tsx` — 내용에 맞춰 늘어나는 입력칸(최소 12줄). 공지 본문처럼 한눈에 봐야 하는 긴 텍스트에 쓴다. `resize` 손잡이는 끈다.
+- 미리보기 버튼(`reservations/new/form.tsx` 의 `PreviewButton`) — coral 그라디언트 1.5px 테두리 + 흰 배경, 높이는 옆 입력칸과 같은 `h-control`.
+
+### 날짜·시각 입력 규칙
+- 날짜와 시각은 **항상 두 칸으로 나눈다**. `datetime-local` 한 칸은 선택 도구가 작아 고르기 어렵다.
+- 시각은 전부 `TimeSelect`(10분 단위). 날짜는 `input[type=date]`.

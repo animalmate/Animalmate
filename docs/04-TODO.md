@@ -5,8 +5,18 @@
 
 > **진행 요약(2026-07-24):** Phase 1 인증·F1 발행루프·프론트 UI·**디자인 스킨(design/docs/06-DESIGN)**·
 > **팀장단 roster(명단+이메일로 관리 권한 부여, "팀" 개칭)**·배포 인프라(Vercel·pg_cron 2잡·UptimeRobot·헬스)
-> 전부 완료·push. 테스트: 단위 76 / 통합 99(+HTTP E2E 5) / typecheck 0 / build ✓.
+> 전부 완료·push. 마이그레이션 0000~0008 적용.
+> 테스트: 단위 88 / 통합 107(+HTTP E2E 10은 BASE_URL 있을 때) / typecheck 0 / build ✓.
 > **남은 것: 실카페 발행 전환(NAVER_PUBLISH_DRY_RUN=false + 봇 카페스탭 임명), 챗봇(1D).**
+>
+> **2026-07-24 오후 — 예약 UX 개편(커밋 2dc4f03 → b0e94e6):**
+> ① 장소별 양식 + **발행 직전 치환**(`final-render.ts`) — `{{장소}}{{정원}}` 을 본문에 남겨 두고 게시 직전에
+> `events` 값으로 치환. 미치환 키가 남으면 완성 처리 차단 + 워커가 게시 없이 failed(audit `post.blocked`).
+> ② 양식 기본값(장소·정원·집합 시간·업로드 시각, 0007/0008) → 예약 생성 시 자동 채움. **실제로 고르는 건
+> 봉사 일자·업로드 날짜 둘뿐**. ③ **일괄 생성 폐기**(`src/recurrence/` 전체 삭제, recurring_rules 미사용).
+> ④ 화면 문구 "발행"→"업로드", `{{간결_날짜}}`에 요일·`{{정원}}`에 "명" 추가. ⑤ 회차별 완성본 미리보기 팝업,
+> 예약 큐·수정 화면에 치환 결과 표시. ⑥ 새 UI 프리미티브(Modal·TimeSelect 10분단위·AutoGrowTextarea).
+> ⑦ 파비콘(`src/app/icon.png`). ⑧ **테스트가 실메일 보내는 사고 → `defaultMailer` 가 테스트 환경에선 항상 dry.**
 
 ## Phase 0 — 외부 검증 & 계정 셋업 (캠프 직후 ~8월 말) [GO/NO-GO 게이트]
 - [ ] 동아리 공용 Gmail 생성 (복구 이메일 = 회장 개인 메일)
@@ -105,8 +115,11 @@
       (`src/publishing/final-render.ts`, 순수 치환은 `template-render.ts` — 수정 화면 미리보기와 공용).
       미치환 키가 남으면 완성 처리 차단(markReady) + 워커가 게시 없이 failed 확정(audit `post.blocked`).
       발행 성공 시 최종 본문을 scheduled_posts 에 저장. 단위 9(final-render).
-- [~] 직접 선예약 + 팀별 예약 큐 → `scheduled-posts.ts`에 event_id 연결·`cancelPost`(published 전 취소)·
-      markReady가 event 필수필드(일시/장소/정원) 검증. **예약 큐 화면(프론트)만 남음**.
+- [x] 직접 선예약 + 팀별 예약 큐 → `scheduled-posts.ts`에 event_id 연결·`cancelPost`(published 전 취소)·
+      markReady가 event 필수필드(일시/장소/정원) + **미치환 플레이스홀더** 검증. 화면 완료
+      (`/reservations` 큐 = 상태배지·미완성·치환 결과 표시, `/reservations/new` = 다건 일정 + 회차별
+      미리보기 팝업, `/reservations/[id]/edit` = 최종 본문 미리보기). 스코프: 비회장단은 본인 개인 +
+      소속 팀만(URL 로 남의 팀 teamId 를 넣어도 무시, 상세는 403).
 - [x] ~~일괄 생성 도우미~~ **폐기(2026-07-24)**: 패턴이 고정된 봉사가 드물어 쓰이지 않았다.
       화면(`/reservations/batch`)·API·`batch-generate.ts`·`src/recurrence/` 전부 삭제. 여러 회차는 새 예약
       화면에서 일정 행을 추가해 만든다(회차별 날짜·집합시간·정원 + 회차별 미리보기 팝업).
