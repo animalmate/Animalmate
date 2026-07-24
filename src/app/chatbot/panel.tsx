@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiPost } from '@/lib/api';
 import { Markdown } from '@/components/markdown';
 import { Icon } from '@/components/icon';
+import { ChatDog, type DogMood } from '@/components/chat-dog';
 
 interface Msg {
   role: 'user' | 'bot';
@@ -25,6 +26,8 @@ export function ChatbotPanel() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mood, setMood] = useState<DogMood>('idle'); // 강아지 반응: idle → thinking → answer
+  const [answerNonce, setAnswerNonce] = useState(0); // answer 진입마다 점프 재생
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,6 +39,7 @@ export function ChatbotPanel() {
     if (!q || busy) return;
     setInput('');
     setBusy(true);
+    setMood('thinking'); // 질문 받는 즉시 꼬리 흔들며 생각
     setMsgs((m) => [...m, { role: 'user', text: q }, { role: 'bot', text: '', pending: true }]);
 
     const r = await apiPost<AskResponse>('/api/chatbot/ask', { question: q });
@@ -49,20 +53,31 @@ export function ChatbotPanel() {
       return [...next, { role: 'bot', text: answer, sources: r.ok ? data.sources : undefined }];
     });
     setBusy(false);
+    setMood('answer'); // 대답하며 폴짝
+    setAnswerNonce((n) => n + 1);
+    window.setTimeout(() => setMood('idle'), 900); // 점프 후 다시 가만히
   }
 
   return (
     <div className="mx-auto flex h-[calc(100dvh-140px)] max-w-2xl flex-col">
-      <div className="mb-2">
-        <h1 className="text-[22px] font-bold text-ink-900">동아리 챗봇</h1>
-        <p className="text-[13px] text-ink-500">동아리 안내 문서를 바탕으로 답해요. 봉사 일정도 물어볼 수 있어요.</p>
+      <div className="mb-2 flex items-center gap-2">
+        {/* 대화가 시작되면 강아지가 헤더로 올라와 계속 반응한다(빈 화면일 땐 아래 큰 강아지). */}
+        {msgs.length > 0 ? (
+          <span className="-my-2 shrink-0">
+            <ChatDog mood={mood} answerNonce={answerNonce} size={52} />
+          </span>
+        ) : null}
+        <div>
+          <h1 className="text-[22px] font-bold text-ink-900">동아리 챗봇</h1>
+          <p className="text-[13px] text-ink-500">동아리 안내 문서를 바탕으로 답해요. 봉사 일정도 물어볼 수 있어요.</p>
+        </div>
       </div>
 
       {/* 대화 영역 */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto rounded-2xl bg-cream-25 p-3 sm:p-4">
         {msgs.length === 0 ? (
           <div className="flex flex-col items-center gap-4 py-10 text-center">
-            <img src="/logo-shapes.png" alt="" className="h-16 w-16 object-contain" />
+            <ChatDog mood={mood} answerNonce={answerNonce} size={104} />
             <p className="text-[14px] text-ink-500">무엇이 궁금한가요?</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
