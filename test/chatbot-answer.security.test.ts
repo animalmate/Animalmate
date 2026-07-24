@@ -48,6 +48,14 @@ suite('챗봇 정답 경로 — 심은 문서로 답하고 출처를 단다', ()
       ownerId: owner.userId,
     });
     docId = doc.id;
+    // 짧은 질문("OT 언제야?")이 컷오프에 걸려 헛핸드오프하던 회귀 방지용 문서.
+    await createDocument(db, { ...owner, role: 'board' }, {
+      title: `${PREFIX}신입안내`,
+      contentMd: '## OT\n신입 OT(오리엔테이션)는 3월 8일 토요일 오후 2시 학생회관 201호에서 진행합니다. 전원 참석입니다.',
+      visibility: 'member',
+      ownerType: 'personal',
+      ownerId: owner.userId,
+    });
   });
 
   afterAll(async () => {
@@ -63,8 +71,15 @@ suite('챗봇 정답 경로 — 심은 문서로 답하고 출처를 단다', ()
     expect(res.sources.some((s) => s.includes('회비안내'))).toBe(true);
   }, 60_000);
 
+  it('짧은 질문("OT 언제야?")도 자료가 있으면 답한다(컷오프 헛핸드오프 회귀 방지)', async () => {
+    const res = await askChatbot(db, owner, 'OT 언제야?');
+    expect(res.handedOff).toBe(false);
+    expect(res.answer).toMatch(/3월\s*8|학생회관|오후\s*2/); // OT 문서의 사실
+  }, 60_000);
+
   it('심은 문서와 무관한 질문은 지어내지 않고 핸드오프한다', async () => {
     const res = await askChatbot(db, owner, '동아리 티셔츠는 무슨 색인가요?');
     expect(res.handedOff).toBe(true);
+    expect(res.sources).toEqual([]); // 핸드오프면 출처 없음
   }, 60_000);
 });

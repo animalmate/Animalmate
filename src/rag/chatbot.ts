@@ -12,7 +12,7 @@ import { searchChunks, buildContextBlock, type SearchHit } from './search';
 import { CHATBOT_TOOLS, executeTool } from './tools';
 
 export const HANDOFF_MESSAGE =
-  '자료에 없는 내용이에요. 정확한 안내가 필요하면 운영진(공용 이메일)에게 문의해 주세요.';
+  '제가 모르는 내용이에요. 정확한 안내가 필요하면 운영진에게 문의해 주세요.';
 
 const SYSTEM_PROMPT = `너는 대학생 동물봉사 동아리 "애니멀메이트"의 안내 챗봇이다. 회원의 질문에 친절하고 간결한 한국어 존댓말로 답한다.
 
@@ -38,9 +38,10 @@ export interface AskDeps {
   execTool?: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }
 
-/** 답변이 사실상 핸드오프인지(근거 없음). 로그·평가의 handedOff 판정에 쓴다. */
+/** 답변이 사실상 핸드오프인지(근거 없음). 로그·평가의 handedOff 판정에 쓴다.
+ *  핸드오프 문구의 고유 표현으로 판정한다("운영진 문의"만으로는 개인정보 거절과 겹쳐서 안 쓴다). */
 export function isHandoff(answer: string): boolean {
-  return answer.includes('자료에 없는') || (answer.includes('운영진') && answer.includes('문의'));
+  return answer.includes('제가 모르는') || answer.includes('자료에 없'); // 신·구 문구 모두 인식
 }
 
 /** 개인정보 요청 거절인지. 근거가 없어도 이 거절은 핸드오프로 덮지 않는다(거절이 우선). */
@@ -96,5 +97,7 @@ export async function askChatbot(db: Db, actor: Actor, question: string, deps: A
     return { answer: HANDOFF_MESSAGE, sources: [], handedOff: true };
   }
 
-  return { answer, sources, handedOff: isHandoff(answer) };
+  // 모델이 핸드오프하면 출처를 달지 않는다(자료를 실제로 못 썼으므로).
+  const handedOff = isHandoff(answer);
+  return { answer, sources: handedOff ? [] : sources, handedOff };
 }

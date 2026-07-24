@@ -21,8 +21,12 @@ export interface SearchHit {
 }
 
 export const TOP_K = 5;
-// 이 값 미만은 "근거로 쓸 만큼 가깝지 않다"고 보고 버린다 → 근거 없으면 챗봇이 핸드오프한다.
-export const MIN_SIMILARITY = 0.55;
+// 노이즈 바닥값(관련도 판단용 아님). 짧은 한국어 질문은 관련 문서와의 코사인이 0.45~0.65,
+// **무관한 문서와도 0.4~0.55** 로 겹쳐서(2026-07-24 실측) 유사도로는 관련/무관을 못 가른다.
+// 그래서 컷오프로 관련성을 판단하지 않고, 가까운 top-k 를 그대로 모델에 넘겨 **모델이** 답할 수 있는지
+// 판단하게 한다(시스템 프롬프트가 "자료에 없으면 핸드오프"를 강제). 이 값은 "DB 에 아무것도 안 가까울 때"
+// 만 거르는 낮은 바닥이다. 이걸 0.55 로 잡았다가 "OT 언제야?"(0.49) 같은 정상 질문이 걸러지는 버그가 있었다.
+export const MIN_SIMILARITY = 0.3;
 
 /** 질문자 역할이 볼 수 있는 visibility 값 목록(rank ≤ 역할 rank). */
 export function allowedVisibilities(actor: Actor): Visibility[] {

@@ -39,6 +39,16 @@ describe('askChatbot — 오케스트레이션', () => {
     expect(res.sources).toEqual(['회비안내']);
   });
 
+  it('자료가 검색됐어도 모델이 핸드오프하면 출처를 달지 않는다', async () => {
+    const res = await askChatbot(db, actor, '엉뚱한 질문', {
+      search: async () => [hit('회비안내', '2만원')], // 근거는 있으나
+      generate: async () => gen({ text: HANDOFF_MESSAGE }), // 모델이 못 답함
+      execTool: async () => ({}),
+    });
+    expect(res.handedOff).toBe(true);
+    expect(res.sources).toEqual([]); // 실제로 자료를 못 썼으므로 출처 없음
+  });
+
   it('사용자 질문은 systemInstruction 이 아니라 user content 로만 들어간다(인젝션 경계)', async () => {
     let captured: { system: string; contents: unknown } | null = null;
     const generate = vi.fn(async (args: { system: string; contents: unknown }) => {
@@ -99,9 +109,11 @@ describe('askChatbot — 오케스트레이션', () => {
 });
 
 describe('isHandoff', () => {
-  it('핸드오프 문구를 감지한다', () => {
-    expect(isHandoff(HANDOFF_MESSAGE)).toBe(true);
-    expect(isHandoff('운영진에게 문의해 주세요')).toBe(true);
+  it('핸드오프 문구를 감지한다(고유 표현으로)', () => {
+    expect(isHandoff(HANDOFF_MESSAGE)).toBe(true); // "제가 모르는…"
+    expect(isHandoff('자료에 없는 내용이에요...')).toBe(true); // 구 문구 호환
     expect(isHandoff('한 학기 2만원이에요.')).toBe(false);
+    // 개인정보 거절("운영진에게 문의")은 핸드오프로 오판하지 않는다.
+    expect(isHandoff('개인정보는 안내해 드릴 수 없어요. 운영진에게 문의해 주세요.')).toBe(false);
   });
 });
