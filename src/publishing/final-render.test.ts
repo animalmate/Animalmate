@@ -29,7 +29,7 @@ describe('publishVars — 발행 직전 치환 변수', () => {
       전체_날짜: '2026년 7월 23일 목요일',
       집합시간: '14:00', // 'HH:MM:SS' → 'HH:MM'
       장소: '양주 쉼터',
-      정원: '20',
+      정원: '20명', // 숫자만 나오면 어색해서 단위까지 붙인다
       팀장단: '팀장 홍길동 010-0000-0000',
     });
   });
@@ -55,7 +55,7 @@ describe('renderFinal — 최종 본문 + 미치환 키', () => {
   it('값이 모두 있으면 치환 완료 + 미치환 없음', () => {
     const r = renderFinal(post, publishVars(makeEvent(), '팀장 홍길동'));
     expect(r.title).toBe('07/23 정기 봉사 안내');
-    expect(r.contentMd).toContain('장소 양주 쉼터 / 정원 20');
+    expect(r.contentMd).toContain('장소 양주 쉼터 / 정원 20명');
     expect(r.contentMd).toContain('팀장 홍길동');
     expect(r.unresolved).toEqual([]);
   });
@@ -80,7 +80,7 @@ describe('usedPlaceholders — 예약 큐·수정 화면의 "이렇게 바뀝니
     const vars = publishVars(makeEvent(), '팀장 홍길동');
     expect(usedPlaceholders(post, vars)).toEqual([
       { key: '간결_날짜', value: '07/23' },
-      { key: '정원', value: '20' },
+      { key: '정원', value: '20명' },
       { key: '팀장단', value: '팀장 홍길동' },
     ]);
   });

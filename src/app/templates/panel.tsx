@@ -168,7 +168,7 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
             minRows={8}
             value={bodyTemplate}
             onChange={(e) => setBodyTemplate(e.target.value)}
-            placeholder={'{{전체_날짜}} 양주 쉼터 봉사\n집합 {{집합시간}} / 정원 {{정원}}명\n\n문의:\n{{팀장단}}'}
+            placeholder={'{{전체_날짜}} 양주 쉼터 봉사\n집합 {{집합시간}} / 정원 {{정원}}\n\n문의:\n{{팀장단}}'}
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">

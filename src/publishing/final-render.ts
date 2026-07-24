@@ -10,6 +10,7 @@ import { events, teams } from '@/db/schema';
 import type { Database } from '@/db/types';
 import { dateVars, leadersBlock } from './placeholders';
 import { renderTemplate, placeholderKeys } from './template-render';
+import { capacityText } from './placeholder-catalog';
 
 type EventRow = typeof events.$inferSelect;
 
@@ -31,7 +32,7 @@ export function publishVars(event: EventRow | null, leaders: string): Record<str
     Object.assign(vars, dateVars(event.eventDate));
     if (event.meetTime) vars['집합시간'] = event.meetTime.slice(0, 5);
     if (event.place?.trim()) vars['장소'] = event.place.trim();
-    if (event.capacity != null) vars['정원'] = String(event.capacity);
+    if (event.capacity != null) vars['정원'] = capacityText(event.capacity); // "20명"
   }
   if (leaders) vars['팀장단'] = leaders;
   return vars;

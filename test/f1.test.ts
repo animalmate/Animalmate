@@ -28,7 +28,7 @@ function captureMailer(): { mailer: Mailer; sent: GenericMail[] } {
   return { mailer: { async send(m) { sent.push(m); }, async sendOtp() {} }, sent };
 }
 
-suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
+suite('F1 — 템플릿 / 다건 예약 생성 / 미완성 점검', () => {
   let sql: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let board: Actor;
@@ -142,12 +142,12 @@ suite('F1 — 템플릿 / 일괄 생성 / 미완성 점검', () => {
     expect(ev.capacity).toBe(20);
     expect(post.contentMd).toBe('장소 {{장소}} / 정원 {{정원}}');
     const rendered = await renderForPublish(db, post);
-    expect(rendered.contentMd).toBe('장소 양주 쉼터 / 정원 20');
+    expect(rendered.contentMd).toBe('장소 양주 쉼터 / 정원 20명');
     expect(rendered.unresolved).toEqual([]);
 
     // 회차별로 장소만 바꾸면(예약 수정) 본문 텍스트를 건드리지 않아도 최종본이 따라온다.
     await db.update(events).set({ place: '파주 쉼터' }).where(eq(events.id, ev.id));
-    expect((await renderForPublish(db, post)).contentMd).toBe('장소 파주 쉼터 / 정원 20');
+    expect((await renderForPublish(db, post)).contentMd).toBe('장소 파주 쉼터 / 정원 20명');
 
     // 값을 비우면 미치환으로 보고되어 발행이 차단된다.
     await db.update(events).set({ place: null }).where(eq(events.id, ev.id));
