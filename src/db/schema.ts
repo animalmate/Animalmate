@@ -348,6 +348,18 @@ export const rateLimits = pgTable(
   ]
 );
 
+/**
+ * 앱 설정(key-value) — 회장단이 콘솔에서 바꾸는 운영 파라미터. 상수 하드코딩 대신 여기 둔다(결정 3).
+ * 현재 용도: 챗봇 쿼터(인당 일일·전역 분기 상한)와 챗봇 on/off 킬스위치.
+ * value_json 으로 숫자·불리언·객체 무엇이든 담는다. 없으면 코드의 기본값을 쓴다.
+ */
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  valueJson: jsonb('value_json').notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ── 운영 공통 ──────────────────────────────────────────────────────────
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
