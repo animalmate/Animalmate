@@ -13,6 +13,8 @@ interface Preview {
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+// 게시판 목록은 menuid 순으로 오지만, 고를 때는 이름순이 찾기 쉽다(한글 기준).
+const byName = (a: Board, b: Board) => a.name.localeCompare(b.name, 'ko');
 
 export function BatchForm() {
   const router = useRouter();
@@ -35,7 +37,7 @@ export function BatchForm() {
         apiGet<{ teams: Team[] }>('/api/teams'),
         apiGet<{ templates: Template[] }>('/api/templates'),
       ]);
-      if (b.ok) setBoards((b.data.boards ?? []).filter((x) => x.botCanWrite));
+      if (b.ok) setBoards((b.data.boards ?? []).filter((x) => x.botCanWrite).sort(byName));
       if (t.ok) setTeams(t.data.teams ?? []);
       if (tpl.ok) setTemplates(tpl.data.templates ?? []);
     })();
