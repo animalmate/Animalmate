@@ -69,7 +69,7 @@ export default async function HomePage() {
   return (
     <ConsoleShell actor={actor}>
       <CursorDog />
-      <div className="space-y-5">
+      <div className="space-y-7">
         {!actor.membershipActive ? (
           <Banner kind="warning" title="이번 학기 멤버십이 아직 활성화되지 않았어요">
             운영진 지정이 필요하면 회장단에게 문의해 주세요.
@@ -98,10 +98,10 @@ export default async function HomePage() {
         </a>
 
         {shortcuts.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {shortcuts.map((s) => (
               <a key={s.href} href={s.href} className="no-underline">
-                <Card className="flex min-h-[84px] items-center gap-3.5 transition-colors hover:border-blue-300">
+                <Card className="flex min-h-[92px] items-center gap-3.5 transition-colors hover:border-blue-300">
                   <span className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-blue-50 text-blue-600">
                     <Icon name={s.icon} size={22} />
                   </span>
@@ -119,7 +119,7 @@ export default async function HomePage() {
         {/* 외부 바로가기 — 카페는 전원, 드라이브는 운영진 이상(서버에서 필터). 새 탭으로 연다. */}
         <div className="space-y-2.5">
           <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-400">바로가기</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {externals.map((l) => {
               const tone = TONE[l.tone];
               return (
@@ -130,7 +130,7 @@ export default async function HomePage() {
                   rel="noopener noreferrer"
                   className="no-underline"
                 >
-                  <Card className={`flex min-h-[84px] items-center gap-3.5 transition-colors ${tone.hover}`}>
+                  <Card className={`flex min-h-[92px] items-center gap-3.5 transition-colors ${tone.hover}`}>
                     <span
                       className={`flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] ${tone.chip}`}
                     >
