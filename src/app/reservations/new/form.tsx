@@ -332,7 +332,7 @@ export function NewReservationForm() {
 
         <ErrorText>{error}</ErrorText>
         <Button disabled={busy || !canSubmit} onClick={submit}>
-          {busy ? '생성 중…' : '예약 생성(작성중)'}
+          {busy ? '생성 중…' : '예약 생성'}
         </Button>
         <InfoText>생성 후 실제 업로드 전에 수정 가능</InfoText>
       </Card>
