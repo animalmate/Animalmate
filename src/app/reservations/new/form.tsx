@@ -29,6 +29,21 @@ const emptyRow = (capacity = ''): Row => ({ publishLocal: '', eventDate: '', mee
 // 게시판 목록은 menuid 순으로 오지만, 고를 때는 이름순이 찾기 쉽다(한글 기준).
 const byName = (a: Board, b: Board) => a.name.localeCompare(b.name, 'ko');
 
+/** 미리보기 버튼 — 분홍(coral) 그라디언트 얇은 테두리. 높이는 입력칸(h-control)에 맞춘다. */
+function PreviewButton({ onClick }: { onClick: () => void }) {
+  return (
+    <span className="inline-block h-control shrink-0 rounded-xl bg-gradient-to-r from-coral-300 via-coral-500 to-coral-300 p-[1.5px]">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex h-full items-center rounded-[10.5px] bg-white px-3.5 text-[13px] font-semibold text-coral-700 transition-colors hover:bg-coral-50"
+      >
+        미리보기
+      </button>
+    </span>
+  );
+}
+
 /** 한 일정이 실제로 카페에 올라갈 모습(제목 + 본문). 채워지지 않은 값이 있으면 함께 알려준다. */
 function OccurrencePreview({
   title,
@@ -252,22 +267,21 @@ export function NewReservationForm() {
               <Field label="발행 시각">
                 <Input type="datetime-local" value={r.publishLocal} onChange={(e) => setRow(i, 'publishLocal', e.target.value)} />
               </Field>
-              <div className="grid grid-cols-2 items-end gap-2">
+              <div className="flex items-end gap-2">
                 {kind === 'volunteer' ? (
-                  <Field label="정원" hint={selectedTemplate?.defaultCapacity != null ? '비우면 양식 기본값' : undefined}>
-                    <Input
-                      inputMode="numeric"
-                      value={r.capacity}
-                      onChange={(e) => setRow(i, 'capacity', e.target.value.replace(/\D/g, ''))}
-                      placeholder="20"
-                    />
-                  </Field>
-                ) : (
-                  <div />
-                )}
-                <SecondaryButton type="button" onClick={() => setOpenPreview(i)}>
-                  미리보기
-                </SecondaryButton>
+                  <div className="w-32">
+                    {/* hint 는 입력칸 아래에 붙어 버튼 정렬이 어긋난다 — 같은 안내는 아래 InfoText 에 있다. */}
+                    <Field label="정원">
+                      <Input
+                        inputMode="numeric"
+                        value={r.capacity}
+                        onChange={(e) => setRow(i, 'capacity', e.target.value.replace(/\D/g, ''))}
+                        placeholder="20"
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+                <PreviewButton onClick={() => setOpenPreview(i)} />
               </div>
               {rows.length > 1 ? (
                 <button className="text-xs text-coral-600 underline" onClick={() => removeRow(i)}>
