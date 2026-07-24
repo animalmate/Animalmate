@@ -65,13 +65,16 @@ export function LoginForm() {
             <Button className="w-full" disabled={busy || !email} onClick={request}>
               {busy ? '전송 중…' : '인증 코드 받기'}
             </Button>
-            <InfoText>
-              계정이 없으면{' '}
-              <a href="/signup" className="underline">
-                가입
+            <div className="rounded-xl border border-coral-100 bg-coral-50 p-3.5 text-center">
+              <p className="text-[13px] font-semibold text-ink-900">처음이신가요?</p>
+              <p className="mt-0.5 text-[13px] text-ink-700">로그인하려면 먼저 가입이 필요합니다.</p>
+              <a
+                href="/signup"
+                className="mt-2.5 inline-flex h-control-sm min-h-tap items-center justify-center rounded-xl bg-coral-500 px-5 text-sm font-semibold text-white transition-colors hover:bg-coral-600"
+              >
+                가입하기 →
               </a>
-              하세요.
-            </InfoText>
+            </div>
           </>
         ) : (
           <>
