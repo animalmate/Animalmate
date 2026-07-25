@@ -44,7 +44,9 @@ export type Action =
   | { kind: 'term.transition' } // 학기 전환
   | { kind: 'board.registry' } // 게시판 레지스트리
   | { kind: 'bot.token' } // 봇 토큰 관리
-  | { kind: 'joincode.manage' }; // 학기 가입코드 발급/재발급
+  | { kind: 'joincode.manage' } // 학기 가입코드 발급/재발급
+  | { kind: 'recruit.score' } // F9 신입 모집: 채점·개인메모·공용메모지(운영진 이상)
+  | { kind: 'recruit.manage' }; // F9 신입 모집: 업로드·확정·배정·공개·폐기·export(회장단 전용)
 
 export type DenyReason = 'membership_inactive' | 'role_insufficient' | 'not_owner';
 
@@ -88,8 +90,10 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'application.create':
       return ALLOW;
 
-    // 게시물·예약 생성: 운영진 이상(부원 불가).
+    // 게시물·예약 생성, F9 채점/메모: 운영진 이상(부원 불가).
+    // 채점은 운영진, 결정은 회장단 — recruit.score 는 여기(staff+), recruit.manage 는 아래(board only).
     case 'post.create':
+    case 'recruit.score':
       return isStaffPlus(actor.role) ? ALLOW : deny('role_insufficient');
 
     // 게시물 수정·삭제, 반복 규칙/템플릿 관리: 부원 불가. 회장단·시스템관리자는 소유권 우회(override).
@@ -114,6 +118,7 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'board.registry':
     case 'bot.token':
     case 'joincode.manage':
+    case 'recruit.manage': // 결정은 회장단 — 운영진은 합격 여부를 바꿀 수 없다
       return isPrivileged(actor.role) ? ALLOW : deny('role_insufficient');
   }
 }

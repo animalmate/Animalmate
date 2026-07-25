@@ -113,6 +113,26 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     expect(authorize(actor('member'), rule).reason).toBe('role_insufficient');
     expect(authorize(actor('board'), rule)).toMatchObject({ allowed: true, override: true });
   });
+
+  // F9 신입 모집: 채점은 운영진, 결정은 회장단.
+  it('15. recruit.score(채점·메모) = 운영진 이상: 부원 거부, 운영진·회장단 허용', () => {
+    expect(authorize(actor('member'), { kind: 'recruit.score' }).reason).toBe('role_insufficient');
+    expect(authorize(actor('staff'), { kind: 'recruit.score' }).allowed).toBe(true);
+    expect(authorize(actor('board'), { kind: 'recruit.score' }).allowed).toBe(true);
+  });
+
+  it('16. recruit.manage(업로드·확정·배정·공개·폐기) = 회장단 전용: 운영진도 거부', () => {
+    expect(authorize(actor('staff'), { kind: 'recruit.manage' }).reason).toBe('role_insufficient');
+    expect(authorize(actor('member'), { kind: 'recruit.manage' }).reason).toBe('role_insufficient');
+    expect(authorize(actor('board'), { kind: 'recruit.manage' }).allowed).toBe(true);
+    expect(authorize(actor('sysadmin'), { kind: 'recruit.manage' }).allowed).toBe(true);
+  });
+
+  it('17. 임기 만료 운영진은 채점도 거부(membership_inactive)', () => {
+    expect(authorize(actor('staff', { membershipActive: false }), { kind: 'recruit.score' }).reason).toBe(
+      'membership_inactive'
+    );
+  });
 });
 
 describe('헬퍼', () => {
@@ -151,6 +171,8 @@ describe('guard — 예외 매핑 + audit 기록', () => {
 
   it('isManagementAction 판별', () => {
     expect(isManagementAction({ kind: 'membership.manage' })).toBe(true);
+    expect(isManagementAction({ kind: 'recruit.manage' })).toBe(true);
+    expect(isManagementAction({ kind: 'recruit.score' })).toBe(false);
     expect(isManagementAction({ kind: 'post.create' })).toBe(false);
   });
 

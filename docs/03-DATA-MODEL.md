@@ -111,15 +111,30 @@
   - `expenses` (id, spent_on date, category[operating|event|etc], description, amount, receipt_url?,
     recorded_by, memo?, created_at) — 지출 기록 대장. 영수증 이미지 = Supabase Storage(비공개 버킷) URL.
     수정 이력은 audit_logs 로. **승인 플로우 없음**(결재 시스템 아님, 기록 대장). 정산 요청 접수는 v2.
-- **F9 신입 모집** (지원자 = 비부원, PII 최소화·보관 제한):
-  - `recruit_applicants` (id, cohort, name, phone_hash, status[received|doc_pass|interview|final_pass|fail],
-    memo?, uploaded_by, created_at) — 운영진 CSV 업로드. 상태 5단계(접수→서류합격→면접예정→최종합격|불합격).
-    **전화번호 원문은 저장하지 않고 이름+전화번호 전체의 해시(phone_hash)만 저장**. 결과 조회는
-    이름+전화번호 전체 입력을 해시 대조해 본인 상태만 노출(뒤 4자리 방식은 동명이인·무차별 대입에 약해 폐기).
-    모집 종료 시 cohort 단위 **일괄 hard delete**(비부원 개인정보 보관 금지). 정적 안내 페이지는 LLM 미사용.
-  - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 5회 제한, 실패 10회 시 해당 IP
-    1시간 차단, 시도 로그 기록(`recruit_lookup_attempts` 또는 동등 저장).
-  - RLS: 위 신규 테이블도 생성과 동시에 RLS 활성화(규칙 #8, RLS 테스트가 누락을 자동 감지).
+- ~~**F9 신입 모집**: `recruit_applicants`(phone_hash 만 저장)~~ **개정·구현 2026-07-25**(결정 #7 번복,
+  07-DECISIONS 24, 상세 설계 = `09-RECRUIT-DESIGN.md`). v1은 서류·면접 심사를 사이트에서 직접 수행하므로
+  구글폼 전 필드를 **원문 저장**한다(마이그레이션 0013, 전 테이블 RLS ON). 대신 주소는 역명으로 축소,
+  열람 staff+/export board-only, cohort hard delete 로 보관을 제한한다. 조회는 이름+전화 정확 일치(해시 폐기),
+  실패 시도값은 저장하지 않고 IP 레이트리밋으로만 막는다.
+  - `recruit_cohorts` (id, label uq, schedule_public, result_public, closed_at?, archived_stats? jsonb,
+    created_by, created_at) — 공개 스위치 2개(면접 일정/최종 결과)가 여기. 폐기 시 익명 집계만 archived_stats 로 잔존.
+  - `recruit_slots` (id, cohort_id, starts_at, duration_min=20, link?, created_by, created_at) — 면접 슬롯.
+  - `recruit_applicants` (id, cohort_id, name, gender?, birth_date?(text), phone, school?, department?, email?,
+    apply_route?, other_activities?, expected_frequency?, wish_team1?, wish_team2?, **near_station?**(주소 대신 역명),
+    ot_attend?(text), remote_interview_wish?(text), essay_intro?, essay_values?, status, slot_id?, interview_link?,
+    uploaded_by, created_at) — CSV 업로드. status = received→doc_fail|doc_pass→interview_done|interview_noshow
+    →final_pass|final_fail. **phone·자기소개서 = PII, RAG 반입 금지(규칙 #5)·커밋/시드 금지(규칙 #4).**
+  - `recruit_scores` (id, applicant_id, scorer_user_id, stage[document|interview], score numeric(3,1) 0~10 0.5단위,
+    comment?, created_at, updated_at) UNIQUE(applicant_id, scorer_user_id, stage). 본인 점수만 수정. DB CHECK 로 범위 강제.
+  - `recruit_memos` (id, applicant_id, author_user_id, content, updated_at) UNIQUE(applicant_id, author_user_id)
+    — 지원자별 **개인** 메모(작성자당 1개). `screen_notes` (context_key PK, content, updated_by?, updated_at)
+    — 화면별 **공용** 메모지. `recruit_mapping_presets` (id, name uq, mapping jsonb, created_by, updated_at) — CSV 매핑.
+  - **상태 자동 전환**: 면접 점수 최초 저장 시 doc_pass→interview_done, 점수 0개로 감소 시 interview_done→doc_pass
+    (같은 트랜잭션). 면접불참(interview_noshow)은 회장단 수동. 순수 함수 `nextStatusOnScoreChange` 로 분리(단위 테스트).
+  - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 5회 + 실패 10회 시 1시간 차단
+    (`rate_limits` 재사용, 버킷 `recruit_lookup`/`recruit_lookup_fail`). **시도 입력값(이름·전화)은 저장하지 않는다**
+    — 비지원자 PII 수집 금지(규칙 #4/#5). 결정 #8의 "시도 로그"는 카운터로 대체(07-DECISIONS 25).
+  - RLS: 신규 7테이블 생성과 동시에 RLS 활성화(규칙 #8, RLS 테스트가 누락을 자동 감지).
 
 ## 접근 규칙 (서버에서 강제)
 1. 쓰기 요청마다: 인증 → membership active? → 역할 충족? → 소유권(personal=본인,

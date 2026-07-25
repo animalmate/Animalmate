@@ -29,6 +29,7 @@ export function isManagementAction(action: Action): boolean {
     case 'term.transition':
     case 'board.registry':
     case 'bot.token':
+    case 'recruit.manage': // 업로드·확정·배정·공개·폐기·export = 관리 행위(항상 audit)
       return true;
     default:
       return false;

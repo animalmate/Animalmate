@@ -13,6 +13,7 @@ import {
   text,
   integer,
   smallint,
+  numeric,
   boolean,
   timestamp,
   date,
@@ -55,6 +56,19 @@ export const teamKindEnum = pgEnum('team_kind', ['activity', 'functional']);
 export const teamPositionEnum = pgEnum('team_position', ['leader', 'member']);
 export const naverTokenStatusEnum = pgEnum('naver_token_status', ['ok', 'error']);
 export const monthWeekEnum = pgEnum('month_week', ['1', '2', '3', '4', 'last']);
+// F9 신입 모집 지원자 상태(스펙 2026-07-25). 접수 → 서류합격|서류불합격 → 면접완료 → 최종합격|최종불합격.
+// 면접완료 = 면접 점수가 1개라도 저장되면 자동 전환(사실 반영), 점수가 0개로 돌아가면 서류합격으로 자동 복귀.
+// 면접불참(interview_noshow) = 배정됐으나 면접을 못 본 사람을 회장단이 수동 표시(면접 기록 없음과 구분).
+export const recruitStatusEnum = pgEnum('recruit_status', [
+  'received',
+  'doc_fail',
+  'doc_pass',
+  'interview_done',
+  'interview_noshow',
+  'final_pass',
+  'final_fail',
+]);
+export const recruitScoreStageEnum = pgEnum('recruit_score_stage', ['document', 'interview']);
 
 // ── 조직/계정 ──────────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -376,4 +390,132 @@ export const auditLogs = pgTable('audit_logs', {
   beforeJson: jsonb('before_json'),
   afterJson: jsonb('after_json'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── F9 신입 모집 (지원자 = 비부원, PII 최소화·보관 제한. 결정 #7 번복 2026-07-25, 07-DECISIONS) ──
+// 규칙: 지원자 데이터·자기소개서는 RAG 인덱스 반입 금지(규칙 #5). 열람=운영진 이상, export=회장단만+audit.
+// 모집 종료 시 cohort 단위 일괄 hard delete(익명 집계만 잔존, recruit_cohorts.archived_stats).
+// 주소는 저장하지 않고 "가장 가까운 역 명"(near_station)만 둔다(사용자 지시 — PII 최소화).
+
+// 기수(cohort). 공개 스위치 2개(면접 일정 / 최종 결과)를 회장단이 조작한다.
+export const recruitCohorts = pgTable('recruit_cohorts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  label: text('label').notNull().unique(), // 예: "2026-2 신입"
+  schedulePublic: boolean('schedule_public').notNull().default(false), // 면접 일정·링크 조회 공개
+  resultPublic: boolean('result_public').notNull().default(false), // 최종 결과 조회 공개
+  // 폐기(hard delete) 시각 + 그때 남기는 익명 집계(지원자 수·합격자 수·평균 점수). 폐기 전엔 null.
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  archivedStats: jsonb('archived_stats'),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// 면접 슬롯(날짜×시간 격자). 기본 20분, 링크는 슬롯 단위(지원자 개인 링크가 있으면 그게 우선).
+export const recruitSlots = pgTable('recruit_slots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  cohortId: uuid('cohort_id')
+    .notNull()
+    .references(() => recruitCohorts.id, { onDelete: 'cascade' }),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  durationMin: integer('duration_min').notNull().default(20),
+  link: text('link'),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// 지원자(구글폼 전 필드). birth_date·ot_attend·remote_interview_wish 는 폼 표기가 제각각이라 원문 text 로 둔다.
+export const recruitApplicants = pgTable(
+  'recruit_applicants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cohortId: uuid('cohort_id')
+      .notNull()
+      .references(() => recruitCohorts.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    gender: text('gender'),
+    birthDate: text('birth_date'),
+    phone: text('phone').notNull(), // 조회 매칭 키(이름+전화 정확 일치). PII — RAG 금지.
+    school: text('school'),
+    department: text('department'),
+    email: text('email'),
+    applyRoute: text('apply_route'), // 지원 경로
+    otherActivities: text('other_activities'), // 다른 대외활동/아르바이트
+    expectedFrequency: text('expected_frequency'), // 예상 활동 참여 주기
+    wishTeam1: text('wish_team1'),
+    wishTeam2: text('wish_team2'),
+    nearStation: text('near_station'), // 주소 대신 가장 가까운 역 명만 저장(PII 최소화)
+    otAttend: text('ot_attend'), // OT 참가 여부(원문)
+    remoteInterviewWish: text('remote_interview_wish'), // 비대면 면접 희망(원문)
+    essayIntro: text('essay_intro'), // 자기소개
+    essayValues: text('essay_values'), // 가치관 확인
+    status: recruitStatusEnum('status').notNull().default('received'),
+    slotId: uuid('slot_id').references(() => recruitSlots.id, { onDelete: 'set null' }),
+    interviewLink: text('interview_link'), // 개인 단위 링크(슬롯 링크보다 우선)
+    uploadedBy: uuid('uploaded_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('recruit_applicants_cohort_idx').on(t.cohortId)]
+);
+
+// 채점(서류·면접). 본인 점수만 수정(UNIQUE). 0.0~10.0, 0.5 단위(서비스 검증 + 마이그레이션 CHECK).
+export const recruitScores = pgTable(
+  'recruit_scores',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    applicantId: uuid('applicant_id')
+      .notNull()
+      .references(() => recruitApplicants.id, { onDelete: 'cascade' }),
+    scorerUserId: uuid('scorer_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    stage: recruitScoreStageEnum('stage').notNull(),
+    score: numeric('score', { precision: 3, scale: 1 }).notNull(),
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('recruit_scores_uq').on(t.applicantId, t.scorerUserId, t.stage)]
+);
+
+// 지원자별 개인 메모(작성자 1인당 1개). 면접 콘솔에서 질문 미리 적는 용도, 자동 저장.
+export const recruitMemos = pgTable(
+  'recruit_memos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    applicantId: uuid('applicant_id')
+      .notNull()
+      .references(() => recruitApplicants.id, { onDelete: 'cascade' }),
+    authorUserId: uuid('author_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    content: text('content').notNull().default(''),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('recruit_memos_uq').on(t.applicantId, t.authorUserId)]
+);
+
+// 화면별 공용 메모지(운영진 누구나 함께 쓰고 지우는 자유 메모). context_key 로 화면 구분.
+// 지원자별 개인 메모(recruit_memos)와는 별개. 자동 저장, 마지막 수정자·시각 표시.
+export const screenNotes = pgTable('screen_notes', {
+  contextKey: text('context_key').primaryKey(), // 예: 'recruit:doc', 'recruit:interview-assign'
+  content: text('content').notNull().default(''),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// CSV 열↔필드 매핑 프리셋(매 기수 열 이름이 달라질 수 있어 저장·재사용). mapping = { 필드명: CSV헤더 }.
+export const recruitMappingPresets = pgTable('recruit_mapping_presets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  mapping: jsonb('mapping').$type<Record<string, string>>().notNull(),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
