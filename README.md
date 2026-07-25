@@ -5,7 +5,9 @@
 
 > 상태: **Phase 1 전부 구현·배포 완료** — 반복 공지 발행 루프, 권한/보안, 인증, 운영 화면,
 > **실카페 발행 전환**(봇 카페스탭 임명 + `NAVER_PUBLISH_DRY_RUN=false`), **RAG 챗봇**까지 라이브.
-> 남은 것 = 운영 작업(안내 문서 입력)과 Phase 2(총무 F8·신입모집 F9).
+> **Phase 2 F9 신입 모집 착수**(2026-07-25) — 설계 확정 + 데이터 기반(마이그레이션 0013·권한) 완료,
+> 서비스·화면은 구현 예정([`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md)).
+> 남은 것 = 운영 작업(안내 문서 입력), Phase 2(총무 F8·신입모집 F9 잔여).
 
 ## 무엇을 / 왜
 
@@ -66,6 +68,7 @@ UptimeRobot ──5분──► /api/health (일시정지 방지 + 감시)
 | [`docs/05-ASSET-REGISTRY.md`](docs/05-ASSET-REGISTRY.md) | 자산 대장(계정·키 위치·갱신, 값은 미기재) |
 | [`design/docs/06-DESIGN.md`](design/docs/06-DESIGN.md) | 디자인 시스템·UI 프리미티브 규칙 |
 | [`docs/07-DECISIONS.md`](docs/07-DECISIONS.md) | 보안·아키텍처 결정 기록(왜 그렇게 했는지) |
+| [`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md) | F9 신입 모집 기술 설계·실행 계획(진행 중) |
 
 ## 로컬 실행
 
