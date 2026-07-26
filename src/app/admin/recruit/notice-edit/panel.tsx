@@ -32,13 +32,21 @@ export function RecruitNoticeEditPanel() {
   }, [selectedCohortId]);
 
   const fetchCohorts = async () => {
-    const res = await fetch('/api/recruit/cohorts');
-    const data = await res.json();
-    if (data.cohorts && data.cohorts.length > 0) {
-      setCohorts(data.cohorts);
-      if (!selectedCohortId) {
-        setSelectedCohortId(data.cohorts[0].id);
+    try {
+      const res = await fetch('/api/recruit/cohorts');
+      const data = await res.json();
+      const list = data.cohorts || [];
+      setCohorts(list);
+      if (list.length > 0) {
+        setSelectedCohortId((prev) => {
+          const exists = list.some((c: any) => c.id === prev);
+          return exists ? prev : list[0].id;
+        });
+      } else {
+        setSelectedCohortId('');
       }
+    } catch (e) {
+      console.error('Failed to fetch cohorts', e);
     }
   };
 
@@ -213,9 +221,22 @@ export function RecruitNoticeEditPanel() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
-        <p className="mt-1 text-sm text-ink-500">신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
+          <p className="mt-1 text-sm text-ink-500">신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.</p>
+        </div>
+
+        <div>
+          <a
+            href="/recruit/notice"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-cream-100 text-ink-900 border border-ink-200 rounded-xl text-xs font-bold transition-all shadow-sm no-underline"
+          >
+            <span>📢 공개 공고 페이지 바로가기 ↗</span>
+          </a>
+        </div>
       </div>
 
       <RecruitNav />
@@ -231,11 +252,15 @@ export function RecruitNoticeEditPanel() {
           <div className="flex-1 min-w-[220px]">
             <Field label="현재 선택된 모집 기수">
               <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)}>
-                {cohorts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
+                {cohorts.length > 0 ? (
+                  cohorts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">등록된 모집 기수가 없습니다. (오른쪽에서 새 기수를 생성해 주세요)</option>
+                )}
               </Select>
             </Field>
           </div>

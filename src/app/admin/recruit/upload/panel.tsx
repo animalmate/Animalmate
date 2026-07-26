@@ -172,11 +172,15 @@ export function RecruitUploadPanel() {
           <div>
             <Field label="현재 업로드 대상 기수">
               <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)} className="max-w-md">
-                {cohorts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
+                {cohorts.length > 0 ? (
+                  cohorts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">등록된 모집 기수가 없습니다. (0번 공고 설정에서 새 기수를 생성해주세요)</option>
+                )}
               </Select>
             </Field>
           </div>
