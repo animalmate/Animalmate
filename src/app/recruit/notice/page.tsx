@@ -10,11 +10,15 @@ export default function PublicRecruitNoticePage() {
 
   useEffect(() => {
     fetchNotice();
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 2000);
+    return () => clearTimeout(safetyTimer);
   }, []);
 
   const fetchNotice = async () => {
     try {
-      const res = await fetch('/api/recruit/notice');
+      const res = await fetch('/api/recruit/notice', { cache: 'no-store' });
       if (!res.ok) {
         setCohort(null);
         return;

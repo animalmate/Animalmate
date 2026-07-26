@@ -8,12 +8,12 @@ export function RecruitNav() {
 
   const links = [
     { href: '/admin/recruit/notice-edit', step: '0', label: '공고 및 마감 설정', role: '홍보팀·회장단' },
-    { href: '/admin/recruit/upload', step: '1', label: '지원자 수동 등록', role: '회장단' },
-    { href: '/admin/recruit/screening', step: '2', label: '서류 심사', role: '운영진' },
-    { href: '/admin/recruit/tally', step: '3', label: '서류 집계·확정', role: '회장단' },
-    { href: '/admin/recruit/interview/assign', step: '4', label: '면접 배정', role: '회장단' },
-    { href: '/admin/recruit/interview/console', step: '5', label: '면접 당일 콘솔', role: '운영진' },
-    { href: '/admin/recruit/final', step: '6', label: '최종 결정 및 공개', role: '회장단' },
+    { href: '/admin/recruit/upload', step: '임시', label: '지원자 수동 등록', role: '회장단' },
+    { href: '/admin/recruit/screening', step: '1', label: '서류 심사', role: '운영진' },
+    { href: '/admin/recruit/tally', step: '2', label: '서류 집계·확정', role: '회장단' },
+    { href: '/admin/recruit/interview/assign', step: '3', label: '면접 배정', role: '회장단' },
+    { href: '/admin/recruit/interview/console', step: '4', label: '면접 당일 콘솔', role: '운영진' },
+    { href: '/admin/recruit/final', step: '5', label: '최종 결정 및 공개', role: '회장단' },
   ];
 
   return (

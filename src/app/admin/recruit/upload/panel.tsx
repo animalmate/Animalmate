@@ -194,7 +194,7 @@ export function RecruitUploadPanel() {
     <div className="space-y-6">
       <div>
         <h1 className="text-[24px] font-bold text-ink-900">
-          1. 지원자 데이터 업로드 <span className="text-sm font-normal text-ink-500">(34기부터는, 지원 자체도 사이트에서 받아서 이 과정이 없어질 예정)</span>
+          임시. 지원자 데이터 업로드 <span className="text-sm font-normal text-ink-500">(34기부터는, 지원 자체도 사이트에서 받아서 이 과정이 없어질 예정)</span>
         </h1>
         <p className="mt-1 text-sm text-ink-500">구글 폼 지원서 응답 데이터를 읽어와 기수별 지원자 명단을 등록합니다.</p>
       </div>

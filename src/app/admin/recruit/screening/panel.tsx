@@ -129,7 +129,7 @@ export function RecruitScreeningPanel() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-ink-900">2. 서류 심사 (운영진)</h1>
+          <h1 className="text-[24px] font-bold text-ink-900">1. 서류 심사 (운영진)</h1>
           <p className="mt-1 text-sm text-ink-500">각 팀장단 및 운영진이 지원서와 자기소개서를 검토하고 점수를 부여합니다.</p>
         </div>
 
