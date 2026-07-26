@@ -136,27 +136,70 @@ export function RecruitFinalPanel() {
     }
   };
 
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
+
+  const handleReassignTeam = async (id: string, newTeam: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/recruit/applicants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'change_team',
+          id,
+          assignedTeam: newTeam,
+        }),
+      });
+
+      if (res.ok) {
+        setMessage(`✅ 최종 배정 팀이 [${newTeam}](으)로 변경되었습니다.`);
+        await fetchCohortAndApplicants();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredApplicants = sortedApplicants.filter((app) => {
+    if (selectedTeam === 'ALL') return true;
+    const effectiveTeam = app.assignedTeam || app.wishTeam1;
+    return effectiveTeam === selectedTeam || app.wishTeam1 === selectedTeam || app.wishTeam2 === selectedTeam;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[24px] font-bold text-ink-900">6. 최종 결정 및 데이터 관리 (회장단)</h1>
-          <p className="mt-1 text-sm text-ink-500">최종 합격자 결정, 지원자 조회 스위치 설정 및 개인정보 안전 일괄 파기.</p>
+          <p className="mt-1 text-sm text-ink-500">최종 합격자 결정, 최종 팀 배정, 지원자 결과 공개 및 개인정보 안전 일괄 파기.</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink-900">기수:</span>
-          <Select
-            value={selectedCohortId}
-            onChange={(e) => setSelectedCohortId(e.target.value)}
-            className="w-48"
-          >
-            {cohorts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </Select>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
+            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-36 text-xs">
+              <option value="ALL">전체 팀 보기</option>
+              <option value="봉사 1팀">봉사 1팀</option>
+              <option value="봉사 2팀">봉사 2팀</option>
+              <option value="기획팀">기획팀</option>
+              <option value="홍보팀">홍보팀</option>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">기수:</span>
+            <Select
+              value={selectedCohortId}
+              onChange={(e) => setSelectedCohortId(e.target.value)}
+              className="w-40 text-xs"
+            >
+              {cohorts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -209,7 +252,7 @@ export function RecruitFinalPanel() {
       <Card className="space-y-4">
         <div className="flex items-center justify-between border-b border-cream-200 pb-3">
           <span className="text-sm font-bold text-ink-900">
-            최종 결정 매트릭스 ({applicants.length}명)
+            최종 결정 매트릭스 ({filteredApplicants.length}명)
           </span>
           <div className="flex items-center gap-2">
             <span className="text-xs text-ink-500 font-semibold mr-1">
@@ -240,6 +283,7 @@ export function RecruitFinalPanel() {
                 <th className="p-3.5 w-10 text-center">선택</th>
                 <th className="p-3.5">이름</th>
                 <th className="p-3.5">학교 / 학과</th>
+                <th className="p-3.5">최종 배정 팀</th>
                 <th className="p-3.5">서류 평균 점수</th>
                 <th className="p-3.5">면접 평균 점수</th>
                 <th className="p-3.5">특이사항 경고</th>
@@ -247,7 +291,7 @@ export function RecruitFinalPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-100">
-              {sortedApplicants.map((app) => {
+              {filteredApplicants.map((app) => {
                 const agg = aggregations[app.id];
                 const isSelected = selectedIds.has(app.id);
                 const hasNoInterviewScore = app.slotId && (agg?.interviewScorerCount ?? 0) === 0;
@@ -264,6 +308,18 @@ export function RecruitFinalPanel() {
                     </td>
                     <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
                     <td className="p-3.5 text-ink-700">{app.school} {app.department}</td>
+                    <td className="p-3.5">
+                      <Select
+                        value={app.assignedTeam || app.wishTeam1 || '봉사 1팀'}
+                        onChange={(e) => handleReassignTeam(app.id, e.target.value)}
+                        className="w-32 text-xs h-8"
+                      >
+                        <option value="봉사 1팀">봉사 1팀</option>
+                        <option value="봉사 2팀">봉사 2팀</option>
+                        <option value="기획팀">기획팀</option>
+                        <option value="홍보팀">홍보팀</option>
+                      </Select>
+                    </td>
                     <td className="p-3.5 text-ink-700">{agg?.docScoreAvg !== null && agg?.docScoreAvg !== undefined ? `${agg.docScoreAvg}점` : '-'}</td>
                     <td className="p-3.5">
                       {agg?.interviewScoreAvg !== null && agg?.interviewScoreAvg !== undefined ? (

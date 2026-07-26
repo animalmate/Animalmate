@@ -122,3 +122,13 @@ export function authorize(actor: Actor, action: Action): Decision {
       return isPrivileged(actor.role) ? ALLOW : deny('role_insufficient');
   }
 }
+
+/** 홍보팀(PR) 소속 또는 회장단/시스템관리자인가? (공고 편집, 모집 중단 스위치, 팀 이관 가능) */
+export function isPRTeamOrPrivileged(actor: Actor): boolean {
+  if (!actor.membershipActive) return false;
+  if (isPrivileged(actor.role)) return true;
+  return actor.teams.some(
+    (t) => t.teamId.toLowerCase().includes('pr') || t.teamId.includes('홍보')
+  );
+}
+

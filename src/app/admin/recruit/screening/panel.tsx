@@ -85,6 +85,41 @@ export function RecruitScreeningPanel() {
     }
   };
 
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
+  const [reassigning, setReassigning] = useState(false);
+
+  const handleReassignTeam = async (newTeam: string) => {
+    if (!selectedApplicantId) return;
+    setReassigning(true);
+    try {
+      const res = await fetch('/api/recruit/applicants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'change_team',
+          id: selectedApplicantId,
+          assignedTeam: newTeam,
+        }),
+      });
+
+      if (res.ok) {
+        setMessage(`✅ 지원자 소속 팀이 '${newTeam}'(으)로 이관되었습니다.`);
+        await fetchApplicantsAndScores();
+      } else {
+        const data = await res.json();
+        setMessage(`❌ 팀 이관 실패: ${data.error}`);
+      }
+    } finally {
+      setReassigning(false);
+    }
+  };
+
+  const filteredApplicants = applicants.filter((app) => {
+    if (selectedTeam === 'ALL') return true;
+    const effectiveTeam = app.assignedTeam || app.wishTeam1;
+    return effectiveTeam === selectedTeam || app.wishTeam1 === selectedTeam || app.wishTeam2 === selectedTeam;
+  });
+
   const selectedApp = applicants.find((a) => a.id === selectedApplicantId);
   const currentDocScores = scores.filter(
     (s) => s.applicantId === selectedApplicantId && s.stage === 'document'
@@ -95,22 +130,35 @@ export function RecruitScreeningPanel() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[24px] font-bold text-ink-900">2. 서류 심사 (운영진)</h1>
-          <p className="mt-1 text-sm text-ink-500">지원의 서류 내용 및 자기소개서를 검토하고 점수를 부여합니다.</p>
+          <p className="mt-1 text-sm text-ink-500">각 팀장단 및 운영진이 지원서와 자기소개서를 검토하고 점수를 부여합니다.</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink-900">기수:</span>
-          <Select
-            value={selectedCohortId}
-            onChange={(e) => setSelectedCohortId(e.target.value)}
-            className="w-48"
-          >
-            {cohorts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </Select>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
+            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-36 text-xs">
+              <option value="ALL">전체 팀 보기</option>
+              <option value="봉사 1팀">봉사 1팀</option>
+              <option value="봉사 2팀">봉사 2팀</option>
+              <option value="기획팀">기획팀</option>
+              <option value="홍보팀">홍보팀</option>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">기수:</span>
+            <Select
+              value={selectedCohortId}
+              onChange={(e) => setSelectedCohortId(e.target.value)}
+              className="w-40 text-xs"
+            >
+              {cohorts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -124,14 +172,15 @@ export function RecruitScreeningPanel() {
         <Card className="lg:col-span-4 p-4 space-y-3 max-h-[750px] overflow-y-auto">
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
             <span className="text-xs font-bold uppercase tracking-wider text-ink-400">
-              지원자 목록 ({applicants.length}명)
+              지원자 목록 ({filteredApplicants.length}명)
             </span>
           </div>
 
           <div className="space-y-2">
-            {applicants.map((app) => {
+            {filteredApplicants.map((app) => {
               const isSelected = app.id === selectedApplicantId;
               const agg = aggregations[app.id];
+              const effectiveTeam = app.assignedTeam || app.wishTeam1 || '팀 미지정';
               return (
                 <div
                   key={app.id}
@@ -143,20 +192,19 @@ export function RecruitScreeningPanel() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-ink-900">{app.name}</span>
-                    <span className="text-xs text-ink-500 font-medium">{app.school}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-ink-500 mt-1.5">
-                    <span className="rounded bg-cream-100 px-1.5 py-0.5 text-[11px] font-medium text-ink-700">
-                      1지망: {app.wishTeam1 || '미지정'}
-                    </span>
-                    {agg?.docScoreAvg !== null && agg?.docScoreAvg !== undefined ? (
-                      <span className="font-bold text-blue-700">
-                        평균 {agg.docScoreAvg}점 ({agg.docScorerCount}명)
+                    <span className="font-bold text-ink-900 text-sm flex items-center gap-1.5">
+                      {app.name}
+                      <span className="text-[11px] font-normal px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
+                        {effectiveTeam}
                       </span>
-                    ) : (
-                      <span className="text-ink-400 font-normal">미채점</span>
-                    )}
+                    </span>
+                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                      {agg?.docAvg !== undefined ? `${agg.docAvg}점` : '미채점'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-ink-500 flex justify-between">
+                    <span>1지망: {app.wishTeam1 || '-'}</span>
+                    <span>2지망: {app.wishTeam2 || '-'}</span>
                   </div>
                 </div>
               );
@@ -181,11 +229,25 @@ export function RecruitScreeningPanel() {
                     {selectedApp.school} {selectedApp.department} · 연락처: {selectedApp.phone} · {selectedApp.email}
                   </p>
                 </div>
-                <div className="text-right space-y-1">
+                <div className="text-right space-y-1.5">
                   <div className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
                     <span>1지망: {selectedApp.wishTeam1 || '미지정'}</span>
                     <span className="text-blue-300">/</span>
                     <span>2지망: {selectedApp.wishTeam2 || '미지정'}</span>
+                  </div>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span className="text-xs font-semibold text-ink-700">팀 이관:</span>
+                    <Select
+                      value={selectedApp.assignedTeam || selectedApp.wishTeam1 || '봉사 1팀'}
+                      disabled={reassigning}
+                      onChange={(e) => handleReassignTeam(e.target.value)}
+                      className="w-32 text-xs h-7"
+                    >
+                      <option value="봉사 1팀">봉사 1팀</option>
+                      <option value="봉사 2팀">봉사 2팀</option>
+                      <option value="기획팀">기획팀</option>
+                      <option value="홍보팀">홍보팀</option>
+                    </Select>
                   </div>
                   {selectedApp.nearStation && (
                     <p className="text-xs text-ink-500 font-medium">

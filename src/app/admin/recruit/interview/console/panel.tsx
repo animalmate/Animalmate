@@ -127,27 +127,71 @@ export function RecruitInterviewConsolePanel() {
     (s) => s.applicantId === selectedApplicantId && s.stage === 'interview'
   );
 
+  const [selectedSlotFilter, setSelectedSlotFilter] = useState('ALL');
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
+
+  const filteredApplicants = applicants.filter((app) => {
+    if (selectedSlotFilter !== 'ALL' && app.slotId !== selectedSlotFilter) return false;
+    if (selectedTeam !== 'ALL') {
+      const effectiveTeam = app.assignedTeam || app.wishTeam1;
+      if (effectiveTeam !== selectedTeam && app.wishTeam1 !== selectedTeam && app.wishTeam2 !== selectedTeam) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-ink-900">5. 면접 당일 콘솔 (운영진)</h1>
-          <p className="mt-1 text-sm text-ink-500">면접 당일 실시간 메모 작성, 질문 및 채점 점수를 기록합니다.</p>
+          <h1 className="text-[24px] font-bold text-ink-900">5. 면접 당일 콘솔 (슬롯별 & 팀별 다중 채점)</h1>
+          <p className="mt-1 text-sm text-ink-500">동일 면접 슬롯에 입장한 지원자그룹을 선택하여 실시간 질문 메모 및 평가 점수를 부여합니다.</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink-900">기수:</span>
-          <Select
-            value={selectedCohortId}
-            onChange={(e) => setSelectedCohortId(e.target.value)}
-            className="w-48"
-          >
-            {cohorts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </Select>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">면접 슬롯 선택:</span>
+            <Select
+              value={selectedSlotFilter}
+              onChange={(e) => setSelectedSlotFilter(e.target.value)}
+              className="w-48 text-xs font-bold text-blue-800 bg-blue-50/50"
+            >
+              <option value="ALL">전체 면접 슬롯 보기</option>
+              {slots.map((s) => (
+                <option key={s.id} value={s.id}>
+                  ⏰ {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}{' '}
+                  | {s.venue || '대면'}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
+            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-32 text-xs">
+              <option value="ALL">전체 팀</option>
+              <option value="봉사 1팀">봉사 1팀</option>
+              <option value="봉사 2팀">봉사 2팀</option>
+              <option value="기획팀">기획팀</option>
+              <option value="홍보팀">홍보팀</option>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">기수:</span>
+            <Select
+              value={selectedCohortId}
+              onChange={(e) => setSelectedCohortId(e.target.value)}
+              className="w-36 text-xs"
+            >
+              {cohorts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -161,14 +205,15 @@ export function RecruitInterviewConsolePanel() {
         <Card className="lg:col-span-4 p-4 space-y-3 max-h-[750px] overflow-y-auto">
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
             <span className="text-xs font-bold uppercase tracking-wider text-ink-400">
-              면접 대상자 ({applicants.length}명)
+              면접 대상자 ({filteredApplicants.length}명)
             </span>
           </div>
 
           <div className="space-y-2">
-            {applicants.map((app) => {
+            {filteredApplicants.map((app) => {
               const slot = slots.find((s) => s.id === app.slotId);
               const isSelected = app.id === selectedApplicantId;
+              const effectiveTeam = app.assignedTeam || app.wishTeam1 || '팀미지정';
 
               return (
                 <div
@@ -181,7 +226,12 @@ export function RecruitInterviewConsolePanel() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-ink-900">{app.name}</span>
+                    <span className="font-bold text-sm text-ink-900 flex items-center gap-1.5">
+                      {app.name}
+                      <span className="text-[10px] font-semibold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
+                        {effectiveTeam}
+                      </span>
+                    </span>
                     <span className="text-xs font-mono font-bold text-blue-700">
                       {slot
                         ? new Date(slot.startsAt).toLocaleTimeString('ko-KR', {

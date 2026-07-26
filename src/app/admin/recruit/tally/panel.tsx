@@ -101,27 +101,76 @@ export function RecruitTallyPanel() {
     }
   };
 
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
+
+  const filteredApplicants = sortedApplicants.filter((app) => {
+    if (selectedTeam === 'ALL') return true;
+    const effectiveTeam = app.assignedTeam || app.wishTeam1;
+    return effectiveTeam === selectedTeam || app.wishTeam1 === selectedTeam || app.wishTeam2 === selectedTeam;
+  });
+
+  const handleBulkReassignTeam = async (newTeam: string) => {
+    if (selectedIds.size === 0) return;
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/recruit/applicants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'bulk_team',
+          ids: Array.from(selectedIds),
+          assignedTeam: newTeam,
+        }),
+      });
+
+      if (res.ok) {
+        setMessage(`✅ 선택한 지원자 ${selectedIds.size}명의 팀이 [${newTeam}](으)로 변경되었습니다.`);
+        setSelectedIds(new Set());
+        await fetchApplicantsAndScores();
+      } else {
+        const data = await res.json();
+        setMessage(`❌ 팀 이관 실패: ${data.error}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[24px] font-bold text-ink-900">3. 서류 집계 및 서류 합격 확정 (회장단)</h1>
-          <p className="mt-1 text-sm text-ink-500">운영진 심사 결과를 종합 집계하여 면접 대상자(서류 합격자)를 일괄 결정합니다.</p>
+          <p className="mt-1 text-sm text-ink-500">운영진 심사 결과를 팀별 종합 집계하여 면접 대상자(서류 합격자)를 일괄 결정합니다.</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink-900">기수:</span>
-          <Select
-            value={selectedCohortId}
-            onChange={(e) => setSelectedCohortId(e.target.value)}
-            className="w-48"
-          >
-            {cohorts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </Select>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
+            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-36 text-xs">
+              <option value="ALL">전체 팀 보기</option>
+              <option value="봉사 1팀">봉사 1팀</option>
+              <option value="봉사 2팀">봉사 2팀</option>
+              <option value="기획팀">기획팀</option>
+              <option value="홍보팀">홍보팀</option>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-ink-700">기수:</span>
+            <Select
+              value={selectedCohortId}
+              onChange={(e) => setSelectedCohortId(e.target.value)}
+              className="w-40 text-xs"
+            >
+              {cohorts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -187,10 +236,27 @@ export function RecruitTallyPanel() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-ink-500 font-semibold mr-1">
               선택됨: <strong className="text-blue-600 font-bold">{selectedIds.size}명</strong>
             </span>
+            <Select
+              disabled={loading || selectedIds.size === 0}
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleBulkReassignTeam(e.target.value);
+                  e.target.value = '';
+                }
+              }}
+              className="w-36 text-xs h-9"
+            >
+              <option value="">선택 팀으로 이관…</option>
+              <option value="봉사 1팀">봉사 1팀</option>
+              <option value="봉사 2팀">봉사 2팀</option>
+              <option value="기획팀">기획팀</option>
+              <option value="홍보팀">홍보팀</option>
+            </Select>
+
             <Button
               type="button"
               disabled={loading || selectedIds.size === 0}
@@ -223,17 +289,18 @@ export function RecruitTallyPanel() {
                 <th className="p-3.5 w-12 text-center">석차</th>
                 <th className="p-3.5">이름</th>
                 <th className="p-3.5">학교 / 학과</th>
-                <th className="p-3.5">1지망 팀</th>
+                <th className="p-3.5">소속 배정팀 (1지망)</th>
                 <th className="p-3.5">서류 평균 점수</th>
                 <th className="p-3.5">채점 인원</th>
                 <th className="p-3.5">현재 상태</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-100">
-              {sortedApplicants.map((app, idx) => {
+              {filteredApplicants.map((app, idx) => {
                 const agg = aggregations[app.id];
                 const isSelected = selectedIds.has(app.id);
                 const isDeficient = agg?.isDocSampleDeficient;
+                const effectiveTeam = app.assignedTeam || app.wishTeam1 || '-';
 
                 return (
                   <tr key={app.id} className={`transition-colors hover:bg-cream-25 ${isSelected ? 'bg-blue-50/50' : ''}`}>
@@ -248,7 +315,7 @@ export function RecruitTallyPanel() {
                     <td className="p-3.5 text-center font-mono font-bold text-ink-500">{idx + 1}</td>
                     <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
                     <td className="p-3.5 text-ink-700">{app.school} {app.department}</td>
-                    <td className="p-3.5 text-ink-700">{app.wishTeam1 || '-'}</td>
+                    <td className="p-3.5 text-ink-700 font-semibold">{effectiveTeam} <span className="text-[11px] font-normal text-ink-400">({app.wishTeam1 || '-'})</span></td>
                     <td className="p-3.5">
                       {agg?.docScoreAvg !== null && agg?.docScoreAvg !== undefined ? (
                         <span className="font-bold text-blue-700 text-sm">{agg.docScoreAvg}점</span>

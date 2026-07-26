@@ -139,6 +139,11 @@ export default function PublicRecruitLookupPage() {
                   })}{' '}
                   ({result.interviewSlot.durationMin}분 소요)
                 </div>
+                {result.interviewSlot.venue && (
+                  <div className="text-ink-700 font-medium">
+                    📍 면접 장소: <strong className="text-blue-700">{result.interviewSlot.venue}</strong>
+                  </div>
+                )}
                 {result.interviewLink && (
                   <div className="pt-1.5">
                     <a
@@ -156,13 +161,31 @@ export default function PublicRecruitLookupPage() {
 
             {/* 최종 모집 결과 안내 */}
             {result.resultPublic && (
-              <div className="rounded-xl border border-cream-200 bg-white p-4 text-center space-y-2 shadow-card">
-                <div className="font-bold text-ink-900 text-sm">🏆 최종 모집 결과</div>
-                <div className={`text-sm font-bold leading-relaxed ${result.status === 'final_pass' ? 'text-success-700' : 'text-ink-700'}`}>
-                  {result.status === 'final_pass'
-                    ? '🎉 축하합니다! 애니멀메이트 신입 부원으로 최종 합격하셨습니다.'
-                    : '아쉽게도 제한된 정원으로 인해 이번 기수에는 함께하지 못하게 되었습니다. 지원해 주셔서 진심으로 감사드립니다.'}
+              <div className="rounded-xl border border-cream-200 bg-white p-5 space-y-3 shadow-card text-left">
+                <div className="font-bold text-ink-900 text-sm text-center border-b border-cream-200 pb-2">
+                  🏆 최종 모집 결과
                 </div>
+                <div className={`text-base font-bold text-center ${result.status === 'final_pass' ? 'text-success-700' : 'text-ink-700'}`}>
+                  {result.status === 'final_pass'
+                    ? (result.congratsMessage || '🎉 축하합니다! 애니멀메이트 신입 부원으로 최종 합격하셨습니다.')
+                    : '아쉽게도 이번 기수에는 함께하지 못하게 되었습니다. 지원해 주셔서 진심으로 감사드립니다.'}
+                </div>
+
+                {result.status === 'final_pass' && (
+                  <div className="space-y-2 pt-2 border-t border-cream-100">
+                    {result.assignedTeam && (
+                      <div className="rounded-lg bg-blue-50 p-2.5 text-xs text-blue-900 font-semibold">
+                        🏷️ 최종 배정 팀: <span className="text-blue-700 font-bold">{result.assignedTeam}</span>
+                      </div>
+                    )}
+                    {result.postPassNotice && (
+                      <div className="rounded-lg bg-cream-50 p-3 text-xs text-ink-900 leading-relaxed whitespace-pre-wrap">
+                        <strong className="block text-ink-900 mb-1">📢 합격 후 안내 사항:</strong>
+                        {result.postPassNotice}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

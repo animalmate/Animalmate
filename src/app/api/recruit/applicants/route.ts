@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus, isPrivileged } from '@/auth/permissions';
+import { isPRTeamOrPrivileged, isPrivileged, isStaffPlus } from '@/auth/permissions';
 import {
   listApplicantsByCohort,
   getApplicantById,
@@ -8,6 +8,8 @@ import {
   bulkUpdateApplicantStatus,
   assignSlotToApplicant,
   updateApplicantNearStation,
+  updateApplicantTeam,
+  bulkUpdateApplicantTeam,
 } from '@/recruit/applicants';
 
 export const runtime = 'nodejs';
@@ -40,11 +42,14 @@ export async function PATCH(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { action, id, ids, status, slotId, interviewLink, nearStation } = body;
+    const { action, id, ids, status, slotId, interviewLink, nearStation, assignedTeam } = body;
 
-    // 회장단 전용 행위들 (상태일괄변경 / 확정 / 슬롯배정 / 역명수정)
     if (['bulk_status', 'assign_slot', 'update_station'].includes(action)) {
       if (!isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    }
+
+    if (['change_team', 'bulk_team'].includes(action)) {
+      if (!isPRTeamOrPrivileged(actor)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     }
 
     if (action === 'bulk_status') {
@@ -72,8 +77,25 @@ export async function PATCH(req: Request): Promise<Response> {
       return NextResponse.json({ applicant: updated });
     }
 
+    if (action === 'change_team') {
+      if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
+      const updated = await updateApplicantTeam(id, assignedTeam ?? null);
+      return NextResponse.json({ applicant: updated });
+    }
+
+    if (action === 'bulk_team') {
+      if (!Array.isArray(ids)) return NextResponse.json({ error: 'missing_ids' }, { status: 400 });
+      const updated = await bulkUpdateApplicantTeam(ids, assignedTeam ?? null);
+      return NextResponse.json({ updatedCount: updated.length });
+    }
+
     return NextResponse.json({ error: 'invalid_action' }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
   }
 }
+
+export async function POST(req: Request): Promise<Response> {
+  return PATCH(req);
+}
+

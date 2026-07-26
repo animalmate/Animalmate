@@ -99,3 +99,71 @@ export async function updateApplicantNearStation(id: string, nearStation: string
     .returning();
   return updated;
 }
+
+export async function updateApplicantTeam(id: string, assignedTeam: string | null) {
+  const [updated] = await db
+    .update(recruitApplicants)
+    .set({ assignedTeam })
+    .where(eq(recruitApplicants.id, id))
+    .returning();
+  return updated;
+}
+
+export async function bulkUpdateApplicantTeam(ids: string[], assignedTeam: string | null) {
+  if (ids.length === 0) return [];
+  return db
+    .update(recruitApplicants)
+    .set({ assignedTeam })
+    .where(inArray(recruitApplicants.id, ids))
+    .returning();
+}
+
+export async function createSingleApplicant(input: {
+  cohortId: string;
+  name: string;
+  phone: string;
+  gender?: string | null;
+  birthDate?: string | null;
+  school?: string | null;
+  department?: string | null;
+  email?: string | null;
+  applyRoute?: string | null;
+  otherActivities?: string | null;
+  expectedFrequency?: string | null;
+  wishTeam1?: string | null;
+  wishTeam2?: string | null;
+  nearStation?: string | null;
+  otAttend?: string | null;
+  remoteInterviewWish?: string | null;
+  essayIntro?: string | null;
+  essayValues?: string | null;
+}) {
+  const cleanPhone = input.phone.replace(/[^0-9]/g, '');
+  const [created] = await db
+    .insert(recruitApplicants)
+    .values({
+      cohortId: input.cohortId,
+      name: input.name.trim(),
+      phone: cleanPhone,
+      gender: input.gender ?? null,
+      birthDate: input.birthDate ?? null,
+      school: input.school ?? null,
+      department: input.department ?? null,
+      email: input.email ?? null,
+      applyRoute: input.applyRoute ?? null,
+      otherActivities: input.otherActivities ?? null,
+      expectedFrequency: input.expectedFrequency ?? null,
+      wishTeam1: input.wishTeam1 ?? null,
+      wishTeam2: input.wishTeam2 ?? null,
+      assignedTeam: input.wishTeam1 ?? null, // 초기 배정팀은 1지망 팀으로 설정
+      nearStation: input.nearStation ?? null,
+      otAttend: input.otAttend ?? null,
+      remoteInterviewWish: input.remoteInterviewWish ?? null,
+      essayIntro: input.essayIntro ?? null,
+      essayValues: input.essayValues ?? null,
+      status: 'received',
+    })
+    .returning();
+  return created;
+}
+

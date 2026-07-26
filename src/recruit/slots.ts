@@ -8,6 +8,8 @@ export interface CreateSlotInput {
   startsAt: Date;
   durationMin?: number;
   link?: string | null;
+  venue?: string | null;
+  isRemote?: boolean;
   createdBy: string;
 }
 
@@ -19,6 +21,8 @@ export async function createSlot(input: CreateSlotInput) {
       startsAt: input.startsAt,
       durationMin: input.durationMin ?? 20,
       link: input.link ?? null,
+      venue: input.venue ?? null,
+      isRemote: input.isRemote ?? false,
       createdBy: input.createdBy,
     })
     .returning();

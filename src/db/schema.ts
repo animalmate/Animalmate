@@ -397,12 +397,18 @@ export const auditLogs = pgTable('audit_logs', {
 // 모집 종료 시 cohort 단위 일괄 hard delete(익명 집계만 잔존, recruit_cohorts.archived_stats).
 // 주소는 저장하지 않고 "가장 가까운 역 명"(near_station)만 둔다(사용자 지시 — PII 최소화).
 
-// 기수(cohort). 공개 스위치 2개(면접 일정 / 최종 결과)를 회장단이 조작한다.
+// 기수(cohort). 공개 스위치 2개(면접 일정 / 최종 결과) 및 모집 공고/마감 스위치를 조작한다.
 export const recruitCohorts = pgTable('recruit_cohorts', {
   id: uuid('id').primaryKey().defaultRandom(),
-  label: text('label').notNull().unique(), // 예: "2026-2 신입"
+  label: text('label').notNull().unique(), // 예: "33기" 또는 "2026-2 신입"
   schedulePublic: boolean('schedule_public').notNull().default(false), // 면접 일정·링크 조회 공개
   resultPublic: boolean('result_public').notNull().default(false), // 최종 결과 조회 공개
+  noticeContent: text('notice_content'), // 공개 모집 공고 텍스트/마크다운
+  noticeImages: jsonb('notice_images').$type<string[]>(), // 공개 모집 공고 이미지 URL 리스트
+  congratsMessage: text('congrats_message'), // 최종 합격자 축하 멘트
+  postPassNotice: text('post_pass_notice'), // 최종 합격자 합격 후 안내 사항
+  isClosed: boolean('is_closed').notNull().default(false), // 모집 중단/마감 스위치
+  venues: jsonb('venues').$type<string[]>(), // 기수별 사전 등록 대면 면접 장소 프리셋 리스트
   // 폐기(hard delete) 시각 + 그때 남기는 익명 집계(지원자 수·합격자 수·평균 점수). 폐기 전엔 null.
   closedAt: timestamp('closed_at', { withTimezone: true }),
   archivedStats: jsonb('archived_stats'),
@@ -412,7 +418,7 @@ export const recruitCohorts = pgTable('recruit_cohorts', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// 면접 슬롯(날짜×시간 격자). 기본 20분, 링크는 슬롯 단위(지원자 개인 링크가 있으면 그게 우선).
+// 면접 슬롯(날짜×시간 격자). 10분 단위 세분화 지원. 장소 프리셋 또는 비대면 링크 지정.
 export const recruitSlots = pgTable('recruit_slots', {
   id: uuid('id').primaryKey().defaultRandom(),
   cohortId: uuid('cohort_id')
@@ -421,13 +427,31 @@ export const recruitSlots = pgTable('recruit_slots', {
   startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
   durationMin: integer('duration_min').notNull().default(20),
   link: text('link'),
+  venue: text('venue'), // 대면 면접 장소 명칭 또는 온라인 접속 안내
+  isRemote: boolean('is_remote').notNull().default(false), // 비대면 여부
   createdBy: uuid('created_by')
     .notNull()
     .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// 지원자(구글폼 전 필드). birth_date·ot_attend·remote_interview_wish 는 폼 표기가 제각각이라 원문 text 로 둔다.
+// 슬롯별 면접관(운영진) 배정 테이블
+export const recruitSlotInterviewers = pgTable(
+  'recruit_slot_interviewers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slotId: uuid('slot_id')
+      .notNull()
+      .references(() => recruitSlots.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('recruit_slot_interviewers_uq').on(t.slotId, t.userId)]
+);
+
+// 지원자(구글폼 전 필드 또는 온라인 직접 입력). birth_date·ot_attend·remote_interview_wish 는 폼 표기가 제각각이라 원문 text 로 둔다.
 export const recruitApplicants = pgTable(
   'recruit_applicants',
   {
@@ -447,6 +471,7 @@ export const recruitApplicants = pgTable(
     expectedFrequency: text('expected_frequency'), // 예상 활동 참여 주기
     wishTeam1: text('wish_team1'),
     wishTeam2: text('wish_team2'),
+    assignedTeam: text('assigned_team'), // 운영진/회장단이 수동 이관 또는 배정한 최종 팀
     nearStation: text('near_station'), // 주소 대신 가장 가까운 역 명만 저장(PII 최소화)
     otAttend: text('ot_attend'), // OT 참가 여부(원문)
     remoteInterviewWish: text('remote_interview_wish'), // 비대면 면접 희망(원문)
@@ -455,9 +480,7 @@ export const recruitApplicants = pgTable(
     status: recruitStatusEnum('status').notNull().default('received'),
     slotId: uuid('slot_id').references(() => recruitSlots.id, { onDelete: 'set null' }),
     interviewLink: text('interview_link'), // 개인 단위 링크(슬롯 링크보다 우선)
-    uploadedBy: uuid('uploaded_by')
-      .notNull()
-      .references(() => users.id),
+    uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('recruit_applicants_cohort_idx').on(t.cohortId)]

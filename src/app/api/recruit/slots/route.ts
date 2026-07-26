@@ -26,7 +26,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { cohortId, startsAt, durationMin, link } = body;
+    const { cohortId, startsAt, durationMin, link, venue, isRemote } = body;
     if (!cohortId || !startsAt) {
       return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
     }
@@ -36,6 +36,8 @@ export async function POST(req: Request): Promise<Response> {
       startsAt: new Date(startsAt),
       durationMin: durationMin ? parseInt(durationMin, 10) : 20,
       link: link ? String(link) : null,
+      venue: venue ? String(venue) : null,
+      isRemote: !!isRemote,
       createdBy: actor.userId,
     });
 
