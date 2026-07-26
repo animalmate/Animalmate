@@ -31,7 +31,7 @@ export function RecruitNoticeEditPanel() {
     }
   }, [selectedCohortId]);
 
-  const fetchCohorts = async () => {
+  const fetchCohorts = async (selectIdOverride?: string) => {
     try {
       const res = await fetch('/api/recruit/cohorts');
       const data = await res.json();
@@ -39,8 +39,9 @@ export function RecruitNoticeEditPanel() {
       setCohorts(list);
       if (list.length > 0) {
         setSelectedCohortId((prev) => {
-          const exists = list.some((c: any) => c.id === prev);
-          return exists ? prev : list[0].id;
+          const targetId = selectIdOverride || prev;
+          const exists = list.some((c: any) => c.id === targetId);
+          return exists ? targetId : list[0].id;
         });
       } else {
         setSelectedCohortId('');
@@ -66,9 +67,9 @@ export function RecruitNoticeEditPanel() {
       const data = await res.json();
       if (res.ok && data.cohort) {
         setNewCohortLabel('');
-        await fetchCohorts();
         setSelectedCohortId(data.cohort.id);
-        setMessage(`✅ 모집 기수 [${data.cohort.label}]가 성공적으로 생성되었습니다.`);
+        await fetchCohorts(data.cohort.id);
+        setMessage(`✅ 모집 기수 [${data.cohort.label}]가 성공적으로 생성 및 선택되었습니다.`);
       } else {
         setMessage(`❌ 기수 생성 실패 (${res.status}): ${data.message || data.error || '오류가 발생했습니다.'}`);
       }
@@ -103,6 +104,7 @@ export function RecruitNoticeEditPanel() {
   };
 
   const fetchNoticeSettings = async () => {
+    if (!selectedCohortId) return;
     const res = await fetch(`/api/recruit/notice?cohortId=${selectedCohortId}`);
     const data = await res.json();
     if (data.cohort) {
@@ -155,7 +157,7 @@ export function RecruitNoticeEditPanel() {
 
   const handleSaveSettings = async () => {
     if (!selectedCohortId) {
-      setMessage('❌ 선택된 모집 기수가 없습니다.');
+      setMessage('❌ 선택된 모집 기수가 없습니다. 먼저 기수를 생성하거나 선택해 주세요.');
       return;
     }
     setSaving(true);
@@ -194,9 +196,12 @@ export function RecruitNoticeEditPanel() {
   };
 
   const handleToggleClosed = async () => {
+    if (!selectedCohortId) {
+      setMessage('❌ 모집 기수가 먼저 생성 및 선택되어야 모집 상태를 변경할 수 있습니다.');
+      return;
+    }
     const nextIsClosed = !isClosed;
     setIsClosed(nextIsClosed);
-    if (!selectedCohortId) return;
     setSaving(true);
     setMessage('');
     try {
@@ -211,9 +216,13 @@ export function RecruitNoticeEditPanel() {
       if (res.ok) {
         setMessage(`✅ 모집 상태가 [${nextIsClosed ? '모집 중단 / 마감' : '모집 진행 중'}]으로 즉시 변경 및 저장되었습니다.`);
       } else {
+        setIsClosed(!nextIsClosed);
         const data = await res.json();
-        setMessage(`❌ 변경 실패: ${data.error}`);
+        setMessage(`❌ 변경 실패 (${res.status}): ${data.message || data.error || '오류가 발생했습니다.'}`);
       }
+    } catch (err: any) {
+      setIsClosed(!nextIsClosed);
+      setMessage(`❌ 통신 오류: ${err?.message || '서버에 연결할 수 없습니다.'}`);
     } finally {
       setSaving(false);
     }
