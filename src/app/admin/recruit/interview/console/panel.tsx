@@ -194,7 +194,17 @@ export function RecruitInterviewConsolePanel() {
                   <div className="flex items-center justify-between text-xs text-ink-500 mt-1.5">
                     <span>{app.school}</span>
                     <span className="rounded-full bg-cream-100 px-2 py-0.5 text-[10px] font-semibold text-ink-700">
-                      {app.status}
+                      {app.status === 'doc_pass'
+                        ? '서류 합격'
+                        : app.status === 'interview_done'
+                        ? '면접 완료'
+                        : app.status === 'interview_noshow'
+                        ? '면접 불참'
+                        : app.status === 'final_pass'
+                        ? '최종 합격'
+                        : app.status === 'final_fail'
+                        ? '최종 불합격'
+                        : '서류 심사 중'}
                     </span>
                   </div>
                 </div>

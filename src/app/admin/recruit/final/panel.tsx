@@ -293,7 +293,17 @@ export function RecruitFinalPanel() {
                           : 'bg-cream-100 text-ink-700'
                       }`}>
                         <i className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {app.status === 'final_pass' ? '최종합격' : app.status === 'final_fail' ? '최종불합격' : app.status}
+                        {app.status === 'final_pass'
+                          ? '최종 합격'
+                          : app.status === 'final_fail'
+                          ? '최종 불합격'
+                          : app.status === 'doc_pass'
+                          ? '서류 합격'
+                          : app.status === 'interview_done'
+                          ? '면접 완료'
+                          : app.status === 'interview_noshow'
+                          ? '면접 불참'
+                          : '진행 중'}
                       </span>
                     </td>
                   </tr>

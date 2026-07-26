@@ -45,3 +45,13 @@ export async function updateCohortPublicSwitches(
     .returning();
   return updated;
 }
+
+export async function deleteCohort(id: string) {
+  const [deleted] = await db
+    .delete(recruitCohorts)
+    .where(eq(recruitCohorts.id, id))
+    .returning();
+  return deleted ?? null;
+}
+
+

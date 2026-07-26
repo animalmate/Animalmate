@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
-import { getCohortById, updateCohortPublicSwitches } from '@/recruit/cohorts';
+import { deleteCohort, getCohortById, updateCohortPublicSwitches } from '@/recruit/cohorts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,3 +35,19 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
   }
 }
+
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
+  const actor = await getCurrentActor();
+  if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+
+  const { id } = await context.params;
+  try {
+    const deleted = await deleteCohort(id);
+    if (!deleted) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    return NextResponse.json({ ok: true, deleted });
+  } catch (e: any) {
+    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  }
+}
+
