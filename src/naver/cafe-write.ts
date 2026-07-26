@@ -34,6 +34,27 @@ export interface CafeWriteOptions {
   dryRun?: boolean;
 }
 
+/** HTML 특수문자 이스케이프 (사용자가 입력한 태그가 HTML로 실행되지 않도록 이스케이프) */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * 카페 본문 포맷팅:
+ * (a) HTML 특수문자 이스케이프 → (b) 개행을 <br>로 변환하는 순서로 처리.
+ * 순서가 바뀌면 <br> 태그가 이스케이프되어 화면에 그대로 노출된다.
+ * 연속 개행(빈 줄)도 개수만큼 보존한다.
+ */
+export function formatContentForCafe(content: string): string {
+  const escaped = escapeHtml(content);
+  return escaped.replace(/\r?\n/g, '<br>');
+}
+
 /** 카페에 글을 게시한다. dryRun(기본 true)이면 네트워크 호출 없이 시뮬레이션 결과를 반환. */
 export async function postArticle(
   params: CafeWriteParams,
@@ -45,11 +66,12 @@ export async function postArticle(
       ok: true,
       status: 200,
       articleUrl: `dry-run://cafe/${params.clubId}/${params.menuId}`,
-      raw: { dryRun: true, subject: params.subject },
+      raw: { dryRun: true, subject: params.subject, content: formatContentForCafe(params.content) },
       dryRun: true,
     };
   }
 
+  const formattedContent = formatContentForCafe(params.content);
   const url = `${OPENAPI_BASE}/${params.clubId}/menu/${params.menuId}/articles`;
   const headers: Record<string, string> = { Authorization: `Bearer ${params.accessToken}` };
 
@@ -57,7 +79,7 @@ export async function postArticle(
   if (params.images && params.images.length > 0) {
     const form = new FormData();
     form.set('subject', encodeURIComponent(params.subject));
-    form.set('content', encodeURIComponent(params.content));
+    form.set('content', encodeURIComponent(formattedContent));
     for (const img of params.images) {
       // Node 의 Uint8Array<ArrayBufferLike> 를 BlobPart 로 취급(런타임 정상, 타입만 캐스트).
       form.append('image', new Blob([img.bytes as unknown as BlobPart], { type: img.contentType }), img.filename);
@@ -66,7 +88,7 @@ export async function postArticle(
   } else {
     const body = new URLSearchParams();
     body.set('subject', encodeURIComponent(params.subject));
-    body.set('content', encodeURIComponent(params.content));
+    body.set('content', encodeURIComponent(formattedContent));
     res = await fetch(url, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
