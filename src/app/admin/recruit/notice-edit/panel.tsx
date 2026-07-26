@@ -90,6 +90,32 @@ export function RecruitNoticeEditPanel() {
     }
   };
 
+  const handleToggleClosed = async () => {
+    const nextIsClosed = !isClosed;
+    setIsClosed(nextIsClosed);
+    if (!selectedCohortId) return;
+    setSaving(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/recruit/notice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cohortId: selectedCohortId,
+          isClosed: nextIsClosed,
+        }),
+      });
+      if (res.ok) {
+        setMessage(`✅ 모집 상태가 [${nextIsClosed ? '모집 중단 / 마감' : '모집 진행 중'}]으로 즉시 변경 및 저장되었습니다.`);
+      } else {
+        const data = await res.json();
+        setMessage(`❌ 변경 실패: ${data.error}`);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -117,31 +143,35 @@ export function RecruitNoticeEditPanel() {
       <RecruitNav />
 
       {/* 모집 마감 스위치 바 */}
-      <Card className="p-5 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-cream-50 to-blue-50/40 border-cream-200">
+      <Card className="p-5 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-cream-50 to-blue-50/40 border-cream-200 shadow-card">
         <div className="flex items-center gap-3">
-          <span className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl font-bold ${isClosed ? 'bg-coral-100 text-coral-700' : 'bg-success-100 text-success-700'}`}>
+          <span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-2xl font-bold ${isClosed ? 'bg-coral-100 text-coral-700' : 'bg-emerald-100 text-emerald-800'}`}>
             {isClosed ? '🔒' : '📢'}
           </span>
           <div>
-            <div className="text-sm font-bold text-ink-900">
-              현재 모집 상태: <span className={isClosed ? 'text-coral-700 font-bold' : 'text-success-700 font-bold'}>{isClosed ? '모집 중단 / 마감됨' : '모집 진행 중 (지원 가능)'}</span>
+            <div className="text-sm font-bold text-ink-900 flex items-center gap-2">
+              현재 모집 상태: 
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isClosed ? 'bg-coral-100 text-coral-700' : 'bg-emerald-100 text-emerald-800'}`}>
+                {isClosed ? '모집 중단 / 마감됨' : '모집 진행 중 (지원 가능)'}
+              </span>
             </div>
-            <p className="text-xs text-ink-500 mt-0.5">
-              모집 중단 스위치를 켜면 지원서 작성 페이지 버튼이 비활성화되고 마감 팝업이 노출됩니다.
+            <p className="text-xs text-ink-500 mt-1">
+              모집 중단 스위치를 켜면 지원서 작성 페이지 버튼이 즉시 비활성화되고 마감 팝업이 노출됩니다.
             </p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => setIsClosed(!isClosed)}
-          className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+          disabled={saving}
+          onClick={handleToggleClosed}
+          className={`px-6 py-3 rounded-xl text-xs font-bold transition-all shadow-card cursor-pointer ${
             isClosed
-              ? 'bg-success-600 text-white hover:bg-success-700'
-              : 'bg-coral-600 text-white hover:bg-coral-700'
+              ? 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'
+              : 'bg-coral-600 text-white hover:bg-coral-700 active:scale-95'
           }`}
         >
-          {isClosed ? '🔓 모집 재개하기 (지원서 열기)' : '🛑 모집 중단하기 (지원 마감)'}
+          {saving ? '상태 변경 중…' : isClosed ? '🔓 모집 재개하기 (지원서 열기)' : '🛑 모집 중단하기 (지원 마감)'}
         </button>
       </Card>
 
@@ -218,3 +248,4 @@ export function RecruitNoticeEditPanel() {
     </div>
   );
 }
+
