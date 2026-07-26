@@ -20,8 +20,16 @@ import { boardEmails } from '@/auth/operators';
 
 type DB = PostgresJsDatabase<typeof schema>;
 
+export interface PostTiming {
+  postId: string;
+  apiStart: string;
+  apiEnd: string;
+  durationMs: number;
+}
+
 export interface PublishSummary {
   startedAt: string;
+  finishedAt?: string;
   dryRun: boolean;
   processed: number;
   published: number;
@@ -29,6 +37,10 @@ export interface PublishSummary {
   failed: number;
   blocked: number; // 미치환 플레이스홀더로 게시하지 않고 차단한 건수
   articleUrls: string[];
+  timings?: {
+    dueFetchedAt: string;
+    posts: PostTiming[];
+  };
 }
 
 export interface WorkerDeps {
@@ -70,8 +82,12 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
     articleUrls: [],
   };
 
+  const dueFetchedAt = new Date().toISOString();
   const due = await fetchDuePosts(db, now, limit);
+  summary.timings = { dueFetchedAt, posts: [] };
+
   if (due.length === 0) {
+    summary.finishedAt = new Date().toISOString();
     await recordSummary(db, summary);
     return summary;
   }
@@ -94,7 +110,7 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
   // 이번 사이클에 최종 실패(failed)로 확정된 예약 — 재시도 소진분만 알림 대상.
   const failedNow: { title: string; reason: string }[] = [];
 
-  let written = 0; // 실제 게시 시도 횟수 — 차단된 건에는 대기 간격을 쓰지 않는다.
+  let lastApiCallEnd = 0; // 직전 API 호출 완료 시각(ms) - 30초 이내 직전 발행이 있었을 때만 잔여 대기
   for (let i = 0; i < due.length; i++) {
     const post = due[i]!;
 
@@ -124,9 +140,30 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
       continue;
     }
 
-    if (!dryRun && written > 0) await sleep(delayMs); // 연속 게시 방지 간격(실게시만)
-    written += 1;
+    // 직전 발행이 30초 이내였을 때만 부족한 잔여 시간만큼 대기 (단건 발행 또는 30초 경과 건은 대기 없음)
+    if (!dryRun && lastApiCallEnd > 0) {
+      const elapsed = Date.now() - lastApiCallEnd;
+      if (elapsed < delayMs) {
+        await sleep(delayMs - elapsed);
+      }
+    }
+
+    const apiStartMs = Date.now();
+    const apiStart = new Date(apiStartMs).toISOString();
+
     const res = await write({ ...post, title: rendered.title, contentMd: rendered.contentMd }, { accessToken, dryRun });
+
+    const apiEndMs = Date.now();
+    const apiEnd = new Date(apiEndMs).toISOString();
+    lastApiCallEnd = apiEndMs;
+
+    summary.timings.posts.push({
+      postId: post.id,
+      apiStart,
+      apiEnd,
+      durationMs: apiEndMs - apiStartMs,
+    });
+
     const result = classifyPublishResponse(res);
     const updated = await applyPublishResult(db, post, result, rendered);
     if (!updated) continue; // 사이클 도중 취소(삭제)된 예약 — 집계·알림 대상 아님.
@@ -145,6 +182,8 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
       }
     }
   }
+
+  summary.finishedAt = new Date().toISOString();
 
   if (failedNow.length > 0) await sendFailureAlert(db, failedNow, deps);
 

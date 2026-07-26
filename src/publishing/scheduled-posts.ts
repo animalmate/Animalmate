@@ -152,12 +152,15 @@ export async function schedulePost(db: DB, actor: Actor, id: string): Promise<Sc
   return updateStatus(db, id, { status: 'scheduled' }, actor, 'post.schedule', post);
 }
 
-/** 발행 대상(due) 조회: scheduled + publish_at <= now, 소량(≤limit). 발행 워커용. */
+/** 발행 대상(due) 조회: scheduled + publish_at <= now + 15초(시계 오차·크론 경계 보정), 소량(≤limit). 발행 워커용. */
 export async function fetchDuePosts(db: DB, now: Date, limit = 5): Promise<ScheduledPost[]> {
+  // 15초 세이프티 버퍼: pg_cron 경계 및 서버간 시계 오차(1~5초)로 인해 정시(예: 14:30:00) 예약이
+  // 14:29:59.9 에 진입하여 14:31:00 크론으로 1분 밀리는 현상을 근본 방지한다.
+  const cutoff = new Date(now.getTime() + 15_000);
   return db
     .select()
     .from(scheduledPosts)
-    .where(and(eq(scheduledPosts.status, 'scheduled'), lte(scheduledPosts.publishAt, now)))
+    .where(and(eq(scheduledPosts.status, 'scheduled'), lte(scheduledPosts.publishAt, cutoff)))
     .orderBy(asc(scheduledPosts.publishAt))
     .limit(Math.min(limit, 5)); // 함수 타임아웃 방지: 한 사이클 최대 5건(02-TECH-STACK §3)
 }
