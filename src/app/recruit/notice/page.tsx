@@ -77,12 +77,16 @@ export default function PublicRecruitNoticePage() {
     );
   }
 
+  useEffect(() => {
+    if (cohort) {
+      document.title = `${cohort.label} 신입 부원 모집 공고 - 애니멀메이트`;
+    } else {
+      document.title = '신입 부원 모집 공고 - 애니멀메이트';
+    }
+  }, [cohort]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-cream-50 via-white to-cream-100 p-4 sm:p-8 font-sans">
-      <head>
-        <title>{cohort ? `${cohort.label} 신입 부원 모집 공고 - 애니멀메이트` : '신입 부원 모집 공고'}</title>
-      </head>
-
       <div className="max-w-3xl mx-auto space-y-6">
         {/* 공고 헤더 카너 */}
         <Card className="p-8 text-center space-y-4 bg-white/90 backdrop-blur-md shadow-modal rounded-3xl border-cream-200">
