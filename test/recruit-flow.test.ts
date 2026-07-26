@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { isPRTeamOrPrivileged, Actor } from '@/auth/permissions';
+import { isPRTeamOrPrivileged, isStaffPlus, Actor } from '@/auth/permissions';
+import { escapeHtml } from '@/naver/cafe-write';
+import { RULES } from '@/http/rate-limit';
 
 describe('Recruit Flow & Permissions Tests', () => {
   it('isPRTeamOrPrivileged correctly identifies PR team members, board, and sysadmin', () => {
@@ -34,5 +36,26 @@ describe('Recruit Flow & Permissions Tests', () => {
       teams: [],
     };
     expect(isPRTeamOrPrivileged(inactiveSysadmin)).toBe(false);
+  });
+
+  it('isStaffPlus correctly allows staff, board, and sysadmin', () => {
+    expect(isStaffPlus('staff')).toBe(true);
+    expect(isStaffPlus('board')).toBe(true);
+    expect(isStaffPlus('sysadmin')).toBe(true);
+    expect(isStaffPlus('member')).toBe(false);
+  });
+
+  it('escapeHtml prevents script injection attacks', () => {
+    const maliciousInput = '<script>alert("hack")</script> Hello & "World"';
+    const clean = escapeHtml(maliciousInput);
+    expect(clean).not.toContain('<script>');
+    expect(clean).toContain('&lt;script&gt;');
+    expect(clean).toContain('&amp;');
+  });
+
+  it('rate limit rules contain recruitApply bucket', () => {
+    expect(RULES.recruitApply).toBeDefined();
+    expect(RULES.recruitApply.max).toBe(5);
+    expect(RULES.recruitApply.windowSeconds).toBe(600);
   });
 });

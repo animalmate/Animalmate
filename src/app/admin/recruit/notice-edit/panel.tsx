@@ -90,7 +90,10 @@ export function RecruitNoticeEditPanel() {
   };
 
   const handleSaveSettings = async () => {
-    if (!selectedCohortId) return;
+    if (!selectedCohortId) {
+      setMessage('❌ 선택된 모집 기수가 없습니다.');
+      return;
+    }
     setSaving(true);
     setMessage('');
     try {
@@ -113,12 +116,14 @@ export function RecruitNoticeEditPanel() {
         }),
       });
 
+      const data = await res.json();
       if (res.ok) {
-        setMessage('✅ 모집 공고, 첨부 이미지, 마감 스위치 및 안내 설정이 저장되었습니다.');
+        setMessage('✅ 모집 공고 본문, 포스터 이미지, 마감 스위치 및 안내 설정이 DB에 성공적으로 저장되었습니다.');
       } else {
-        const data = await res.json();
-        setMessage(`❌ 저장 실패: ${data.error}`);
+        setMessage(`❌ 저장 실패 (${res.status}): ${data.message || data.error || '알 수 없는 서버 오류'}`);
       }
+    } catch (err: any) {
+      setMessage(`❌ 통신/전송 오류: ${err?.message || '서버 응답을 불러올 수 없습니다.'}`);
     } finally {
       setSaving(false);
     }

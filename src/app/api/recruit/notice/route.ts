@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isPRTeamOrPrivileged } from '@/auth/permissions';
+import { isStaffPlus } from '@/auth/permissions';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { updateCohortNoticeAndSettings } from '@/recruit/notice';
 
@@ -40,7 +40,7 @@ export async function GET(req: Request): Promise<Response> {
 export async function POST(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isPRTeamOrPrivileged(actor)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   try {
     const body = await req.json();
