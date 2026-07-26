@@ -15,7 +15,6 @@ export default function RecruitScreeningPage() {
   // 현재 선택된 지원자의 채점 상태
   const [myScore, setMyScore] = useState<string>('7.0');
   const [myComment, setMyComment] = useState<string>('');
-  const [personalMemo, setPersonalMemo] = useState<string>('');
   const [savingScore, setSavingScore] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -28,12 +27,6 @@ export default function RecruitScreeningPage() {
       fetchApplicantsAndScores();
     }
   }, [selectedCohortId]);
-
-  useEffect(() => {
-    if (selectedApplicantId) {
-      loadApplicantData(selectedApplicantId);
-    }
-  }, [selectedApplicantId, scores]);
 
   const fetchCohorts = async () => {
     const res = await fetch('/api/recruit/cohorts');
@@ -59,17 +52,6 @@ export default function RecruitScreeningPage() {
     if (scoreData.scores) {
       setScores(scoreData.scores);
       setAggregations(scoreData.aggregations || {});
-    }
-  };
-
-  const loadApplicantData = async (applicantId: string) => {
-    // 내 개인 메모 조회
-    const memoRes = await fetch(`/api/recruit/memos?applicantId=${applicantId}`);
-    const memoData = await memoRes.json();
-    if (memoData.memo?.content !== undefined) {
-      setPersonalMemo(memoData.memo.content);
-    } else {
-      setPersonalMemo('');
     }
   };
 

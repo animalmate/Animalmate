@@ -48,9 +48,9 @@ describe('CSV Parser & Mapper', () => {
     const { headers, rows } = parseCsv(csv);
     expect(headers).toEqual(['이름', '전화번호', '자기소개']);
     expect(rows).toHaveLength(2);
-    expect(rows[0][0]).toBe('홍길동');
-    expect(rows[0][2]).toBe('안녕하세요.\n저는 "동물"을 사랑합니다.');
-    expect(rows[1][0]).toBe('김철수');
+    expect(rows[0]![0]).toBe('홍길동');
+    expect(rows[0]![2]).toBe('안녕하세요.\n저는 "동물"을 사랑합니다.');
+    expect(rows[1]![0]).toBe('김철수');
   });
 
   it('maps header row to applicant object', () => {
@@ -80,7 +80,7 @@ describe('CSV Parser & Mapper', () => {
     const { duplicateIndexes, uniqueApplicants } = detectDuplicates(newApps, existing);
     expect(duplicateIndexes).toEqual([1, 2]); // 김철수 (기존과 중복), 3번째 홍길동 (새 목록 내 중복)
     expect(uniqueApplicants).toHaveLength(1);
-    expect(uniqueApplicants[0].name).toBe('홍길동');
+    expect(uniqueApplicants[0]!.name).toBe('홍길동');
   });
 });
 
@@ -106,14 +106,14 @@ describe('Score Validation & Aggregation', () => {
 
     const agg = aggregateScoresByApplicant(applicantIds, scores);
 
-    expect(agg['app1'].docScoreAvg).toBe(8.0);
-    expect(agg['app1'].docScoreMin).toBe(7.0);
-    expect(agg['app1'].docScoreMax).toBe(9.0);
-    expect(agg['app1'].docScorerCount).toBe(3);
-    expect(agg['app1'].isDocSampleDeficient).toBe(false);
+    expect(agg['app1']!.docScoreAvg).toBe(8.0);
+    expect(agg['app1']!.docScoreMin).toBe(7.0);
+    expect(agg['app1']!.docScoreMax).toBe(9.0);
+    expect(agg['app1']!.docScorerCount).toBe(3);
+    expect(agg['app1']!.isDocSampleDeficient).toBe(false);
 
-    expect(agg['app2'].docScoreAvg).toBe(6.0);
-    expect(agg['app2'].docScorerCount).toBe(1);
-    expect(agg['app2'].isDocSampleDeficient).toBe(true); // < 3명
+    expect(agg['app2']!.docScoreAvg).toBe(6.0);
+    expect(agg['app2']!.docScorerCount).toBe(1);
+    expect(agg['app2']!.isDocSampleDeficient).toBe(true); // < 3명
   });
 });

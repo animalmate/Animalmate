@@ -1,8 +1,9 @@
 // F9 신입 모집 지원자 CRUD 및 관리 서비스
 import { db } from '../db/client';
-import { recruitApplicants, RecruitStatus } from '../db/schema';
-import { eq, and, inArray, asc } from 'drizzle-orm';
+import { recruitApplicants } from '../db/schema';
+import { eq, inArray, asc } from 'drizzle-orm';
 import { ApplicantImportInput } from './csv';
+import { RecruitStatus } from './status';
 
 export async function bulkCreateApplicants(
   cohortId: string,

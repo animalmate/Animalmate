@@ -3,7 +3,7 @@
 
 import { db } from '../db/client';
 import { recruitScores, recruitApplicants } from '../db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { nextStatusOnScoreChange, RecruitStatus } from './status';
 
 /**

@@ -4,11 +4,11 @@
 
 import { db } from '../db/client';
 import { recruitCohorts, recruitApplicants, recruitScores } from '../db/schema';
-import { eq, sql } from 'drizzle-orm';
-import { recordAudit } from '../auth/audit';
+import { eq } from 'drizzle-orm';
+import { recordAudit, buildAuditEntry } from '../auth/audit';
 
 export async function purgeCohortApplicants(cohortId: string, actorUserId: string) {
-  return db.transaction(async (tx) => {
+  return db.transaction(async (tx: any) => {
     // 1. 해당 기수의 지원자 및 점수 통계 산출 (익명 집계)
     const applicants = await tx
       .select({ id: recruitApplicants.id, status: recruitApplicants.status })
@@ -16,12 +16,12 @@ export async function purgeCohortApplicants(cohortId: string, actorUserId: strin
       .where(eq(recruitApplicants.cohortId, cohortId));
 
     const totalCount = applicants.length;
-    const docPassCount = applicants.filter((a) =>
+    const docPassCount = applicants.filter((a: any) =>
       ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass', 'final_fail'].includes(
         a.status
       )
     ).length;
-    const finalPassCount = applicants.filter((a) => a.status === 'final_pass').length;
+    const finalPassCount = applicants.filter((a: any) => a.status === 'final_pass').length;
 
     const scores = await tx
       .select({ score: recruitScores.score, stage: recruitScores.stage })
@@ -29,16 +29,16 @@ export async function purgeCohortApplicants(cohortId: string, actorUserId: strin
       .innerJoin(recruitApplicants, eq(recruitScores.applicantId, recruitApplicants.id))
       .where(eq(recruitApplicants.cohortId, cohortId));
 
-    const docScores = scores.filter((s) => s.stage === 'document').map((s) => parseFloat(s.score));
-    const intScores = scores.filter((s) => s.stage === 'interview').map((s) => parseFloat(s.score));
+    const docScores = scores.filter((s: any) => s.stage === 'document').map((s: any) => parseFloat(s.score));
+    const intScores = scores.filter((s: any) => s.stage === 'interview').map((s: any) => parseFloat(s.score));
 
     const docAvg =
       docScores.length > 0
-        ? Math.round((docScores.reduce((a, b) => a + b, 0) / docScores.length) * 10) / 10
+        ? Math.round((docScores.reduce((a: number, b: number) => a + b, 0) / docScores.length) * 10) / 10
         : null;
     const intAvg =
       intScores.length > 0
-        ? Math.round((intScores.reduce((a, b) => a + b, 0) / intScores.length) * 10) / 10
+        ? Math.round((intScores.reduce((a: number, b: number) => a + b, 0) / intScores.length) * 10) / 10
         : null;
 
     const archivedStats = {
@@ -65,12 +65,14 @@ export async function purgeCohortApplicants(cohortId: string, actorUserId: strin
     // 4. Audit log 기록 [high]
     await recordAudit(
       tx,
-      actorUserId,
-      'recruit.purge',
-      'recruit_cohorts',
-      cohortId,
-      undefined,
-      archivedStats
+      buildAuditEntry({
+        actorUserId,
+        action: 'recruit.purge',
+        targetTable: 'recruit_cohorts',
+        targetId: cohortId,
+        after: archivedStats,
+        severity: 'high',
+      })
     );
 
     return archivedStats;

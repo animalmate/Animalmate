@@ -86,7 +86,7 @@ export default function RecruitUploadPage() {
   const handleCsvInput = (text: string) => {
     setCsvText(text);
     const lines = text.trim().split('\n');
-    if (lines.length > 0) {
+    if (lines.length > 0 && lines[0]) {
       const firstLine = lines[0].replace(/^\uFEFF/, '');
       const parsedHeaders = firstLine.split(',').map((h) => h.replace(/^"|"$/g, '').trim());
       setHeaders(parsedHeaders);

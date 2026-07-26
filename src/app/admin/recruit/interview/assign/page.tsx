@@ -17,7 +17,6 @@ export default function RecruitInterviewAssignPage() {
   const [slotLink, setSlotLink] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
     fetchCohorts();
@@ -211,6 +210,15 @@ export default function RecruitInterviewAssignPage() {
                       </option>
                     ))}
                   </select>
+                  {app.slotId && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSlot(app.slotId)}
+                      className="ml-2 text-[10px] text-destructive hover:underline"
+                    >
+                      슬롯 삭제
+                    </button>
+                  )}
                 </td>
                 <td className="p-3">
                   <span className="px-2 py-0.5 bg-secondary text-secondary-foreground rounded text-[11px]">

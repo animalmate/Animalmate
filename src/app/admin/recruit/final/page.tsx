@@ -6,10 +6,8 @@ import { RecruitNav } from '@/components/recruit-nav';
 export default function RecruitFinalPage() {
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState('');
-  const [cohortDetail, setCohortDetail] = useState<any>(null);
 
   const [applicants, setApplicants] = useState<any[]>([]);
-  const [scores, setScores] = useState<any[]>([]);
   const [aggregations, setAggregations] = useState<Record<string, any>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -45,7 +43,6 @@ export default function RecruitFinalPage() {
     const cRes = await fetch(`/api/recruit/cohorts/${selectedCohortId}`);
     const cData = await cRes.json();
     if (cData.cohort) {
-      setCohortDetail(cData.cohort);
       setSchedulePublic(cData.cohort.schedulePublic);
       setResultPublic(cData.cohort.resultPublic);
     }
@@ -56,7 +53,6 @@ export default function RecruitFinalPage() {
 
     const scoreRes = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
     const scoreData = await scoreRes.json();
-    if (scoreData.scores) setScores(scoreData.scores);
     if (scoreData.aggregations) setAggregations(scoreData.aggregations);
   };
 

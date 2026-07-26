@@ -59,31 +59,33 @@ export function aggregateScoresByApplicant(
     }
     const num = typeof s.score === 'string' ? parseFloat(s.score) : s.score;
     if (s.stage === 'document') {
-      scoresByApp[s.applicantId].doc.push(num);
+      scoresByApp[s.applicantId]!.doc.push(num);
     } else if (s.stage === 'interview') {
-      scoresByApp[s.applicantId].interview.push(num);
+      scoresByApp[s.applicantId]!.interview.push(num);
     }
   });
 
   applicantIds.forEach((id) => {
-    const docArr = scoresByApp[id].doc;
+    const item = result[id];
+    if (!item) return;
+    const docArr = scoresByApp[id]?.doc ?? [];
     if (docArr.length > 0) {
       const sum = docArr.reduce((a, b) => a + b, 0);
-      result[id].docScoreAvg = Math.round((sum / docArr.length) * 10) / 10;
-      result[id].docScoreMin = Math.min(...docArr);
-      result[id].docScoreMax = Math.max(...docArr);
-      result[id].docScorerCount = docArr.length;
-      result[id].isDocSampleDeficient = docArr.length < 3;
+      item.docScoreAvg = Math.round((sum / docArr.length) * 10) / 10;
+      item.docScoreMin = Math.min(...docArr);
+      item.docScoreMax = Math.max(...docArr);
+      item.docScorerCount = docArr.length;
+      item.isDocSampleDeficient = docArr.length < 3;
     }
 
-    const intArr = scoresByApp[id].interview;
+    const intArr = scoresByApp[id]?.interview ?? [];
     if (intArr.length > 0) {
       const sum = intArr.reduce((a, b) => a + b, 0);
-      result[id].interviewScoreAvg = Math.round((sum / intArr.length) * 10) / 10;
-      result[id].interviewScoreMin = Math.min(...intArr);
-      result[id].interviewScoreMax = Math.max(...intArr);
-      result[id].interviewScorerCount = intArr.length;
-      result[id].isInterviewSampleDeficient = intArr.length < 3;
+      item.interviewScoreAvg = Math.round((sum / intArr.length) * 10) / 10;
+      item.interviewScoreMin = Math.min(...intArr);
+      item.interviewScoreMax = Math.max(...intArr);
+      item.interviewScorerCount = intArr.length;
+      item.isInterviewSampleDeficient = intArr.length < 3;
     }
   });
 

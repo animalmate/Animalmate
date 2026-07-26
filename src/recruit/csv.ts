@@ -64,7 +64,7 @@ export function parseCsv(text: string): ParsedCsv {
   }
 
   // 첫 번째 행은 헤더
-  const headers = records.length > 0 ? records[0] : [];
+  const headers = records.length > 0 ? records[0]! : [];
   const rows = records.slice(1).filter((r) => r.some((cell) => cell.length > 0));
 
   return { headers, rows };
@@ -106,8 +106,8 @@ export function mapRowToApplicant(
     if (!csvHeader) return undefined;
     const idx = headerMap.get(csvHeader);
     if (idx === undefined || idx >= row.length) return undefined;
-    const val = row[idx].trim();
-    return val !== '' ? val : undefined;
+    const val = row[idx]?.trim();
+    return val && val !== '' ? val : undefined;
   };
 
   const name = getValue('name');
