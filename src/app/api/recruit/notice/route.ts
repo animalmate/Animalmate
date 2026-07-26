@@ -19,7 +19,7 @@ export async function GET(req: Request): Promise<Response> {
     cohort = list[0] ?? null;
   }
 
-  if (!cohort) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (!cohort) return NextResponse.json({ cohort: null }, { status: 200 });
 
   return NextResponse.json({
     cohort: {

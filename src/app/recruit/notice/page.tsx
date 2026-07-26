@@ -15,10 +15,18 @@ export default function PublicRecruitNoticePage() {
   const fetchNotice = async () => {
     try {
       const res = await fetch('/api/recruit/notice');
-      const data = await res.json();
-      if (data.cohort) {
-        setCohort(data.cohort);
+      if (!res.ok) {
+        setCohort(null);
+        return;
       }
+      const data = await res.json();
+      if (data && data.cohort) {
+        setCohort(data.cohort);
+      } else {
+        setCohort(null);
+      }
+    } catch (e) {
+      setCohort(null);
     } finally {
       setLoading(false);
     }
@@ -36,6 +44,31 @@ export default function PublicRecruitNoticePage() {
     return (
       <div className="min-h-screen bg-cream-50 flex items-center justify-center p-4">
         <p className="text-sm font-semibold text-ink-500">모집 공고를 불러오는 중입니다…</p>
+      </div>
+    );
+  }
+
+  if (!cohort) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-cream-50 via-white to-cream-100 flex items-center justify-center p-4 font-sans">
+        <Card className="max-w-md w-full p-8 text-center space-y-4 shadow-modal rounded-3xl border-cream-200 bg-white">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-cream-100 text-ink-700 text-3xl font-bold">
+            🐾
+          </div>
+          <h1 className="text-xl font-bold text-ink-900">현재 진행 중인 모집 공고가 없습니다</h1>
+          <p className="text-xs text-ink-500 leading-relaxed">
+            아직 모집 공고가 등록되지 않았거나 기수가 준비 중입니다.<br />
+            운영진 콘솔에서 모집 기수 및 공고를 등록하면 이곳에 포스터와 지원서 작성 버튼이 노출됩니다!
+          </p>
+          <div className="pt-2 flex justify-center gap-3">
+            <a
+              href="/recruit"
+              className="inline-block px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl no-underline transition-all shadow-sm"
+            >
+              지원 결과 조회하기 🔍
+            </a>
+          </div>
+        </Card>
       </div>
     );
   }
