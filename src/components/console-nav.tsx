@@ -73,11 +73,11 @@ export function ConsoleNav({ role }: { role: string }) {
         key={m.href}
         href={m.href}
         onClick={() => setOpen(false)}
-        className={`flex items-center gap-2 rounded-xl font-semibold no-underline transition-colors ${
-          big ? 'h-[52px] px-3.5 text-[15px]' : 'h-10 px-3 text-sm'
+        className={`flex items-center gap-1.5 rounded-xl font-semibold no-underline transition-colors whitespace-nowrap shrink-0 ${
+          big ? 'h-[52px] px-3.5 text-[15px]' : 'h-9 px-2.5 text-xs lg:text-sm lg:px-3'
         } ${isActive ? 'bg-blue-50 text-blue-700' : 'text-ink-700 hover:bg-cream-50'}`}
       >
-        <Icon name={m.icon} size={18} />
+        <Icon name={m.icon} size={17} />
         {m.label}
       </a>
     );
@@ -85,19 +85,21 @@ export function ConsoleNav({ role }: { role: string }) {
 
   return (
     <header className="relative border-b border-ink-200 bg-white">
-      <div className="mx-auto flex h-[60px] max-w-[1120px] items-center gap-2.5 px-4">
-        <a href="/" className="flex items-center gap-2 no-underline">
+      <div className="mx-auto flex h-[60px] max-w-[1120px] items-center gap-2 px-3 sm:px-4">
+        <a href="/" className="flex items-center gap-2 no-underline shrink-0 mr-1">
           <img src="/logo.png" alt="애니멀메이트" className="h-8 w-8 rounded-full" />
-          <strong className="text-[17px] font-bold text-ink-900">애니멀메이트</strong>
+          <strong className="text-[17px] font-bold text-ink-900 hidden sm:inline">애니멀메이트</strong>
         </a>
-        {menus.length > 0 ? <nav className="ml-4 hidden gap-0.5 md:flex">{menus.map((m) => link(m))}</nav> : null}
-        <span className="flex-1" />
-        <RoleBadge role={role} />
-        <a href="/profile" onClick={() => setOpen(false)} className="hidden items-center gap-1.5 px-1 py-2 text-[13px] text-ink-500 no-underline hover:text-ink-700 md:flex">
+        {menus.length > 0 ? <nav className="hidden gap-0.5 md:flex shrink-0 overflow-x-auto">{menus.map((m) => link(m))}</nav> : null}
+        <span className="flex-1 min-w-[8px]" />
+        <div className="hidden sm:block shrink-0">
+          <RoleBadge role={role} />
+        </div>
+        <a href="/profile" onClick={() => setOpen(false)} className="hidden items-center gap-1 px-1.5 py-2 text-[13px] text-ink-500 no-underline hover:text-ink-700 md:flex whitespace-nowrap shrink-0">
           <Icon name="users" size={16} />
           내 정보
         </a>
-        <button onClick={logout} className="hidden items-center gap-1.5 px-1 py-2 text-[13px] text-ink-500 hover:text-ink-700 md:flex">
+        <button onClick={logout} className="hidden items-center gap-1 px-1.5 py-2 text-[13px] text-ink-500 hover:text-ink-700 md:flex whitespace-nowrap shrink-0">
           <Icon name="logout" size={16} />
           로그아웃
         </button>
