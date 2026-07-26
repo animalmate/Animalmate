@@ -52,6 +52,10 @@ export const RULES = {
    * 가입 여부와 무관하게 같은 지점에서 적용해야 리밋 자체가 열거 신호가 되지 않는다.
    */
   mailToAddress: { bucket: 'mail_to_address', windowSeconds: 3600, max: 5 },
+  /** F9 신입 모집 비로그인 지원자 조회 - 무차별 대입 방지 (분당 5회) */
+  recruitLookup: { bucket: 'recruit_lookup', windowSeconds: 60, max: 5 },
+  /** F9 신입 모집 비로그인 지원자 조회 - 실패 10회 시 1시간 차단 */
+  recruitLookupFail: { bucket: 'recruit_lookup_fail', windowSeconds: 3600, max: 10 },
 } as const satisfies Record<string, LimitRule>;
 
 /** 고정 윈도의 시작 시각(윈도 길이로 내림). */
