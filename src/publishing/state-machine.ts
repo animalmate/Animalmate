@@ -14,11 +14,11 @@ export type PostStatus = (typeof postStatusEnum.enumValues)[number]; // draft|re
 export const MAX_RETRIES = 2;
 
 const ALLOWED: Record<PostStatus, PostStatus[]> = {
-  draft: ['ready'],
+  draft: ['ready', 'scheduled'],
   ready: ['scheduled', 'draft'],
-  scheduled: ['published', 'failed', 'scheduled'], // scheduled→scheduled = 대기 후 재시도
+  scheduled: ['published', 'failed', 'scheduled', 'draft'], // scheduled→scheduled = 대기 후 재시도, draft = 항목 미비 시 자동 복귀
   published: [],
-  failed: ['scheduled'], // 운영진이 재시도 큐에 되돌릴 수 있음
+  failed: ['scheduled', 'draft'], // 운영진이 재시도 큐에 되돌릴 수 있음
 };
 
 export function canTransition(from: PostStatus, to: PostStatus): boolean {

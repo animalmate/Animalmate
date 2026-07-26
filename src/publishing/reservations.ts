@@ -11,7 +11,7 @@ import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { getTemplate, renderTemplate } from './post-templates';
 import { getWritableBoard } from '@/boards/service';
-import { publishVars, usedPlaceholders, type UsedPlaceholder } from './final-render';
+import { publishVars, usedPlaceholders, renderForPublish, type UsedPlaceholder } from './final-render';
 
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
 
@@ -74,7 +74,9 @@ export async function createReservation(db: Db, actor: Actor, input: CreateReser
       })
       .returning();
     await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: 'post.create', targetTable: 'scheduled_posts', targetId: post!.id, after: post }));
-    return post!;
+    await autoDetermineStatus(db, post!.id);
+    const [updated] = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, post!.id)).limit(1);
+    return updated!;
   }
 
   // 봉사 공지: event + post 동시 생성(팀 소유).
@@ -106,7 +108,9 @@ export async function createReservation(db: Db, actor: Actor, input: CreateReser
       })
       .returning();
     await recordAudit(tx, buildAuditEntry({ actorUserId: actor.userId, action: 'post.create', targetTable: 'scheduled_posts', targetId: post!.id, after: { eventId: ev!.id } }));
-    return post!;
+    await autoDetermineStatus(tx, post!.id);
+    const [updated] = await tx.select().from(scheduledPosts).where(eq(scheduledPosts.id, post!.id)).limit(1);
+    return updated!;
   });
 }
 
@@ -226,7 +230,7 @@ export interface UpdateReservationPatch {
   capacity?: number | null;
 }
 
-/** 예약 개별 수정(published 전까지). 소유자/회장단. post + 연결 event 필드 갱신. */
+/** 예약 개별 수정(published 전까지). 소유자/회장단. post + 연결 event 필드 갱신 후 상태 자동 판정. */
 export async function updateReservation(db: Db, actor: Actor, id: string, patch: UpdateReservationPatch): Promise<void> {
   const [post] = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, id)).limit(1);
   if (!post) throw new Error(`scheduled_post not found: ${id}`);
@@ -252,6 +256,9 @@ export async function updateReservation(db: Db, actor: Actor, id: string, patch:
     db,
     buildAuditEntry({ actorUserId: actor.userId, action: 'post.update', targetTable: 'scheduled_posts', targetId: id, after: patch })
   );
+
+  // 수정 후 필수 항목 충족 여부에 따라 상태 자동 판정 (scheduled / draft)
+  await autoDetermineStatus(db, id);
 }
 
 export interface ReservationRow {
@@ -271,18 +278,52 @@ export interface ReservationRow {
   placeholders: UsedPlaceholder[];
 }
 
-function computeMissing(p: ScheduledPost, ev: typeof events.$inferSelect | null): string[] {
-  if (p.status !== 'draft') return [];
+export function computeMissing(
+  p: ScheduledPost,
+  ev: typeof events.$inferSelect | null,
+  unresolvedKeys: string[] = []
+): string[] {
   const m: string[] = [];
   if (!p.title?.trim()) m.push('제목');
   if (!p.contentMd?.trim()) m.push('본문');
-  if (p.publishAt == null) m.push('발행시각');
-  if (p.eventId && ev) {
-    if (ev.eventDate == null) m.push('일시');
-    if (!ev.place?.trim()) m.push('장소');
-    if (ev.capacity == null) m.push('정원');
+  if (p.publishAt == null) m.push('업로드 시각');
+  if (p.boardMenuid == null) m.push('게시판');
+  if (p.eventId) {
+    if (!ev) {
+      m.push('봉사회차');
+    } else {
+      if (ev.eventDate == null) m.push('일시');
+      if (!ev.place?.trim()) m.push('장소');
+      if (ev.capacity == null) m.push('정원');
+    }
+  }
+  for (const k of unresolvedKeys) {
+    if (!m.includes(`{{${k}}}`)) {
+      m.push(`{{${k}}}`);
+    }
   }
   return m;
+}
+
+/** 필수 항목 충족 여부에 따라 상태 자동 판정 (미비 항목이 없으면 scheduled, 있으면 draft) */
+export async function autoDetermineStatus(db: Db, id: string): Promise<{ status: string; missing: string[] }> {
+  const [post] = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, id)).limit(1);
+  if (!post || post.status === 'published') {
+    return { status: post?.status ?? 'published', missing: [] };
+  }
+  let event: typeof events.$inferSelect | null = null;
+  if (post.eventId) {
+    const [ev] = await db.select().from(events).where(eq(events.id, post.eventId)).limit(1);
+    event = ev ?? null;
+  }
+  const rendered = await renderForPublish(db, post);
+  const missing = computeMissing(post, event, rendered.unresolved);
+  const nextStatus = missing.length === 0 ? 'scheduled' : 'draft';
+
+  if (post.status !== nextStatus && post.status !== 'failed') {
+    await db.update(scheduledPosts).set({ status: nextStatus, updatedAt: new Date() }).where(eq(scheduledPosts.id, id));
+  }
+  return { status: post.status === 'failed' ? 'failed' : nextStatus, missing };
 }
 
 /**
@@ -314,24 +355,36 @@ export async function listReservations(db: Db, opts: { teamId?: string; actor?: 
   const teamIds = [...new Set(rows.filter((r) => r.post.ownerType === 'team' && r.post.status !== 'published').map((r) => r.post.ownerId))];
   const leadersByTeam = new Map(await Promise.all(teamIds.map(async (id) => [id, await composeTeamLeaders(db, id)] as const)));
 
-  return rows.map(({ post, event, boardName }) => ({
-    id: post.id,
-    title: post.title,
-    status: post.status,
-    boardMenuid: post.boardMenuid,
-    boardName: boardName ?? null,
-    publishAt: post.publishAt ? post.publishAt.toISOString() : null,
-    cafeArticleUrl: post.cafeArticleUrl,
-    ownerType: post.ownerType,
-    ownerId: post.ownerId,
-    failReason: post.failReason ?? null,
-    event: event
-      ? { eventDate: event.eventDate, meetTime: event.meetTime, place: event.place, capacity: event.capacity }
-      : null,
-    missing: computeMissing(post, event),
-    placeholders:
+  return rows.map(({ post, event, boardName }) => {
+    const placeholders =
       post.status === 'published'
-        ? [] // 이미 나간 글은 치환이 끝난 최종본이다(카페 수정 API 없음)
-        : usedPlaceholders(post, publishVars(event, post.ownerType === 'team' ? (leadersByTeam.get(post.ownerId) ?? '') : '')),
-  }));
+        ? []
+        : usedPlaceholders(post, publishVars(event, post.ownerType === 'team' ? (leadersByTeam.get(post.ownerId) ?? '') : ''));
+    const unresolvedKeys = placeholders.filter((p) => p.value === null).map((p) => p.key);
+    const missing = computeMissing(post, event, unresolvedKeys);
+    const computedStatus =
+      post.status === 'published' || post.status === 'failed'
+        ? post.status
+        : missing.length === 0
+          ? 'scheduled'
+          : 'draft';
+
+    return {
+      id: post.id,
+      title: post.title,
+      status: computedStatus,
+      boardMenuid: post.boardMenuid,
+      boardName: boardName ?? null,
+      publishAt: post.publishAt ? post.publishAt.toISOString() : null,
+      cafeArticleUrl: post.cafeArticleUrl,
+      ownerType: post.ownerType,
+      ownerId: post.ownerId,
+      failReason: post.failReason ?? null,
+      event: event
+        ? { eventDate: event.eventDate, meetTime: event.meetTime, place: event.place, capacity: event.capacity }
+        : null,
+      missing,
+      placeholders,
+    };
+  });
 }

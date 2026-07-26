@@ -11,7 +11,9 @@ import {
 describe('상태 전이 규칙', () => {
   it('허용 전이', () => {
     expect(canTransition('draft', 'ready')).toBe(true);
+    expect(canTransition('draft', 'scheduled')).toBe(true); // 항목 충족 시 자동 전환
     expect(canTransition('ready', 'scheduled')).toBe(true);
+    expect(canTransition('scheduled', 'draft')).toBe(true); // 항목 미비 시 자동 복귀
     expect(canTransition('scheduled', 'published')).toBe(true);
     expect(canTransition('scheduled', 'failed')).toBe(true);
     expect(canTransition('scheduled', 'scheduled')).toBe(true); // 대기 후 재시도

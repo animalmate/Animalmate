@@ -7,11 +7,8 @@ import * as schema from '@/db/schema';
 import { scheduledPosts, boards, users, auditLogs } from '@/db/schema';
 import {
   createDraft,
-  markReady,
-  schedulePost,
   fetchDuePosts,
   applyPublishResult,
-  NotReadyError,
 } from '@/publishing/scheduled-posts';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
@@ -66,21 +63,17 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
     await expect(createDraft(db, member, baseInput(new Date()))).rejects.toBeInstanceOf(PermissionError);
   });
 
-  it('필수값(발행시각) 없으면 markReady 가 NotReadyError', async () => {
+  it('필수값(발행시각) 없으면 draft 상태로 유지', async () => {
     const draft = await createDraft(db, staff, baseInput(null));
     postIds.push(draft.id);
     expect(draft.status).toBe('draft');
-    await expect(markReady(db, staff, draft.id)).rejects.toBeInstanceOf(NotReadyError);
   });
 
-  it('draft → ready → scheduled 전이', async () => {
+  it('필수값 완성 시 자동 scheduled 상태 적용', async () => {
     const past = new Date(Date.now() - 60_000);
-    const draft = await createDraft(db, staff, baseInput(past));
-    postIds.push(draft.id);
-    const ready = await markReady(db, staff, draft.id);
-    expect(ready.status).toBe('ready');
-    const scheduled = await schedulePost(db, staff, draft.id);
-    expect(scheduled.status).toBe('scheduled');
+    const post = await createDraft(db, staff, baseInput(past));
+    postIds.push(post.id);
+    expect(post.status).toBe('scheduled');
   });
 
   it('fetchDuePosts 는 due(scheduled+publish_at<=now) 를 최대 5건 반환', async () => {
@@ -92,10 +85,8 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
 
   it('rate_limited(code 999) 적용 → failed 아님, scheduled 유지, retry_count 불변', async () => {
     const past = new Date(Date.now() - 60_000);
-    const d = await createDraft(db, staff, baseInput(past));
-    postIds.push(d.id);
-    await markReady(db, staff, d.id);
-    const scheduled = await schedulePost(db, staff, d.id);
+    const scheduled = await createDraft(db, staff, baseInput(past));
+    postIds.push(scheduled.id);
 
     const after = (await applyPublishResult(db, scheduled, { kind: 'rate_limited' }))!;
     expect(after.status).toBe('scheduled');
@@ -105,10 +96,8 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
 
   it('success 적용 → published + 카페 URL 저장', async () => {
     const past = new Date(Date.now() - 60_000);
-    const d = await createDraft(db, staff, baseInput(past));
-    postIds.push(d.id);
-    await markReady(db, staff, d.id);
-    const scheduled = await schedulePost(db, staff, d.id);
+    const scheduled = await createDraft(db, staff, baseInput(past));
+    postIds.push(scheduled.id);
 
     const after = (await applyPublishResult(db, scheduled, {
       kind: 'success',
@@ -118,7 +107,7 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
     expect(after.cafeArticleUrl).toBe('https://cafe.naver.com/animalmate2010/99999');
 
     // 발행 결과 audit(post.published, 시스템=actor null) 기록 확인
-    const audits = await db.select().from(auditLogs).where(eq(auditLogs.targetId, d.id));
+    const audits = await db.select().from(auditLogs).where(eq(auditLogs.targetId, scheduled.id));
     expect(audits.some((a) => a.action === 'post.published' && a.actorUserId === null)).toBe(true);
   });
 });

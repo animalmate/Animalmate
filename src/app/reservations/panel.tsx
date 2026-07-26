@@ -125,12 +125,6 @@ export function ReservationsPanel() {
                     <a href={`/reservations/${r.id}/edit`}>
                       <SecondaryButton>수정</SecondaryButton>
                     </a>
-                    {r.status === 'draft' ? (
-                      <SecondaryButton onClick={() => act(r.id, 'ready')}>완성 처리</SecondaryButton>
-                    ) : null}
-                    {r.status === 'ready' ? (
-                      <SecondaryButton onClick={() => act(r.id, 'schedule')}>업로드 대기로</SecondaryButton>
-                    ) : null}
                     {r.status === 'failed' ? (
                       <SecondaryButton onClick={() => act(r.id, 'schedule')}>재시도(업로드 대기)</SecondaryButton>
                     ) : null}
