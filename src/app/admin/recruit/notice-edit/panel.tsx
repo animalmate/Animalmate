@@ -9,7 +9,6 @@ export function RecruitNoticeEditPanel() {
   const [selectedCohortId, setSelectedCohortId] = useState('');
 
   const [noticeContent, setNoticeContent] = useState('');
-  const [noticeImagesText, setNoticeImagesText] = useState('');
   const [congratsMessage, setCongratsMessage] = useState('');
   const [postPassNotice, setPostPassNotice] = useState('');
   const [isClosed, setIsClosed] = useState(false);
@@ -17,6 +16,8 @@ export function RecruitNoticeEditPanel() {
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+
+  const [noticeImages, setNoticeImages] = useState<string[]>([]);
 
   useEffect(() => {
     fetchCohorts();
@@ -42,7 +43,7 @@ export function RecruitNoticeEditPanel() {
     const data = await res.json();
     if (data.cohort) {
       setNoticeContent(data.cohort.noticeContent || '');
-      setNoticeImagesText((data.cohort.noticeImages || []).join('\n'));
+      setNoticeImages(data.cohort.noticeImages || []);
       setCongratsMessage(data.cohort.congratsMessage || '');
       setPostPassNotice(data.cohort.postPassNotice || '');
       setIsClosed(!!data.cohort.isClosed);
@@ -50,16 +51,49 @@ export function RecruitNoticeEditPanel() {
     }
   };
 
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+          setNoticeImages((prev) => [...prev, compressedBase64]);
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    setNoticeImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
   const handleSaveSettings = async () => {
     if (!selectedCohortId) return;
     setSaving(true);
     setMessage('');
     try {
-      const noticeImages = noticeImagesText
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean);
-
       const venues = venuesText
         .split('\n')
         .map((s) => s.trim())
@@ -80,7 +114,7 @@ export function RecruitNoticeEditPanel() {
       });
 
       if (res.ok) {
-        setMessage('✅ 모집 공고, 마감 스위치 및 안내 설정이 성공적으로 저장되었습니다.');
+        setMessage('✅ 모집 공고, 첨부 이미지, 마감 스위치 및 안내 설정이 저장되었습니다.');
       } else {
         const data = await res.json();
         setMessage(`❌ 저장 실패: ${data.error}`);
@@ -190,14 +224,41 @@ export function RecruitNoticeEditPanel() {
           />
         </Field>
 
-        <Field label="모집 포스터/안내 이미지 URL 리스트 (줄바꿈 구분)" hint="공고 상단에 노출할 포스터 이미지 웹 URL">
-          <textarea
-            className="w-full h-24 rounded-xl border border-ink-200 bg-white p-3.5 text-xs font-mono text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 leading-relaxed"
-            placeholder="https://example.com/poster1.png&#10;https://example.com/poster2.png"
-            value={noticeImagesText}
-            onChange={(e) => setNoticeImagesText(e.target.value)}
-          />
-        </Field>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs font-bold text-ink-900 block">🖼️ 모집 포스터 및 안내 이미지 첨부</label>
+              <p className="text-[11px] text-ink-500">컴퓨터에서 포스터 이미지 파일(PNG, JPG, WEBP)을 선택하여 바로 첨부할 수 있습니다.</p>
+            </div>
+
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all">
+              <span>📂 이미지 파일 추가</span>
+              <input type="file" accept="image/*" multiple onChange={handleImageFileUpload} className="hidden" />
+            </label>
+          </div>
+
+          {/* 이미지 썸네일 그리드 */}
+          {noticeImages.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+              {noticeImages.map((imgUrl, idx) => (
+                <div key={idx} className="relative group rounded-xl border border-cream-200 bg-cream-50 overflow-hidden shadow-xs">
+                  <img src={imgUrl} alt={`첨부 이미지 ${idx + 1}`} className="w-full h-32 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(idx)}
+                    className="absolute top-1.5 right-1.5 bg-ink-900/80 text-white text-[11px] font-bold px-2 py-0.5 rounded-md hover:bg-coral-600 transition-colors"
+                  >
+                    ✕ 삭제
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="border border-dashed border-ink-200 rounded-xl p-6 text-center text-xs text-ink-400">
+              첨부된 포스터 이미지가 없습니다. 상단 '이미지 파일 추가' 버튼을 눌러 컴퓨터에 있는 이미지 파일(JPG, PNG)을 선택해주세요.
+            </div>
+          )}
+        </div>
 
         <div className="border-t border-cream-200 pt-6 space-y-4">
           <h2 className="text-base font-bold text-ink-900">📍 대면 면접 장소 프리셋 (줄바꿈 구분)</h2>
