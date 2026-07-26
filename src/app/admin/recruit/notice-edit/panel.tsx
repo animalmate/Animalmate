@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, Field, Input, Select } from '@/components/ui';
+import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select } from '@/components/ui';
 
 export function RecruitNoticeEditPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState('');
+  const [newCohortLabel, setNewCohortLabel] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const [noticeContent, setNoticeContent] = useState('');
   const [congratsMessage, setCongratsMessage] = useState('');
@@ -34,7 +36,48 @@ export function RecruitNoticeEditPanel() {
     const data = await res.json();
     if (data.cohorts && data.cohorts.length > 0) {
       setCohorts(data.cohorts);
-      setSelectedCohortId(data.cohorts[0].id);
+      if (!selectedCohortId) {
+        setSelectedCohortId(data.cohorts[0].id);
+      }
+    }
+  };
+
+  const handleCreateCohort = async () => {
+    if (!newCohortLabel.trim()) return;
+    const res = await fetch('/api/recruit/cohorts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: newCohortLabel.trim() }),
+    });
+    const data = await res.json();
+    if (data.cohort) {
+      setNewCohortLabel('');
+      await fetchCohorts();
+      setSelectedCohortId(data.cohort.id);
+      setMessage(`✅ 모집 기수 [${data.cohort.label}]가 새로 생성되었습니다.`);
+    }
+  };
+
+  const handleDeleteCohort = async () => {
+    if (!selectedCohortId) return;
+    setSaving(true);
+    try {
+      const selectedLabel = cohorts.find((c) => c.id === selectedCohortId)?.label;
+      const res = await fetch(`/api/recruit/cohorts/${selectedCohortId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setMessage(`✅ 기수 [${selectedLabel}] 및 관련 공고/지원자 데이터가 모두 삭제되었습니다.`);
+        setShowDeleteModal(false);
+        const remaining = cohorts.filter((c) => c.id !== selectedCohortId);
+        setCohorts(remaining);
+        setSelectedCohortId(remaining.length > 0 ? remaining[0].id : '');
+      } else {
+        const data = await res.json();
+        setMessage(`❌ 삭제 실패: ${data.error}`);
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -181,6 +224,53 @@ export function RecruitNoticeEditPanel() {
 
       <RecruitNav />
 
+      {/* 모집 기수 선택 및 관리 */}
+      <Card className="space-y-4">
+        <div className="flex items-center justify-between border-b border-cream-200 pb-3">
+          <h2 className="text-base font-bold text-ink-900">🚩 모집 기수 선택 및 생성 / 삭제</h2>
+          <span className="text-xs text-ink-500">새로운 신입 기수를 생성하거나 기존 기수를 관리합니다.</span>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[220px]">
+            <Field label="현재 선택된 모집 기수">
+              <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)}>
+                {cohorts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <div className="flex items-end gap-2 flex-1 min-w-[320px]">
+            <div className="flex-1">
+              <Field label="새 신입 기수 생성">
+                <Input
+                  type="text"
+                  placeholder="예: 33기 (또는 34기)"
+                  value={newCohortLabel}
+                  onChange={(e) => setNewCohortLabel(e.target.value)}
+                />
+              </Field>
+            </div>
+            <Button type="button" onClick={handleCreateCohort} className="h-control whitespace-nowrap">
+              + 기수 생성
+            </Button>
+            {selectedCohortId && (
+              <DangerButton
+                type="button"
+                onClick={() => setShowDeleteModal(true)}
+                className="h-control whitespace-nowrap"
+              >
+                🗑️ 기수 삭제
+              </DangerButton>
+            )}
+          </div>
+        </div>
+      </Card>
+
       {/* 모집 마감 스위치 바 */}
       <Card className="p-5 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-cream-50 to-blue-50/40 border-cream-200 shadow-card">
         <div className="flex items-center gap-3">
@@ -311,6 +401,29 @@ export function RecruitNoticeEditPanel() {
           </Button>
         </div>
       </Card>
+
+      {/* 기수 삭제 경고 모달 */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-ink-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full p-6 space-y-4 shadow-modal rounded-3xl border-coral-200 bg-white">
+            <div className="flex items-center gap-3 text-coral-700">
+              <span className="text-2xl">⚠️</span>
+              <h2 className="text-lg font-bold text-ink-900">정말 이 기수를 삭제하시겠습니까?</h2>
+            </div>
+            <p className="text-xs text-ink-500 leading-relaxed">
+              선택하신 <strong className="text-ink-900 font-bold">[{cohorts.find(c => c.id === selectedCohortId)?.label}]</strong> 기수와 관련된 모든 모집 공고, 지원서 및 채점 데이터가 원복 불가능하게 파기됩니다. 계속 진행할까요?
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <SecondaryButton type="button" onClick={() => setShowDeleteModal(false)}>
+                취소
+              </SecondaryButton>
+              <DangerButton type="button" disabled={saving} onClick={handleDeleteCohort}>
+                {saving ? '삭제 중…' : '네, 정말 삭제합니다'}
+              </DangerButton>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

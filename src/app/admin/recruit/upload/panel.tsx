@@ -2,12 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select } from '@/components/ui';
+import { Button, Card, Field, Select } from '@/components/ui';
 
 export function RecruitUploadPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState('');
-  const [newCohortLabel, setNewCohortLabel] = useState('');
   const [csvText, setCsvText] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({
@@ -33,7 +32,6 @@ export function RecruitUploadPanel() {
   const [previewResult, setPreviewResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const fieldLabels: Record<string, string> = {
     name: '이름 (필수)',
@@ -67,46 +65,6 @@ export function RecruitUploadPanel() {
       if (data.cohorts.length > 0 && !selectedCohortId) {
         setSelectedCohortId(data.cohorts[0].id);
       }
-    }
-  };
-
-  const handleCreateCohort = async () => {
-    if (!newCohortLabel.trim()) return;
-    const res = await fetch('/api/recruit/cohorts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: newCohortLabel.trim() }),
-    });
-    const data = await res.json();
-    if (data.cohort) {
-      setNewCohortLabel('');
-      await fetchCohorts();
-      setSelectedCohortId(data.cohort.id);
-      setMessage(`✅ 기수 [${data.cohort.label}]가 새로 생성되었습니다.`);
-    }
-  };
-
-  const handleDeleteCohort = async () => {
-    if (!selectedCohortId) return;
-    setLoading(true);
-    try {
-      const selectedLabel = cohorts.find((c) => c.id === selectedCohortId)?.label;
-      const res = await fetch(`/api/recruit/cohorts/${selectedCohortId}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        setMessage(`✅ 기수 [${selectedLabel}] 및 관련 지원자 데이터가 모두 삭제되었습니다.`);
-        setShowDeleteModal(false);
-        const remaining = cohorts.filter((c) => c.id !== selectedCohortId);
-        setCohorts(remaining);
-        setSelectedCohortId(remaining.length > 0 ? remaining[0].id : '');
-        setPreviewResult(null);
-      } else {
-        const data = await res.json();
-        setMessage(`❌ 삭제 실패: ${data.error}`);
-      }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -188,8 +146,6 @@ export function RecruitUploadPanel() {
     }
   };
 
-  const selectedCohort = cohorts.find((c) => c.id === selectedCohortId);
-
   return (
     <div className="space-y-6">
       <div>
@@ -202,49 +158,27 @@ export function RecruitUploadPanel() {
       <RecruitNav />
 
       <div className="space-y-6">
-        {/* Step 1: 기수 선택 및 관리 */}
+        {/* Step 1: 업로드 기수 선택 */}
         <Card className="space-y-4">
-          <div className="flex items-center gap-2 border-b border-cream-200 pb-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-100 text-xs font-bold text-blue-700">1</span>
-            <h2 className="text-base font-bold text-ink-900">모집 기수 선택 및 생성 / 삭제</h2>
+          <div className="flex items-center justify-between border-b border-cream-200 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-100 text-xs font-bold text-blue-700">1</span>
+              <h2 className="text-base font-bold text-ink-900">데이터를 업로드할 모집 기수 선택</h2>
+            </div>
+            <a href="/admin/recruit/notice-edit" className="text-xs font-semibold text-blue-600 hover:underline">
+              ⚙️ 0. 공고 설정에서 새 기수 생성/관리하기 →
+            </a>
           </div>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex-1 min-w-[240px]">
-              <Field label="현재 관리 중인 기수">
-                <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)}>
-                  {cohorts.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-
-            <div className="flex items-end gap-2 flex-1 min-w-[340px]">
-              <div className="flex-1">
-                <Field label="새 기수 추가">
-                  <Input
-                    type="text"
-                    placeholder="예: 33기 (또는 F9)"
-                    value={newCohortLabel}
-                    onChange={(e) => setNewCohortLabel(e.target.value)}
-                  />
-                </Field>
-              </div>
-              <Button type="button" onClick={handleCreateCohort} className="h-control whitespace-nowrap">
-                + 기수 생성
-              </Button>
-              {selectedCohortId && (
-                <DangerButton
-                  type="button"
-                  onClick={() => setShowDeleteModal(true)}
-                  className="h-control whitespace-nowrap"
-                >
-                  기수 삭제
-                </DangerButton>
-              )}
-            </div>
+          <div>
+            <Field label="현재 업로드 대상 기수">
+              <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)} className="max-w-md">
+                {cohorts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
         </Card>
 
@@ -371,33 +305,6 @@ export function RecruitUploadPanel() {
           </div>
         )}
       </div>
-
-      {/* 기수 삭제 확인 팝업 모달 */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-ink-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-6 space-y-4 shadow-modal border-coral-200">
-            <h2 className="text-lg font-bold text-coral-700 flex items-center gap-2">
-              🚨 기수를 정말 삭제하시겠습니까?
-            </h2>
-            <p className="text-xs text-ink-500 leading-relaxed">
-              선택하신 <strong className="text-ink-900 font-bold">[{selectedCohort?.label}]</strong> 기수의 모든 지원자 명단, 서류/면접 심사 점수, 개인 메모 및 배정 슬롯이 영구적으로 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
-            </p>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <SecondaryButton type="button" onClick={() => setShowDeleteModal(false)}>
-                취소
-              </SecondaryButton>
-              <DangerButton
-                type="button"
-                disabled={loading}
-                onClick={handleDeleteCohort}
-              >
-                {loading ? '삭제 중…' : '정말 삭제하겠습니다'}
-              </DangerButton>
-            </div>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }
