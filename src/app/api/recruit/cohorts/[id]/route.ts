@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isPrivileged } from '@/auth/permissions';
+import { isStaffPlus } from '@/auth/permissions';
 import { deleteCohort, getCohortById, updateCohortPublicSwitches } from '@/recruit/cohorts';
 
 export const runtime = 'nodejs';
@@ -20,7 +20,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const { id } = await context.params;
   try {
@@ -39,7 +39,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const { id } = await context.params;
   try {

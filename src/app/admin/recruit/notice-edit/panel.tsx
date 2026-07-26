@@ -43,18 +43,31 @@ export function RecruitNoticeEditPanel() {
   };
 
   const handleCreateCohort = async () => {
-    if (!newCohortLabel.trim()) return;
-    const res = await fetch('/api/recruit/cohorts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: newCohortLabel.trim() }),
-    });
-    const data = await res.json();
-    if (data.cohort) {
-      setNewCohortLabel('');
-      await fetchCohorts();
-      setSelectedCohortId(data.cohort.id);
-      setMessage(`✅ 모집 기수 [${data.cohort.label}]가 새로 생성되었습니다.`);
+    if (!newCohortLabel.trim()) {
+      setMessage('❌ 생성할 기수 이름을 입력해주세요 (예: 33기).');
+      return;
+    }
+    setSaving(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/recruit/cohorts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: newCohortLabel.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.cohort) {
+        setNewCohortLabel('');
+        await fetchCohorts();
+        setSelectedCohortId(data.cohort.id);
+        setMessage(`✅ 모집 기수 [${data.cohort.label}]가 성공적으로 생성되었습니다.`);
+      } else {
+        setMessage(`❌ 기수 생성 실패 (${res.status}): ${data.message || data.error || '오류가 발생했습니다.'}`);
+      }
+    } catch (err: any) {
+      setMessage(`❌ 통신/전송 오류: ${err?.message || '서버 응답을 불러올 수 없습니다.'}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -200,26 +213,9 @@ export function RecruitNoticeEditPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
-          <p className="mt-1 text-sm text-ink-500">공개 공고 문구, 이미지, 모집 중단(마감) 스위치, 대면 면접 장소 프리셋 및 축하 멘트 관리.</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink-900">기수:</span>
-          <Select
-            value={selectedCohortId}
-            onChange={(e) => setSelectedCohortId(e.target.value)}
-            className="w-48"
-          >
-            {cohorts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </Select>
-        </div>
+      <div>
+        <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
+        <p className="mt-1 text-sm text-ink-500">신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.</p>
       </div>
 
       <RecruitNav />
