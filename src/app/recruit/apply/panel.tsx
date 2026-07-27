@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { Icon } from '@/components/icon';
+import { CursorDog } from '@/components/cursor-dog';
 
 interface CohortSummary {
   id: string;
@@ -188,10 +189,13 @@ export function PublicRecruitApplyPanel({ cohort }: { cohort: CohortSummary | nu
 
   return (
     <main className="min-h-screen bg-cream-25 p-4 font-sans sm:p-8">
+      <CursorDog />
       <div className="mx-auto max-w-2xl">
         <div className="space-y-6 rounded-2xl border border-ink-200 bg-white p-6 shadow-card sm:p-8">
           <header className="space-y-2 border-b border-ink-100 pb-5">
-            <span className="inline-flex items-center rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="애니멀메이트" className="h-12 w-12 rounded-full" />
+            <span className="inline-flex items-center rounded-lg bg-coral-50 px-3 py-1 text-xs font-bold text-coral-700">
               {cohort.label} 지원서
             </span>
             <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">애니멀메이트 신입 부원 지원</h1>

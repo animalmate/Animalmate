@@ -3,6 +3,7 @@
 import React, { useId, useState } from 'react';
 import { Button, Field, Input } from '@/components/ui';
 import { Icon } from '@/components/icon';
+import { CursorDog } from '@/components/cursor-dog';
 import type { PublicStage } from '@/recruit/lookup-visibility';
 
 interface LookupResult {
@@ -154,12 +155,12 @@ export function PublicRecruitLookupPanel() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-cream-25 p-4 font-sans sm:p-6">
+      <CursorDog />
       <div className="w-full max-w-md space-y-4">
         <div className="space-y-5 rounded-2xl border border-ink-200 bg-white p-6 shadow-card sm:p-7">
           <header className="space-y-2 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-              <Icon name="users" size={24} />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-14 w-14 rounded-full" />
             <h1 className="text-lg font-bold text-ink-900">신입 모집 결과 조회</h1>
             <p className="text-[13px] leading-relaxed text-ink-500">
               지원 시 제출하신 이름과 전화번호를 입력해 주세요.

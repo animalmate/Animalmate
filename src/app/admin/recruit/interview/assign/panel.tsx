@@ -199,36 +199,45 @@ export function RecruitInterviewAssignPanel() {
 
       {/* 1. 슬롯 생성 카드 (10분 단위 & 대면 장소 프리셋 + 비대면 링크) */}
       <Card className="space-y-5">
-        <div className="border-b border-cream-200 pb-3 flex items-center justify-between">
-          <h2 className="text-base font-bold text-ink-900">+ 10분 단위 면접 시간 슬롯 생성</h2>
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setIsRemote(false)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                !isRemote ? 'bg-blue-600 text-white shadow-sm' : 'bg-cream-100 text-ink-700 hover:bg-cream-200'
-              }`}
-            >
-              대면 면접
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsRemote(true)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                isRemote ? 'bg-blue-600 text-white shadow-sm' : 'bg-cream-100 text-ink-700 hover:bg-cream-200'
-              }`}
-            >
-              비대면 면접 (Zoom/Meet)
-            </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 pb-4">
+          <h2 className="text-base font-bold text-ink-900">면접 슬롯 만들기</h2>
+          {/* 두 값 중 하나를 고르는 것이므로 라디오 그룹으로 묶는다(키보드 화살표 이동·스크린리더 대응). */}
+          <div
+            role="radiogroup"
+            aria-label="면접 방식"
+            className="inline-flex h-control-sm items-center gap-0.5 rounded-xl bg-cream-100 p-1 text-[13px] font-semibold"
+          >
+            {[
+              { remote: false, label: '대면' },
+              { remote: true, label: '비대면' },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                role="radio"
+                aria-checked={isRemote === opt.remote}
+                onClick={() => setIsRemote(opt.remote)}
+                className={`rounded-lg px-3.5 py-1.5 transition-colors ${
+                  isRemote === opt.remote
+                    ? 'bg-white text-ink-900 shadow-card'
+                    : 'text-ink-500 hover:text-ink-900'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+        {/* 라벨은 전부 한 줄짜리로 맞추고 도움말은 표 아래 한 곳에 모은다.
+            예전에는 items-end 였는데 장소 필드에만 hint 가 붙어 있어서, 아래를 기준으로 정렬되는 바람에
+            그 셀렉트만 한 줄 위로 떠 다른 컨트롤과 높이가 어긋났다. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Field label="면접 날짜">
             <Input type="date" value={slotDate} onChange={(e) => setSlotDate(e.target.value)} />
           </Field>
 
-          <Field label="시작 시각 (10분 단위)">
+          <Field label="시작 시각">
             <Select value={slotTime} onChange={(e) => setSlotTime(e.target.value)}>
               {timeOptions.map((t) => (
                 <option key={t} value={t}>
@@ -249,7 +258,7 @@ export function RecruitInterviewAssignPanel() {
           </Field>
 
           {!isRemote ? (
-            <Field label="대면 면접 장소 프리셋 선택" hint="0. 공고 설정에서 등록 가능">
+            <Field label="면접 장소">
               <Select value={selectedVenue} onChange={(e) => setSelectedVenue(e.target.value)}>
                 {venuePresets.map((v) => (
                   <option key={v} value={v}>
@@ -259,7 +268,7 @@ export function RecruitInterviewAssignPanel() {
               </Select>
             </Field>
           ) : (
-            <Field label="화상 면접 접속 링크 (Zoom / Meet)" hint="비대면 화상 링크">
+            <Field label="화상 링크">
               <Input
                 type="text"
                 placeholder="https://zoom.us/j/..."
@@ -269,12 +278,19 @@ export function RecruitInterviewAssignPanel() {
             </Field>
           )}
 
-          <div>
-            <Button type="button" disabled={loading} onClick={handleCreateSlot} className="w-full h-control font-bold">
-              + 슬롯 생성
+          {/* 셀 높이가 모두 같으므로 items-end 로 버튼 바닥을 컨트롤 바닥에 맞춘다. */}
+          <div className="flex h-full items-end">
+            <Button type="button" disabled={loading} onClick={handleCreateSlot} className="w-full">
+              슬롯 생성
             </Button>
           </div>
         </div>
+
+        <p className="text-[13px] text-ink-500">
+          {isRemote
+            ? '비대면 슬롯은 화상 링크가 지원자 조회 화면에 그대로 노출됩니다.'
+            : '면접 장소는 “0. 공고·마감 설정”에서 등록한 프리셋 중에서 고릅니다.'}
+        </p>
 
         <StatusMessage text={message} />
       </Card>

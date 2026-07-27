@@ -36,6 +36,22 @@ export function DangerButton({ className = '', ...props }: ButtonHTMLAttributes<
   );
 }
 
+/**
+ * 공개 페이지(모집 공고·지원서)용 큰 행동 버튼.
+ *
+ * 관리 콘솔의 각진 파란 버튼은 지원자용 화면에서 사무적으로 보인다.
+ * 알약 형태 + 넉넉한 여백 + 낮은 대비의 그림자로 부드럽게 하되, 장식은 더하지 않아 깔끔함을 유지한다.
+ * 눌림 피드백은 색으로만 준다(레이아웃을 흔드는 scale 변형은 쓰지 않는다).
+ */
+const CTA_BASE =
+  'inline-flex min-h-tap items-center justify-center gap-2 rounded-full px-7 py-3.5 text-[15px] font-bold no-underline transition-colors duration-200 disabled:opacity-60';
+
+// 색은 산호(coral)를 쓴다. 로그인 화면의 "가입하기"가 이미 산호색이라 이 앱에서 산호 = "환영하는 행동"이고,
+// 따뜻한 크림 배경 위에서 파란 버튼보다 훨씬 부드럽게 얹힌다(파란색은 콘솔의 업무용 색).
+export const ctaPrimary = `${CTA_BASE} bg-coral-500 text-white shadow-card hover:bg-coral-600 hover:text-white active:bg-coral-700`;
+export const ctaQuiet = `${CTA_BASE} border-[1.5px] border-ink-200 bg-white text-ink-700 hover:bg-cream-50 hover:text-ink-900 hover:no-underline`;
+export const ctaDisabled = `${CTA_BASE} cursor-not-allowed bg-ink-200 text-ink-500`;
+
 export function Field({
   label,
   children,
@@ -67,10 +83,25 @@ export function Field({
   );
 }
 
-const CONTROL = 'w-full rounded-xl border-[1.5px] border-ink-200 bg-white text-[15px] text-ink-900 outline-none transition-colors placeholder:text-ink-400 focus:border-blue-500';
+const CONTROL = 'w-full rounded-xl border-[1.5px] border-ink-200 bg-white text-ink-900 outline-none transition-colors placeholder:text-ink-400 focus:border-blue-500';
 
-export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`h-control px-3.5 ${CONTROL} ${className}`} {...props} />;
+/**
+ * 컨트롤 높이는 반드시 이 prop 으로 고른다.
+ * className 에 `h-9` 같은 높이 유틸리티를 덧붙이면 기본 `h-control`(48px)과 같은 특이도로 충돌해서
+ * 어느 쪽이 이기는지 CSS 출력 순서에 달리게 된다 — 실제로 툴바 셀렉트가 버튼과 높이가 안 맞던 원인이다.
+ */
+export type ControlSize = 'sm' | 'md';
+const SIZE: Record<ControlSize, string> = {
+  sm: 'h-control-sm text-[13px]',
+  md: 'h-control text-[15px]',
+};
+
+export function Input({
+  className = '',
+  uiSize = 'md',
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { uiSize?: ControlSize }) {
+  return <input className={`${SIZE[uiSize]} px-3.5 ${CONTROL} ${className}`} {...props} />;
 }
 
 // ref 를 받는다(AutoGrowTextarea 가 높이를 재기 위해 필요 — React 19 는 ref 도 일반 prop).
@@ -78,8 +109,37 @@ export function Textarea({ className = '', ...props }: ComponentPropsWithRef<'te
   return <textarea className={`px-3.5 py-2.5 leading-relaxed ${CONTROL} ${className}`} {...props} />;
 }
 
-export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`h-control px-3 ${CONTROL} ${className}`} {...props} />;
+export function Select({
+  className = '',
+  uiSize = 'md',
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & { uiSize?: ControlSize }) {
+  return <select className={`${SIZE[uiSize]} px-3 ${CONTROL} ${className}`} {...props} />;
+}
+
+/**
+ * 라벨이 붙은 소형 툴바 컨트롤. 목록 화면 상단의 필터·기수 선택처럼
+ * "설명 + 컨트롤"이 한 덩어리로 보여야 하는 곳에 쓴다.
+ * 라벨을 컨트롤 옆에 떠 있는 텍스트로 두면 정렬이 흐트러지고 어수선해 보인다.
+ */
+export function ToolbarSelect({
+  label,
+  className = '',
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
+  // 높이는 min-h-tap(44px)에 맞춘다 — 옆에 서는 버튼들이 min-h-tap 때문에 실측 44px 이라
+  // 여기만 36px 이면 한 줄에서 눈에 띄게 어긋난다(접근성 최소 터치 타깃도 44px).
+  return (
+    <label className="inline-flex h-control-sm min-h-tap items-center gap-0 overflow-hidden rounded-xl border-[1.5px] border-ink-200 bg-white focus-within:border-blue-500">
+      <span className="flex h-full shrink-0 items-center border-r border-ink-100 bg-cream-50 px-2.5 text-[12px] font-semibold text-ink-500">
+        {label}
+      </span>
+      <select
+        className={`h-full min-w-0 border-0 bg-transparent px-2 pr-7 text-[13px] font-medium text-ink-900 outline-none ${className}`}
+        {...props}
+      />
+    </label>
+  );
 }
 
 export function ErrorText({ children }: { children: ReactNode }) {

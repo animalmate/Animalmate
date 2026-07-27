@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Banner, Button, Card, DangerButton, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
+import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, ToolbarSelect } from '@/components/ui';
 
 export function RecruitTallyPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -146,32 +146,32 @@ export function RecruitTallyPanel() {
           <p className="mt-1 text-sm text-ink-500">운영진 심사 결과를 팀별 종합 집계하여 면접 대상자(서류 합격자)를 일괄 결정합니다.</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
-            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-36 text-xs">
-              <option value="ALL">전체 팀 보기</option>
-              <option value="봉사 1팀">봉사 1팀</option>
-              <option value="봉사 2팀">봉사 2팀</option>
-              <option value="기획팀">기획팀</option>
-              <option value="홍보팀">홍보팀</option>
-            </Select>
-          </div>
+        {/* 라벨을 컨트롤 밖에 떠 있는 텍스트로 두면 정렬이 흐트러진다 — 라벨을 컨트롤 안에 붙인다.
+            높이도 h-control-sm 하나로 통일(예전엔 48px 컨트롤에 12px 글씨라 비어 보였다). */}
+        <div className="flex flex-wrap items-center gap-2">
+          <ToolbarSelect
+            label="팀"
+            value={selectedTeam}
+            onChange={(e) => setSelectedTeam(e.target.value)}
+          >
+            <option value="ALL">전체</option>
+            <option value="봉사 1팀">봉사 1팀</option>
+            <option value="봉사 2팀">봉사 2팀</option>
+            <option value="기획팀">기획팀</option>
+            <option value="홍보팀">홍보팀</option>
+          </ToolbarSelect>
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink-700">기수:</span>
-            <Select
-              value={selectedCohortId}
-              onChange={(e) => setSelectedCohortId(e.target.value)}
-              className="w-40 text-xs"
-            >
-              {cohorts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <ToolbarSelect
+            label="기수"
+            value={selectedCohortId}
+            onChange={(e) => setSelectedCohortId(e.target.value)}
+          >
+            {cohorts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </ToolbarSelect>
         </div>
       </div>
 
@@ -184,8 +184,8 @@ export function RecruitTallyPanel() {
             <div className="text-xs font-semibold text-ink-500">총 지원자 수</div>
             <div className="text-2xl font-bold text-ink-900 mt-1">{applicants.length}명</div>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold">
-            All
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+            <Icon name="users" size={20} />
           </span>
         </Card>
 
@@ -194,8 +194,8 @@ export function RecruitTallyPanel() {
             <div className="text-xs font-semibold text-ink-500">현재 서류 합격자</div>
             <div className="text-2xl font-bold text-success mt-1">{docPassCount}명</div>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-success-100 text-success font-bold">
-            Pass
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-success-100 text-success">
+            <Icon name="check" size={20} />
           </span>
         </Card>
 
@@ -206,8 +206,8 @@ export function RecruitTallyPanel() {
               {deficientCount}명
             </div>
           </div>
-          <span className={`flex h-10 w-10 items-center justify-center rounded-xl font-bold ${deficientCount > 0 ? 'bg-amber-100 text-amber-700' : 'bg-cream-100 text-ink-400'}`}>
-            ⚠️
+          <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${deficientCount > 0 ? 'bg-amber-100 text-amber-700' : 'bg-cream-100 text-ink-400'}`}>
+            <Icon name="alert" size={20} />
           </span>
         </Card>
       </div>
@@ -226,9 +226,10 @@ export function RecruitTallyPanel() {
             <div className="flex items-center gap-1.5">
               <Input
                 type="number"
+                uiSize="sm"
                 value={topNInput}
                 onChange={(e) => setTopNInput(e.target.value)}
-                className="w-20 text-center font-bold"
+                className="w-20 min-h-tap text-center font-bold"
               />
               <span className="text-xs text-ink-500 font-semibold">명</span>
               <SecondaryButton type="button" onClick={handleSelectTopN}>
@@ -237,40 +238,43 @@ export function RecruitTallyPanel() {
             </div>
           </div>
 
+          {/* 한 줄 안의 컨트롤 높이를 36px 로 통일한다.
+              예전엔 셀렉트(h-9)·확정 버튼(48px)·불합격 버튼(36px)이 뒤섞여 들쭉날쭉했다. */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-ink-500 font-semibold mr-1">
-              선택됨: <strong className="text-blue-600 font-bold">{selectedIds.size}명</strong>
+            <span className="mr-1 text-[13px] font-semibold text-ink-500">
+              선택 <strong className="font-bold text-blue-600">{selectedIds.size}명</strong>
             </span>
-            <Select
+            <ToolbarSelect
+              label="팀 이관"
               disabled={loading || selectedIds.size === 0}
+              value=""
               onChange={(e) => {
                 if (e.target.value) {
                   handleBulkReassignTeam(e.target.value);
-                  e.target.value = '';
                 }
               }}
-              className="w-36 text-xs h-9"
             >
-              <option value="">선택 팀으로 이관…</option>
+              <option value="">선택…</option>
               <option value="봉사 1팀">봉사 1팀</option>
               <option value="봉사 2팀">봉사 2팀</option>
               <option value="기획팀">기획팀</option>
               <option value="홍보팀">홍보팀</option>
-            </Select>
+            </ToolbarSelect>
 
-            <Button
+            <SecondaryButton
               type="button"
               disabled={loading || selectedIds.size === 0}
               onClick={() => handleConfirmDocPass('doc_pass')}
+              className="border-success bg-success-100 text-success-700 hover:bg-success-100/70"
             >
-              선택 {selectedIds.size}명 서류합격 확정
-            </Button>
+              서류합격 확정
+            </SecondaryButton>
             <DangerButton
               type="button"
               disabled={loading || selectedIds.size === 0}
               onClick={() => handleConfirmDocPass('doc_fail')}
             >
-              선택 {selectedIds.size}명 불합격 처리
+              불합격 처리
             </DangerButton>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { Icon } from '@/components/icon';
+import { CursorDog } from '@/components/cursor-dog';
 import { ApplyButton } from './apply-button';
 
 export const dynamic = 'force-dynamic';
@@ -22,8 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
   const notice = await loadNotice();
   return {
     title: notice
-      ? `${notice.label} 신입 부원 모집 공고 | 애니멀메이트`
-      : '신입 부원 모집 공고 | 애니멀메이트',
+      ? `${notice.label} 신입 부원 모집 | 애니멀메이트`
+      : '신입 부원 모집 | 애니멀메이트',
+    description: '유기동물 봉사 동아리 애니멀메이트가 함께할 신입 부원을 모집합니다.',
   };
 }
 
@@ -33,88 +35,91 @@ export default async function PublicRecruitNoticePage() {
   if (!notice) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-cream-25 p-4 font-sans">
-        <div className="w-full max-w-md space-y-4 rounded-2xl border border-ink-200 bg-white p-7 text-center shadow-card">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-cream-100 text-ink-500">
-            <Icon name="megaphone" size={24} />
+        <div className="w-full max-w-md space-y-4 rounded-3xl border border-ink-100 bg-white p-8 text-center shadow-card">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-cream-100 text-ink-400">
+            <Icon name="megaphone" size={26} />
           </div>
-          <h1 className="text-lg font-bold text-ink-900">진행 중인 모집 공고가 없습니다</h1>
-          <p className="text-[13px] leading-relaxed text-ink-500">
-            새 모집이 시작되면 이 페이지에 공고가 올라옵니다.
+          <h1 className="text-lg font-bold text-ink-900">지금은 모집 기간이 아니에요</h1>
+          <p className="text-sm leading-relaxed text-ink-500">
+            새 모집이 시작되면 이 페이지에서 안내드릴게요.
           </p>
-          <a
-            href="/recruit"
-            className="inline-flex min-h-tap items-center justify-center gap-1.5 rounded-xl bg-primary px-5 text-[15px] font-semibold text-white no-underline transition-colors hover:bg-blue-600"
-          >
-            지원 결과 조회
-          </a>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-cream-25 p-4 font-sans sm:p-8">
-      <div className="mx-auto max-w-3xl space-y-5">
-        <header className="space-y-4 rounded-2xl border border-ink-200 bg-white p-7 text-center shadow-card sm:p-9">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-            <Icon name="megaphone" size={24} />
-          </div>
-          <div className="space-y-2">
-            <span className="inline-flex items-center rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-              {notice.label} 모집
+    <main className="min-h-screen bg-cream-25 font-sans">
+      {/* 로그인·가입 화면과 같은 장식(커서 따라다니는 강아지). 컴포넌트 주석의 의도대로 모집 화면에도 붙인다. */}
+      <CursorDog />
+      {/* 히어로 — 로그인·가입 화면과 같은 인사 방식(동아리 로고 + 따뜻한 배경)을 쓴다.
+          지원 버튼은 이 페이지에 하나뿐이다: 같은 버튼을 아래에 또 두면 어느 쪽이 진짜인지 헷갈린다. */}
+      <header className="border-b border-cream-200 bg-gradient-to-b from-cream-100 to-cream-25 px-4 py-12 sm:py-16">
+        <div className="mx-auto max-w-xl space-y-5 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-16 w-16 rounded-full" />
+
+          <div className="space-y-2.5">
+            <span className="inline-flex items-center rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-coral-700 shadow-card">
+              {notice.label} 신입 모집
             </span>
-            <h1 className="text-2xl font-bold leading-snug text-ink-900 sm:text-3xl">
-              유기동물 봉사 동아리 애니멀메이트 신입 모집
+            <h1 className="text-[26px] font-bold leading-snug tracking-tight text-ink-900 sm:text-[34px]">
+              아이들 곁에 함께 있어 줄
+              <br />
+              사람을 찾습니다
             </h1>
-            <p className="mx-auto max-w-prose text-[13px] leading-relaxed text-ink-500 sm:text-sm">
-              아이들을 사랑하고 동아리 활동을 함께 만들어갈 신입 부원을 기다립니다.
+            <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-500">
+              유기동물 봉사 동아리 애니멀메이트가 {notice.label} 신입 부원을 모집합니다.
             </p>
           </div>
-          <ApplyButton isClosed={notice.isClosed} />
-        </header>
 
-        <article className="space-y-6 rounded-2xl border border-ink-200 bg-white p-6 shadow-card sm:p-8">
-          <h2 className="border-b border-ink-100 pb-3 text-base font-bold text-ink-900">
-            모집 요강 및 안내 사항
-          </h2>
+          <div className="pt-1">
+            <ApplyButton isClosed={notice.isClosed} />
+          </div>
+        </div>
+      </header>
 
-          {notice.noticeImages.length > 0 && (
-            <div className="space-y-4">
-              {notice.noticeImages.map((url, idx) => (
-                // 외부 URL 포스터라 next/image 대신 img 를 쓴다(remotePatterns 설정 불필요).
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={url}
-                  src={url}
-                  alt={`${notice.label} 모집 공고 이미지 ${idx + 1}`}
-                  loading="lazy"
-                  className="w-full rounded-xl border border-ink-100"
-                />
-              ))}
-            </div>
-          )}
+      <div className="mx-auto max-w-2xl space-y-10 px-4 py-12 sm:py-16">
+        {notice.noticeImages.length > 0 && (
+          <section className="space-y-5">
+            {notice.noticeImages.map((url, idx) => (
+              // 외부/데이터 URL 포스터라 next/image 대신 img 를 쓴다.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={url}
+                src={url}
+                alt={`${notice.label} 모집 공고 이미지 ${idx + 1}`}
+                loading="lazy"
+                className="scroll-reveal w-full rounded-3xl border border-cream-200 shadow-card"
+              />
+            ))}
+          </section>
+        )}
 
-          {notice.noticeContent ? (
-            <div className="whitespace-pre-wrap text-sm leading-relaxed text-ink-900">
+        {notice.noticeContent ? (
+          <section className="scroll-reveal space-y-5 rounded-3xl border border-cream-200 bg-white p-6 shadow-card sm:p-9">
+            <h2 className="flex items-center gap-2 text-base font-bold text-ink-900">
+              <Icon name="doc" size={18} className="text-blue-500" />
+              모집 안내
+            </h2>
+            <div className="whitespace-pre-wrap text-[15px] leading-[1.75] text-ink-700">
               {notice.noticeContent}
             </div>
-          ) : (
-            <p className="py-8 text-center text-[13px] text-ink-400">
-              상세 모집 요강이 준비 중입니다.
-            </p>
-          )}
+          </section>
+        ) : (
+          <p className="text-center text-sm text-ink-400">상세 모집 요강이 준비 중입니다.</p>
+        )}
 
-          <div className="border-t border-ink-100 pt-6 text-center">
-            <ApplyButton isClosed={notice.isClosed} label="지금 지원서 작성하기" />
-          </div>
-        </article>
-
-        <p className="text-center text-[11px] font-medium text-ink-400">
-          이미 지원하셨나요?{' '}
-          <a href="/recruit" className="font-semibold text-blue-600 underline hover:text-blue-700">
-            지원 결과 조회
+        <footer className="scroll-reveal space-y-3 border-t border-cream-200 pt-8 text-center">
+          <p className="text-sm text-ink-500">이미 지원하셨나요?</p>
+          <a
+            href="/recruit"
+            className="inline-flex min-h-tap items-center gap-1.5 rounded-full border-[1.5px] border-ink-200 bg-white px-5 py-2.5 text-sm font-semibold text-ink-700 no-underline transition-colors hover:bg-cream-50 hover:text-ink-900 hover:no-underline"
+          >
+            <Icon name="doc" size={16} />
+            지원 결과 조회하기
           </a>
-        </p>
+        </footer>
       </div>
     </main>
   );

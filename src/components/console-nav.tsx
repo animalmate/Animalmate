@@ -17,7 +17,7 @@ const STAFF_MENU: NavItem[] = [
   ...COMMON_MENU,
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
-  { href: '/admin/recruit/screening', label: '신입모집', icon: 'users' },
+  { href: '/admin/recruit/screening', label: '신입모집', icon: 'userPlus' },
 ];
 // 문서(챗봇 지식베이스)는 회장단·시스템관리자만. 팀 배정은 회원 관리 화면으로 통합(별도 팀 메뉴 없음).
 const BOARD_MENU: NavItem[] = [
@@ -26,7 +26,7 @@ const BOARD_MENU: NavItem[] = [
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/documents', label: '문서', icon: 'layers' },
   { href: '/admin/members', label: '회원', icon: 'users' },
-  { href: '/admin/recruit/upload', label: '신입모집', icon: 'users' },
+  { href: '/admin/recruit/upload', label: '신입모집', icon: 'userPlus' },
   { href: '/admin/join-codes', label: '가입코드', icon: 'key' },
   { href: '/admin/boards', label: '게시판', icon: 'board' },
   { href: '/admin/chatbot', label: '챗봇설정', icon: 'info' },
