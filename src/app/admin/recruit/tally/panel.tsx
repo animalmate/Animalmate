@@ -99,7 +99,8 @@ export function RecruitTallyPanel() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMessage(`✅ 총 ${data.updatedCount}명 지원자의 상태가 [${passStatus === 'doc_pass' ? '서류 합격' : '서류 불합격'}]으로 확정되었습니다.`);
+        const skipped = data.skippedCount ? ` (${data.skippedCount}명은 이미 확정됐거나 단계가 맞지 않아 제외)` : '';
+        setMessage(`✅ ${data.updatedCount}명을 [${passStatus === 'doc_pass' ? '서류 합격' : '서류 불합격'}]으로 확정했습니다.${skipped}`);
         setSelectedIds(new Set());
         await fetchApplicantsAndScores();
       } else {

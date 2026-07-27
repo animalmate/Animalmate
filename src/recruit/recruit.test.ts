@@ -3,6 +3,7 @@ import {
   nextStatusOnScoreChange,
   canConfirmDoc,
   canConfirmFinal,
+  canTransition,
 } from './status';
 import { parseCsv, mapRowToApplicant, detectDuplicates } from './csv';
 // scores.ts 가 아니라 score-rules.ts 에서 가져온다 — scores.ts 는 db/client 를 import 하므로
@@ -117,5 +118,47 @@ describe('Score Validation & Aggregation', () => {
     expect(agg['app2']!.docScoreAvg).toBe(6.0);
     expect(agg['app2']!.docScorerCount).toBe(1);
     expect(agg['app2']!.isDocSampleDeficient).toBe(true); // < 3명
+  });
+});
+
+// 이 규칙이 없으면 심사·면접을 건너뛴 지원자가 최종 합격이 될 수 있다.
+// 최종 결정 화면은 팀으로만 걸러서 received 상태도 목록에 뜨기 때문에, 전체 선택 한 번이면 벌어진다.
+describe('수동 상태 전이 가드', () => {
+  it('서류 확정은 접수 상태에서만 가능하다', () => {
+    expect(canTransition('received', 'doc_pass')).toBe(true);
+    expect(canTransition('received', 'doc_fail')).toBe(true);
+    expect(canTransition('doc_pass', 'doc_fail')).toBe(false);
+    expect(canTransition('interview_done', 'doc_pass')).toBe(false);
+  });
+
+  it('최종 확정은 면접을 마쳤거나 불참한 사람만 가능하다', () => {
+    expect(canTransition('interview_done', 'final_pass')).toBe(true);
+    expect(canTransition('interview_noshow', 'final_fail')).toBe(true);
+    // 단계 건너뛰기 — 이게 막히지 않아 실제로 위험했다.
+    expect(canTransition('received', 'final_pass')).toBe(false);
+    expect(canTransition('doc_pass', 'final_pass')).toBe(false);
+    expect(canTransition('doc_fail', 'final_pass')).toBe(false);
+  });
+
+  it('면접 불참은 배정 이후 단계에서만 표시할 수 있다', () => {
+    expect(canTransition('doc_pass', 'interview_noshow')).toBe(true);
+    expect(canTransition('interview_done', 'interview_noshow')).toBe(true);
+    expect(canTransition('received', 'interview_noshow')).toBe(false);
+  });
+
+  it('면접 완료와 접수 상태는 수동으로 지정할 수 없다', () => {
+    // 면접 완료는 "점수가 있다"는 사실의 반영이라 자동 전이로만 정해진다.
+    expect(canTransition('doc_pass', 'interview_done')).toBe(false);
+    expect(canTransition('final_pass', 'received')).toBe(false);
+  });
+
+  it('같은 상태로의 전이는 허용하지 않는다', () => {
+    expect(canTransition('doc_pass', 'doc_pass')).toBe(false);
+    expect(canTransition('final_pass', 'final_pass')).toBe(false);
+  });
+
+  it('이미 최종 결정된 사람은 되돌릴 수 없다', () => {
+    expect(canTransition('final_pass', 'final_fail')).toBe(false);
+    expect(canTransition('final_fail', 'doc_pass')).toBe(false);
   });
 });

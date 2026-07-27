@@ -87,10 +87,14 @@ export function RecruitFinalPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ schedulePublic: newSchedule, resultPublic: newResult }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setSchedulePublic(newSchedule);
         setResultPublic(newResult);
         setMessage('✅ 공개 스위치 설정이 변경되었습니다.');
+      } else {
+        // 실패를 알리지 않으면 스위치가 그대로 있는 이유를 알 수 없다.
+        setMessage(`❌ ${data.message || data.error || '공개 설정을 변경하지 못했습니다.'}`);
       }
     } finally {
       setLoading(false);
@@ -110,10 +114,16 @@ export function RecruitFinalPanel() {
           status,
         }),
       });
+      // 실패를 삼키지 않는다 — 예전에는 res.ok 가 아니면 아무 표시도 없어서,
+      // 서버가 거절해도 화면상 "눌러도 아무 일도 안 일어나는" 상태였다.
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setMessage(`✅ ${selectedIds.size}명 지원자의 최종 상태가 [${status === 'final_pass' ? '최종 합격' : '최종 불합격'}]으로 확정되었습니다.`);
+        const skipped = data.skippedCount ? ` (${data.skippedCount}명은 면접 단계가 아니라 제외)` : '';
+        setMessage(`✅ ${data.updatedCount}명을 [${status === 'final_pass' ? '최종 합격' : '최종 불합격'}]으로 확정했습니다.${skipped}`);
         setSelectedIds(new Set());
         await fetchCohortAndApplicants();
+      } else {
+        setMessage(`❌ ${data.message || data.error || '확정에 실패했습니다.'}`);
       }
     } finally {
       setLoading(false);
@@ -160,9 +170,12 @@ export function RecruitFinalPanel() {
         }),
       });
 
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setMessage(`✅ 최종 배정 팀이 [${newTeam}](으)로 변경되었습니다.`);
         await fetchCohortAndApplicants();
+      } else {
+        setMessage(`❌ ${data.message || data.error || '팀 변경에 실패했습니다.'}`);
       }
     } finally {
       setLoading(false);
@@ -183,16 +196,14 @@ export function RecruitFinalPanel() {
           <p className="mt-1 text-sm text-ink-500">최종 합격자 결정, 최종 팀 배정, 지원자 결과 공개 및 개인정보 안전 일괄 파기.</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
-            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-36 text-xs">
-              <option value="ALL">전체 팀 보기</option>
-                <TeamOptions teams={teams} loading={teamsLoading} />
-              </Select>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 다른 모집 화면과 같은 툴바 형태로 통일. */}
+          <ToolbarSelect label="팀" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
+            <option value="ALL">전체</option>
+            <TeamOptions teams={teams} loading={teamsLoading} />
+          </ToolbarSelect>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="contents">
             <ToolbarSelect
               label="기수"
               loading={cohortsLoading}

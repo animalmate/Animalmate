@@ -56,6 +56,15 @@ export async function getApplicantById(id: string) {
   return found ?? null;
 }
 
+/** 상태 전이 검증을 위해 대상 지원자들의 현재 상태를 한 번에 읽는다. */
+export async function listApplicantsByCohortIds(ids: string[]) {
+  if (ids.length === 0) return [];
+  return db
+    .select({ id: recruitApplicants.id, status: recruitApplicants.status })
+    .from(recruitApplicants)
+    .where(inArray(recruitApplicants.id, ids));
+}
+
 export async function updateApplicantStatus(id: string, status: RecruitStatus) {
   const [updated] = await db
     .update(recruitApplicants)

@@ -3,6 +3,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import {
   listApplicantsByCohort,
+  listApplicantsByCohortIds,
   getApplicantById,
   updateApplicantStatus,
   bulkUpdateApplicantStatus,
@@ -11,6 +12,7 @@ import {
   updateApplicantTeam,
   bulkUpdateApplicantTeam,
 } from '@/recruit/applicants';
+import { canTransition, type RecruitStatus } from '@/recruit/status';
 import { internalError } from '@/http/errors';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { db } from '@/db/client';
@@ -59,7 +61,30 @@ export async function PATCH(req: Request): Promise<Response> {
 
     if (action === 'bulk_status') {
       if (!Array.isArray(ids) || !status) return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
-      const updated = await bulkUpdateApplicantStatus(ids, status);
+
+      // 단계를 건너뛴 확정을 서버에서 막는다(09-RECRUIT-DESIGN §3).
+      // 최종 결정 화면은 팀으로만 걸러서 심사 전 지원자도 목록에 뜨므로, 전체 선택 후 확정하면
+      // 서류·면접을 안 거친 사람이 최종 합격이 될 수 있었다.
+      // 자격이 되는 사람만 바꾸고, 제외된 인원은 숫자로 알려 준다(1명 때문에 전체를 막지 않는다).
+      const targets = await listApplicantsByCohortIds(ids);
+      const eligible = targets
+        .filter((a) => canTransition(a.status as RecruitStatus, status as RecruitStatus))
+        .map((a) => a.id);
+      const skipped = ids.length - eligible.length;
+
+      if (eligible.length === 0) {
+        return NextResponse.json(
+          {
+            error: 'invalid_transition',
+            message: '선택한 지원자는 지금 단계에서 이 상태로 바꿀 수 없습니다.',
+            updatedCount: 0,
+            skippedCount: skipped,
+          },
+          { status: 409 }
+        );
+      }
+
+      const updated = await bulkUpdateApplicantStatus(eligible, status);
       // 서류/최종 확정은 되돌리기 어려운 결정 — 누가 언제 몇 명을 어떤 상태로 바꿨는지 남긴다(규칙 #4).
       await recordAudit(
         db,
@@ -67,11 +92,11 @@ export async function PATCH(req: Request): Promise<Response> {
           actorUserId: actor.userId,
           action: 'recruit.applicant.bulkStatus',
           targetTable: 'recruit_applicants',
-          after: { status, applicantIds: ids, count: updated.length },
+          after: { status, applicantIds: eligible, count: updated.length, skipped },
           severity: 'high',
         })
       );
-      return NextResponse.json({ updatedCount: updated.length });
+      return NextResponse.json({ updatedCount: updated.length, skippedCount: skipped });
     }
 
     if (action === 'assign_slot') {
@@ -90,6 +115,13 @@ export async function PATCH(req: Request): Promise<Response> {
       if (!isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
       if (!id || !status) return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
       const before = await getApplicantById(id);
+      if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+      if (!canTransition(before.status as RecruitStatus, status as RecruitStatus)) {
+        return NextResponse.json(
+          { error: 'invalid_transition', message: '지금 단계에서는 이 상태로 바꿀 수 없습니다.' },
+          { status: 409 }
+        );
+      }
       const updated = await updateApplicantStatus(id, status);
       await recordAudit(
         db,
