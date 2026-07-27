@@ -8,6 +8,12 @@ describe('지원서 양식 설정 정규화', () => {
     expect(resolveApplyForm({})).toEqual(DEFAULT_APPLY_FORM);
   });
 
+  it('지망 팀은 운영진 팀 목록과 별개로 기수 설정에서 온다', () => {
+    // 기본값은 신입이 배정되는 봉사 팀만. 기획팀·홍보팀 같은 운영진 조직이 섞이면 안 된다.
+    expect(DEFAULT_APPLY_FORM.wishTeamOptions).toEqual(['1팀', '2팀', '3팀', '4팀', '5팀']);
+    expect(resolveApplyForm({ wishTeamOptions: ['가팀', '나팀'] }).wishTeamOptions).toEqual(['가팀', '나팀']);
+  });
+
   it('저장된 선택지를 그대로 쓴다', () => {
     const r = resolveApplyForm({ otAttendOptions: ['참석', '불참', '미정'] });
     expect(r.otAttendOptions).toEqual(['참석', '불참', '미정']);

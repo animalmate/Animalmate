@@ -7,11 +7,11 @@ import { ScreenNotes } from '@/components/screen-notes';
 import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitScreeningPanel() {
-  const { teams, loading: teamsLoading } = useTeams();
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
+  const { teams, loading: teamsLoading } = useTeams(selectedCohortId);
   const [applicants, setApplicants] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
   const [aggregations, setAggregations] = useState<Record<string, any>>({});

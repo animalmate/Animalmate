@@ -6,6 +6,13 @@
 // "0. 공고·마감 설정" 화면에서 고친다.
 
 export interface ApplyFormConfig {
+  /**
+   * 지원자가 고르는 **지망 팀** 목록.
+   *
+   * teams 테이블(회원 관리)을 쓰지 않는다 — 그쪽은 기획팀·홍보팀·총무팀처럼 운영진이 일하는
+   * 조직이라 신입 지원자가 고를 대상이 아니다. 신입이 배정되는 봉사 팀은 따로 관리한다.
+   */
+  wishTeamOptions: string[];
   genderOptions: string[];
   applyRouteOptions: string[];
   otAttendOptions: string[];
@@ -18,6 +25,7 @@ export interface ApplyFormConfig {
 
 /** 설정을 저장한 적 없는 기수에 쓰는 기본값(기존 화면에 있던 값 그대로). */
 export const DEFAULT_APPLY_FORM: ApplyFormConfig = {
+  wishTeamOptions: ['1팀', '2팀', '3팀', '4팀', '5팀'],
   genderOptions: ['여성', '남성', '기타'],
   applyRouteOptions: ['에브리타임', '인스타그램', '지인 소개', '학교 게시판', '동아리 박람회'],
   otAttendOptions: ['참석 가능', '불참'],
@@ -45,6 +53,7 @@ const cleanText = (v: unknown, fallback: string): string => {
 export function resolveApplyForm(raw: unknown): ApplyFormConfig {
   const o = (raw ?? {}) as Partial<Record<keyof ApplyFormConfig, unknown>>;
   return {
+    wishTeamOptions: cleanList(o.wishTeamOptions, DEFAULT_APPLY_FORM.wishTeamOptions),
     genderOptions: cleanList(o.genderOptions, DEFAULT_APPLY_FORM.genderOptions),
     applyRouteOptions: cleanList(o.applyRouteOptions, DEFAULT_APPLY_FORM.applyRouteOptions),
     otAttendOptions: cleanList(o.otAttendOptions, DEFAULT_APPLY_FORM.otAttendOptions),

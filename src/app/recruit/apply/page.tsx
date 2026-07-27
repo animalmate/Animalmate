@@ -1,7 +1,4 @@
 import type { Metadata } from 'next';
-import { asc, eq } from 'drizzle-orm';
-import { db } from '@/db/client';
-import { teams } from '@/db/schema';
 import { listCohorts } from '@/recruit/cohorts';
 import { resolveApplyForm } from '@/recruit/apply-form';
 import { PublicRecruitApplyPanel } from './panel';
@@ -19,19 +16,12 @@ export default async function PublicRecruitApplyPage() {
   // 기수·마감 여부는 서버에서 미리 확정해 넘긴다 — 예전처럼 로딩 화면이 깜빡이지 않는다.
   const cohort = (await listCohorts())[0] ?? null;
 
-  // 지망 팀 목록도 서버에서 함께 넘긴다. 이 화면은 비로그인이라 운영진용 팀 API 를 부를 수 없고,
-  // 목록을 코드에 박아 두면 실제 팀(teams 테이블)과 어긋난다 — 예전에 "봉사 1팀"이 그랬다.
-  const teamRows = await db
-    .select({ name: teams.name })
-    .from(teams)
-    .where(eq(teams.isActive, true))
-    .orderBy(asc(teams.name));
-
+  // 지망 팀·선택지·자기소개서 문항 모두 기수 설정에서 온다
+  // ("0. 공고·마감 설정"에서 회장단이 편집). 회원 관리의 teams 테이블은 쓰지 않는다 —
+  // 그쪽은 기획팀·홍보팀처럼 운영진이 일하는 조직이라 신입 지원자가 고를 대상이 아니다.
   return (
     <PublicRecruitApplyPanel
       cohort={cohort ? { id: cohort.id, label: cohort.label, isClosed: cohort.isClosed } : null}
-      teams={teamRows.map((t) => t.name)}
-      // 선택지·자기소개서 문항은 기수 설정에서 온다("0. 공고·마감 설정" 화면에서 회장단이 편집).
       form={resolveApplyForm(cohort?.applyForm)}
     />
   );

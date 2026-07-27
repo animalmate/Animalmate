@@ -80,13 +80,10 @@ const linkQuiet =
 
 export function PublicRecruitApplyPanel({
   cohort,
-  teams,
   form: config,
 }: {
   cohort: CohortSummary | null;
-  // 실제 teams 테이블에서 온 목록(서버가 넘겨준다) — 코드에 박아 두지 않는다.
-  teams: string[];
-  // 선택지·문항도 기수 설정에서 온다(회장단이 "0. 공고·마감 설정"에서 편집).
+  // 지망 팀·선택지·문항 모두 기수 설정에서 온다(회장단이 "0. 공고·마감 설정"에서 편집).
   form: ApplyFormConfig;
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -319,7 +316,7 @@ export function PublicRecruitApplyPanel({
                 <Field label="1지망 팀">
                   <Select value={form.wishTeam1} onChange={(e) => set('wishTeam1', e.target.value)}>
                     <option value="">선택해 주세요</option>
-                    {teams.map((t) => (
+                    {config.wishTeamOptions.map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
@@ -330,7 +327,7 @@ export function PublicRecruitApplyPanel({
                 <Field label="2지망 팀">
                   <Select value={form.wishTeam2} onChange={(e) => set('wishTeam2', e.target.value)}>
                     <option value="">선택해 주세요</option>
-                    {teams.filter((t) => t !== form.wishTeam1).map((t) => (
+                    {config.wishTeamOptions.filter((t) => t !== form.wishTeam1).map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>

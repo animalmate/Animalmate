@@ -21,6 +21,7 @@ export function RecruitNoticeEditPanel() {
   const [venuesText, setVenuesText] = useState('학생회관 301호\n학생회관 302호');
 
   // 공개 지원서 양식 설정. 선택지는 줄바꿈으로 구분한 편집 문자열로 다룬다.
+  const [wishTeamText, setWishTeamText] = useState(listToLines(DEFAULT_APPLY_FORM.wishTeamOptions));
   const [genderText, setGenderText] = useState(listToLines(DEFAULT_APPLY_FORM.genderOptions));
   const [applyRouteText, setApplyRouteText] = useState(listToLines(DEFAULT_APPLY_FORM.applyRouteOptions));
   const [otAttendText, setOtAttendText] = useState(listToLines(DEFAULT_APPLY_FORM.otAttendOptions));
@@ -137,6 +138,7 @@ export function RecruitNoticeEditPanel() {
       setIsClosed(!!data.cohort.isClosed);
       // 저장된 적이 없으면 resolveApplyForm 이 기본값을 채워 준다.
       const af = resolveApplyForm(data.cohort.applyForm);
+      setWishTeamText(listToLines(af.wishTeamOptions));
       setGenderText(listToLines(af.genderOptions));
       setApplyRouteText(listToLines(af.applyRouteOptions));
       setOtAttendText(listToLines(af.otAttendOptions));
@@ -247,6 +249,7 @@ export function RecruitNoticeEditPanel() {
           isClosed,
           venues,
           applyForm: {
+            wishTeamOptions: linesToList(wishTeamText),
             genderOptions: linesToList(genderText),
             applyRouteOptions: linesToList(applyRouteText),
             otAttendOptions: linesToList(otAttendText),
@@ -492,6 +495,18 @@ export function RecruitNoticeEditPanel() {
             문항을 비우면 그 문항은 지원서에서 빠집니다. 지망 팀 목록은 회원 관리의 팀을 그대로 씁니다.
           </p>
 
+          <Field
+            label="지망 팀 선택지"
+            hint="신입이 지원하는 봉사 팀입니다. 회원 관리의 운영진 팀(기획팀·홍보팀 등)과는 별개입니다."
+          >
+            <textarea
+              className="h-28 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
+              placeholder="1팀&#10;2팀&#10;3팀&#10;4팀&#10;5팀"
+              value={wishTeamText}
+              onChange={(e) => setWishTeamText(e.target.value)}
+            />
+          </Field>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="성별 선택지">
               <textarea
@@ -530,18 +545,20 @@ export function RecruitNoticeEditPanel() {
             </Field>
           </div>
 
-          <Field label="자기소개서 1번 문항" hint="비우면 이 문항을 받지 않습니다.">
-            <Input
-              type="text"
+          {/* 문항은 여러 줄로 쓰는 경우가 많아 textarea 로 둔다(예전 한 줄 입력이라 줄바꿈이 안 됐다).
+              줄바꿈은 지원서 화면에도 그대로 보인다. */}
+          <Field label="자기소개서 1번 문항" hint="비우면 이 문항을 받지 않습니다. 줄바꿈도 그대로 보입니다.">
+            <textarea
+              className="h-20 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
               placeholder="자기소개와 동물에 대한 생각"
               value={essayIntroLabel}
               onChange={(e) => setEssayIntroLabel(e.target.value)}
             />
           </Field>
 
-          <Field label="자기소개서 2번 문항" hint="비우면 이 문항을 받지 않습니다.">
-            <Input
-              type="text"
+          <Field label="자기소개서 2번 문항" hint="비우면 이 문항을 받지 않습니다. 줄바꿈도 그대로 보입니다.">
+            <textarea
+              className="h-20 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
               placeholder="지원 동기와 가치관"
               value={essayValuesLabel}
               onChange={(e) => setEssayValuesLabel(e.target.value)}

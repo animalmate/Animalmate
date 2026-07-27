@@ -67,7 +67,8 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm font-semibold text-ink-900">
+      {/* whitespace-pre-line: 여러 줄로 쓴 라벨(자기소개서 문항 등)의 줄바꿈을 그대로 보여 준다. */}
+      <span className="block whitespace-pre-line text-sm font-semibold text-ink-900">
         {label}
         {required ? <span className="ml-0.5 text-coral-600">*</span> : null}
       </span>
