@@ -479,7 +479,10 @@ export const recruitApplicants = pgTable(
     otAttend: text('ot_attend'), // OT 참가 여부(원문)
     remoteInterviewWish: text('remote_interview_wish'), // 비대면 면접 희망(원문)
     essayIntro: text('essay_intro'), // 자기소개
-    essayValues: text('essay_values'), // 가치관 확인
+    essayValues: text('essay_values'), // 가치관 확인(답변 본문)
+    essayValuesTopic: text('essay_values_topic'), // 가치관 문항에서 고른 주제
+    // 합격 시 외부 단체(로타랙트) 가입용. 불합격 시 폐기 — PII 이므로 다른 지원자 정보와 함께 폐기된다.
+    englishName: text('english_name'),
     status: recruitStatusEnum('status').notNull().default('received'),
     slotId: uuid('slot_id').references(() => recruitSlots.id, { onDelete: 'set null' }),
     interviewLink: text('interview_link'), // 개인 단위 링크(슬롯 링크보다 우선)

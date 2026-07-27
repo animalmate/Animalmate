@@ -122,7 +122,12 @@
     `post_pass_notice`/`is_closed`/`venues` 는 공개 공고·마감 스위치·면접 장소 프리셋용(0014).
     `notice_images` 는 **Supabase Storage 공개 버킷 `recruit-notice` 의 URL 목록**이다(파일 본체는 DB 에 두지 않는다).
     예전에는 base64 문자열을 그대로 넣어 포스터 몇 장이면 행 하나가 수 MB 였고, 공고를 볼 때마다 그 행이 통째로 오갔다.
-    `apply_form` jsonb(0015) = 공개 지원서의 선택지·자기소개서 문항(성별·지원경로·OT·면접방식 선택지,
+    `apply_form` jsonb(0015) = 공개 지원서의 **문항별 문구·안내·필수 여부 + 선택지 목록**
+    (`src/recruit/apply-form.ts` ApplyFormConfig, 기본값은 33기 구글폼 원문). 문항 제목을 비우면
+    그 항목을 받지 않는다. 비대면 면접만 라디오가 아니라 체크박스(체크=비대면, 미체크=대면).
+    ⚠ **항목 구성 자체는 고정**이다 — recruit_applicants 컬럼과 1:1 이고 심사·집계 화면이 그 컬럼을 읽는다.
+    바꿀 수 있는 것은 문구·안내·선택지·필수 여부뿐. 지망 팀도 여기 있고 `teams` 테이블(운영진 조직)과 별개다.
+    옛 키(`essayIntroLabel` 등)(성별·지원경로·OT·면접방식 선택지,
     문항 2개). 미설정이면 `src/recruit/apply-form.ts` 의 기본값을 쓴다. 지망 팀 목록은 여기 두지 않고
     `teams` 테이블을 그대로 쓴다(회장단이 회원 관리에서 바꾸면 지원서도 따라간다).
     폐기 시 익명 집계만 archived_stats 로 잔존.

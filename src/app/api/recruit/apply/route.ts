@@ -29,6 +29,8 @@ function checkApplicantLengths(f: Record<string, string | null>): void {
     checkLength(key, f[key] ?? null, LIMITS.name);
   }
   checkLength('다른 대외활동', f.otherActivities, LIMITS.purpose);
+  checkLength('영문 이름', f.englishName, LIMITS.name);
+  checkLength('가치관 주제', f.essayValuesTopic, LIMITS.name);
   checkLength('자기소개', f.essayIntro, LIMITS.contentMd);
   checkLength('가치관', f.essayValues, LIMITS.contentMd);
 }
@@ -87,6 +89,8 @@ export async function POST(req: Request): Promise<Response> {
       remoteInterviewWish: clean(body.remoteInterviewWish),
       essayIntro: clean(body.essayIntro),
       essayValues: clean(body.essayValues),
+      essayValuesTopic: clean(body.essayValuesTopic),
+      englishName: clean(body.englishName),
     };
 
     if (!fields.name || !fields.phone) {

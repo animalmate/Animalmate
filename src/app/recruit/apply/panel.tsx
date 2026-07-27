@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { CursorDog } from '@/components/cursor-dog';
-import type { ApplyFormConfig } from '@/recruit/apply-form';
+import type { ApplyFormConfig, FieldKey } from '@/recruit/apply-form';
 
 interface CohortSummary {
   id: string;
@@ -15,7 +15,7 @@ interface CohortSummary {
 const EMPTY_FORM = {
   name: '',
   phone: '',
-  // 성별·지망 팀은 기본값을 비워 둔다 — 미리 골라 두면 지원자가 확인 없이 그대로 제출한다.
+  // 성별·지망 팀 등은 기본 선택을 두지 않는다 — 미리 골라 두면 확인 없이 그대로 제출된다.
   gender: '',
   birthDate: '',
   school: '',
@@ -28,9 +28,10 @@ const EMPTY_FORM = {
   wishTeam1: '',
   wishTeam2: '',
   otAttend: '',
-  remoteInterviewWish: '',
   essayIntro: '',
   essayValues: '',
+  essayValuesTopic: '',
+  englishName: '',
 };
 
 function SectionHeading({ step, children }: { step: number; children: React.ReactNode }) {
@@ -60,7 +61,7 @@ function NoticeCard({
 }) {
   const toneClass = tone === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-success-100 text-success-700';
   return (
-    <main className="flex min-h-screen items-center justify-center bg-cream-25 p-4 font-sans">
+    <main className="flex min-h-screen items-center justify-center p-4 font-sans">
       <div className="w-full max-w-md space-y-4 rounded-2xl border border-ink-200 bg-white p-7 text-center shadow-card">
         <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-2xl ${toneClass}`}>
           <Icon name={icon} size={24} />
@@ -83,10 +84,12 @@ export function PublicRecruitApplyPanel({
   form: config,
 }: {
   cohort: CohortSummary | null;
-  // 지망 팀·선택지·문항 모두 기수 설정에서 온다(회장단이 "0. 공고·마감 설정"에서 편집).
+  // 문항 문구·안내·선택지 모두 기수 설정에서 온다(회장단이 "0. 공고·마감 설정"에서 편집).
   form: ApplyFormConfig;
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
+  // 비대면 면접은 라디오가 아니라 체크박스다 — 체크하면 비대면 희망, 안 하면 대면.
+  const [remoteWish, setRemoteWish] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ name: string; phone: string } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -94,14 +97,35 @@ export function PublicRecruitApplyPanel({
   const set = <K extends keyof typeof EMPTY_FORM>(key: K, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  /** 문항이 켜져 있는가(문구를 비우면 그 문항을 받지 않는다). */
+  const on = (k: FieldKey) => config.fields[k].label.trim() !== '';
+  /** Field 에 넘길 공통 속성. */
+  const fp = (k: FieldKey) => ({
+    label: config.fields[k].label,
+    hint: config.fields[k].description || undefined,
+    required: config.fields[k].required,
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.phone.trim()) {
-      setErrorMsg('이름과 전화번호는 필수 입력 항목입니다.');
+
+    // 필수 검사는 설정을 따른다. 이름·전화번호는 조회 키라 항상 필요하다.
+    const missing: string[] = [];
+    if (!form.name.trim()) missing.push(config.fields.name.label || '이름');
+    if (!form.phone.trim()) missing.push(config.fields.phone.label || '전화번호');
+    for (const k of ['gender', 'birthDate', 'school', 'department', 'email', 'applyRoute',
+      'essayIntro', 'essayValues', 'otherActivities', 'expectedFrequency',
+      'wishTeam1', 'wishTeam2', 'nearStation', 'otAttend', 'englishName'] as FieldKey[]) {
+      if (!on(k) || !config.fields[k].required) continue;
+      const v = k === 'essayValues' ? form.essayValues : (form as Record<string, string>)[k];
+      if (!String(v ?? '').trim()) missing.push(config.fields[k].label);
+    }
+    if (missing.length > 0) {
+      setErrorMsg(`다음 항목을 입력해 주세요: ${missing.join(', ')}`);
       return;
     }
     if (form.wishTeam1 && form.wishTeam1 === form.wishTeam2) {
-      setErrorMsg('1지망과 2지망은 서로 다른 팀으로 선택해 주세요.');
+      setErrorMsg('1순위와 2순위는 서로 다른 팀으로 선택해 주세요.');
       return;
     }
 
@@ -112,7 +136,12 @@ export function PublicRecruitApplyPanel({
       const res = await fetch('/api/recruit/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cohortId: cohort?.id, ...form }),
+        body: JSON.stringify({
+          cohortId: cohort?.id,
+          ...form,
+          // 체크했을 때만 설정된 문구를 저장한다. 안 하면 빈 값 = 대면.
+          remoteInterviewWish: remoteWish ? config.remoteInterviewCheckboxLabel : '',
+        }),
       });
 
       const data = await res.json();
@@ -213,15 +242,14 @@ export function PublicRecruitApplyPanel({
             </p>
           </header>
 
-          <form onSubmit={handleSubmit} className="space-y-7" noValidate>
+          <form onSubmit={handleSubmit} className="space-y-8" noValidate>
             <section className="space-y-4">
               <SectionHeading step={1}>기본 인적사항</SectionHeading>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="이름" required>
+                <Field {...fp('name')} required>
                   <Input
                     type="text"
-                    required
                     autoComplete="name"
                     placeholder="홍길동"
                     value={form.name}
@@ -229,10 +257,9 @@ export function PublicRecruitApplyPanel({
                   />
                 </Field>
 
-                <Field label="전화번호" required hint="하이픈은 있어도 없어도 됩니다.">
+                <Field {...fp('phone')} required>
                   <Input
                     type="tel"
-                    required
                     inputMode="numeric"
                     autoComplete="tel"
                     placeholder="01012345678"
@@ -240,65 +267,70 @@ export function PublicRecruitApplyPanel({
                     onChange={(e) => set('phone', e.target.value)}
                   />
                 </Field>
+
+                {on('gender') && (
+                  <Field {...fp('gender')}>
+                    <Select value={form.gender} onChange={(e) => set('gender', e.target.value)}>
+                      <option value="">선택해 주세요</option>
+                      {config.genderOptions.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                )}
+
+                {on('birthDate') && (
+                  <Field {...fp('birthDate')}>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="2004.03.15"
+                      value={form.birthDate}
+                      onChange={(e) => set('birthDate', e.target.value)}
+                    />
+                  </Field>
+                )}
+
+                {on('school') && (
+                  <Field {...fp('school')}>
+                    <Input
+                      type="text"
+                      autoComplete="organization"
+                      placeholder="OO대학교"
+                      value={form.school}
+                      onChange={(e) => set('school', e.target.value)}
+                    />
+                  </Field>
+                )}
+
+                {on('department') && (
+                  <Field {...fp('department')}>
+                    <Input
+                      type="text"
+                      placeholder="수의예과"
+                      value={form.department}
+                      onChange={(e) => set('department', e.target.value)}
+                    />
+                  </Field>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="성별">
-                  <Select value={form.gender} onChange={(e) => set('gender', e.target.value)}>
-                    <option value="">선택 안 함</option>
-                    {config.genderOptions.map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <Field label="생년월일">
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="2004-03-15"
-                    value={form.birthDate}
-                    onChange={(e) => set('birthDate', e.target.value)}
-                  />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="학교">
-                  <Input
-                    type="text"
-                    autoComplete="organization"
-                    placeholder="OO대학교"
-                    value={form.school}
-                    onChange={(e) => set('school', e.target.value)}
-                  />
-                </Field>
-
-                <Field label="학과 / 전공">
-                  <Input
-                    type="text"
-                    placeholder="수의학과"
-                    value={form.department}
-                    onChange={(e) => set('department', e.target.value)}
-                  />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="이메일">
+              {on('email') && (
+                <Field {...fp('email')}>
                   <Input
                     type="email"
                     autoComplete="email"
-                    placeholder="example@email.com"
+                    placeholder="example@naver.com"
                     value={form.email}
                     onChange={(e) => set('email', e.target.value)}
                   />
                 </Field>
+              )}
 
-                {/* 주소 전체가 아니라 역명만 받는다(09-RECRUIT-DESIGN §0 개인정보 최소화). */}
-                <Field label="가장 가까운 지하철역" hint="집 주소는 받지 않습니다.">
+              {on('nearStation') && (
+                <Field {...fp('nearStation')}>
                   <Input
                     type="text"
                     placeholder="건대입구역"
@@ -306,67 +338,10 @@ export function PublicRecruitApplyPanel({
                     onChange={(e) => set('nearStation', e.target.value)}
                   />
                 </Field>
-              </div>
-            </section>
+              )}
 
-            <section className="space-y-4">
-              <SectionHeading step={2}>지망 팀과 일정</SectionHeading>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="1지망 팀">
-                  <Select value={form.wishTeam1} onChange={(e) => set('wishTeam1', e.target.value)}>
-                    <option value="">선택해 주세요</option>
-                    {config.wishTeamOptions.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <Field label="2지망 팀">
-                  <Select value={form.wishTeam2} onChange={(e) => set('wishTeam2', e.target.value)}>
-                    <option value="">선택해 주세요</option>
-                    {config.wishTeamOptions.filter((t) => t !== form.wishTeam1).map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="신입 OT 참석 여부">
-                  <Select value={form.otAttend} onChange={(e) => set('otAttend', e.target.value)}>
-                    <option value="">선택해 주세요</option>
-                    {config.otAttendOptions.map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <Field label="면접 희망 방식">
-                  <Select
-                    value={form.remoteInterviewWish}
-                    onChange={(e) => set('remoteInterviewWish', e.target.value)}
-                  >
-                    <option value="">선택해 주세요</option>
-                    {config.remoteInterviewOptions.map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-
-              {/* 아래 3개는 DB 에는 원래 있던 항목인데 화면에서 빠져 있었다(지원 경로·대외활동·참여 주기).
-                  심사에 쓰이는 정보라 되살린다. 지원 경로 선택지도 기수 설정에서 온다. */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="지원 경로" hint="어떻게 알고 오셨나요?">
+              {on('applyRoute') && (
+                <Field {...fp('applyRoute')}>
                   <Select value={form.applyRoute} onChange={(e) => set('applyRoute', e.target.value)}>
                     <option value="">선택해 주세요</option>
                     {config.applyRouteOptions.map((o) => (
@@ -376,36 +351,120 @@ export function PublicRecruitApplyPanel({
                     ))}
                   </Select>
                 </Field>
-
-                <Field label="예상 활동 참여 주기">
-                  <Input
-                    type="text"
-                    placeholder="매주 / 격주 / 월 1회"
-                    value={form.expectedFrequency}
-                    onChange={(e) => set('expectedFrequency', e.target.value)}
-                  />
-                </Field>
-              </div>
-
-              <Field label="다른 대외활동·아르바이트" hint="없으면 비워 두셔도 됩니다.">
-                <Input
-                  type="text"
-                  placeholder="예: 교내 학회, 주말 아르바이트"
-                  value={form.otherActivities}
-                  onChange={(e) => set('otherActivities', e.target.value)}
-                />
-              </Field>
+              )}
             </section>
 
-            {/* 문항 문구는 기수 설정에서 온다. 문구를 비워 두면 그 문항은 아예 받지 않는다. */}
-            {(config.essayIntroLabel || config.essayValuesLabel) && (
+            <section className="space-y-4">
+              <SectionHeading step={2}>활동 계획</SectionHeading>
+
+              {on('wishTeam1') && (
+                <Field {...fp('wishTeam1')}>
+                  <Select value={form.wishTeam1} onChange={(e) => set('wishTeam1', e.target.value)}>
+                    <option value="">선택해 주세요</option>
+                    {config.wishTeamOptions.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+
+              {on('wishTeam2') && (
+                <Field {...fp('wishTeam2')}>
+                  <Select value={form.wishTeam2} onChange={(e) => set('wishTeam2', e.target.value)}>
+                    <option value="">선택해 주세요</option>
+                    {config.wishTeamOptions
+                      .filter((t) => t !== form.wishTeam1)
+                      .map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    {config.wishTeam2ExtraOptions.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+
+              {on('expectedFrequency') && (
+                <Field {...fp('expectedFrequency')}>
+                  <Select
+                    value={form.expectedFrequency}
+                    onChange={(e) => set('expectedFrequency', e.target.value)}
+                  >
+                    <option value="">선택해 주세요</option>
+                    {config.expectedFrequencyOptions.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+
+              {on('otherActivities') && (
+                <Field {...fp('otherActivities')}>
+                  <Textarea
+                    rows={4}
+                    placeholder="없으면 '없음'이라고 적어 주세요."
+                    value={form.otherActivities}
+                    onChange={(e) => set('otherActivities', e.target.value)}
+                  />
+                </Field>
+              )}
+
+              {on('otAttend') && (
+                <Field {...fp('otAttend')}>
+                  <Select value={form.otAttend} onChange={(e) => set('otAttend', e.target.value)}>
+                    <option value="">선택해 주세요</option>
+                    {config.otAttendOptions.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+
+              {/* 비대면 면접만 체크박스다 — 라디오로 두면 "대면"을 굳이 고르게 만든다. */}
+              {on('remoteInterview') && (
+                <div className="space-y-1.5 rounded-xl border-[1.5px] border-ink-200 bg-cream-25 p-4">
+                  <span className="block whitespace-pre-line text-sm font-semibold text-ink-900">
+                    {config.fields.remoteInterview.label}
+                  </span>
+                  {config.fields.remoteInterview.description && (
+                    <p className="whitespace-pre-line text-[13px] leading-relaxed text-ink-500">
+                      {config.fields.remoteInterview.description}
+                    </p>
+                  )}
+                  <label className="mt-1 flex min-h-tap cursor-pointer items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={remoteWish}
+                      onChange={(e) => setRemoteWish(e.target.checked)}
+                      className="h-5 w-5 shrink-0 accent-primary"
+                    />
+                    <span className="text-sm font-semibold text-ink-900">
+                      {config.remoteInterviewCheckboxLabel}
+                    </span>
+                  </label>
+                  <p className="text-[12px] text-ink-400">체크하지 않으면 대면 면접으로 진행됩니다.</p>
+                </div>
+              )}
+            </section>
+
+            {(on('essayIntro') || on('essayValues')) && (
               <section className="space-y-4">
                 <SectionHeading step={3}>자기소개서</SectionHeading>
 
-                {config.essayIntroLabel && (
-                  <Field label={config.essayIntroLabel}>
+                {on('essayIntro') && (
+                  <Field {...fp('essayIntro')}>
                     <Textarea
-                      rows={6}
+                      rows={7}
                       placeholder="자유롭게 작성해 주세요."
                       value={form.essayIntro}
                       onChange={(e) => set('essayIntro', e.target.value)}
@@ -413,16 +472,46 @@ export function PublicRecruitApplyPanel({
                   </Field>
                 )}
 
-                {config.essayValuesLabel && (
-                  <Field label={config.essayValuesLabel}>
-                    <Textarea
-                      rows={6}
-                      placeholder="자유롭게 작성해 주세요."
-                      value={form.essayValues}
-                      onChange={(e) => set('essayValues', e.target.value)}
-                    />
+                {on('essayValues') && (
+                  <Field {...fp('essayValues')}>
+                    <div className="space-y-2">
+                      {config.essayValuesTopics.length > 0 && (
+                        <Select
+                          value={form.essayValuesTopic}
+                          onChange={(e) => set('essayValuesTopic', e.target.value)}
+                          aria-label="주제 선택"
+                        >
+                          <option value="">주제를 선택해 주세요</option>
+                          {config.essayValuesTopics.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                      <Textarea
+                        rows={7}
+                        placeholder="선택한 주제에 대한 생각을 자유롭게 작성해 주세요."
+                        value={form.essayValues}
+                        onChange={(e) => set('essayValues', e.target.value)}
+                      />
+                    </div>
                   </Field>
                 )}
+              </section>
+            )}
+
+            {on('englishName') && (
+              <section className="space-y-4">
+                <SectionHeading step={4}>추가 정보</SectionHeading>
+                <Field {...fp('englishName')}>
+                  <Input
+                    type="text"
+                    placeholder="Hong Gildong"
+                    value={form.englishName}
+                    onChange={(e) => set('englishName', e.target.value)}
+                  />
+                </Field>
               </section>
             )}
 

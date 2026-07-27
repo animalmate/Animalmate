@@ -137,6 +137,8 @@ export async function createSingleApplicant(input: {
   remoteInterviewWish?: string | null;
   essayIntro?: string | null;
   essayValues?: string | null;
+  essayValuesTopic?: string | null;
+  englishName?: string | null;
 }) {
   const cleanPhone = input.phone.replace(/[^0-9]/g, '');
   const [created] = await db
@@ -161,6 +163,8 @@ export async function createSingleApplicant(input: {
       remoteInterviewWish: input.remoteInterviewWish ?? null,
       essayIntro: input.essayIntro ?? null,
       essayValues: input.essayValues ?? null,
+      essayValuesTopic: input.essayValuesTopic ?? null,
+      englishName: input.englishName ?? null,
       status: 'received',
     })
     .returning();

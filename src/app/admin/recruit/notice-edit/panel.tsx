@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
-import { DEFAULT_APPLY_FORM, linesToList, listToLines, resolveApplyForm } from '@/recruit/apply-form';
+import { DEFAULT_APPLY_FORM, resolveApplyForm, type ApplyFormConfig } from '@/recruit/apply-form';
+import { ApplyFormEditor } from './apply-form-editor';
 
 export function RecruitNoticeEditPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -20,16 +21,8 @@ export function RecruitNoticeEditPanel() {
   const [isClosed, setIsClosed] = useState(false);
   const [venuesText, setVenuesText] = useState('학생회관 301호\n학생회관 302호');
 
-  // 공개 지원서 양식 설정. 선택지는 줄바꿈으로 구분한 편집 문자열로 다룬다.
-  const [wishTeamText, setWishTeamText] = useState(listToLines(DEFAULT_APPLY_FORM.wishTeamOptions));
-  const [genderText, setGenderText] = useState(listToLines(DEFAULT_APPLY_FORM.genderOptions));
-  const [applyRouteText, setApplyRouteText] = useState(listToLines(DEFAULT_APPLY_FORM.applyRouteOptions));
-  const [otAttendText, setOtAttendText] = useState(listToLines(DEFAULT_APPLY_FORM.otAttendOptions));
-  const [remoteWishText, setRemoteWishText] = useState(
-    listToLines(DEFAULT_APPLY_FORM.remoteInterviewOptions)
-  );
-  const [essayIntroLabel, setEssayIntroLabel] = useState(DEFAULT_APPLY_FORM.essayIntroLabel);
-  const [essayValuesLabel, setEssayValuesLabel] = useState(DEFAULT_APPLY_FORM.essayValuesLabel);
+  // 공개 지원서 양식 설정(문항 문구·안내·선택지). 상세 편집 UI 는 ApplyFormEditor 가 담당한다.
+  const [applyForm, setApplyForm] = useState<ApplyFormConfig>(DEFAULT_APPLY_FORM);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -137,14 +130,7 @@ export function RecruitNoticeEditPanel() {
       setPostPassNotice(data.cohort.postPassNotice || '');
       setIsClosed(!!data.cohort.isClosed);
       // 저장된 적이 없으면 resolveApplyForm 이 기본값을 채워 준다.
-      const af = resolveApplyForm(data.cohort.applyForm);
-      setWishTeamText(listToLines(af.wishTeamOptions));
-      setGenderText(listToLines(af.genderOptions));
-      setApplyRouteText(listToLines(af.applyRouteOptions));
-      setOtAttendText(listToLines(af.otAttendOptions));
-      setRemoteWishText(listToLines(af.remoteInterviewOptions));
-      setEssayIntroLabel(af.essayIntroLabel);
-      setEssayValuesLabel(af.essayValuesLabel);
+      setApplyForm(resolveApplyForm(data.cohort.applyForm));
       setVenuesText((data.cohort.venues || ['학생회관 301호', '학생회관 302호']).join('\n'));
     }
   };
@@ -248,15 +234,7 @@ export function RecruitNoticeEditPanel() {
           postPassNotice,
           isClosed,
           venues,
-          applyForm: {
-            wishTeamOptions: linesToList(wishTeamText),
-            genderOptions: linesToList(genderText),
-            applyRouteOptions: linesToList(applyRouteText),
-            otAttendOptions: linesToList(otAttendText),
-            remoteInterviewOptions: linesToList(remoteWishText),
-            essayIntroLabel: essayIntroLabel.trim(),
-            essayValuesLabel: essayValuesLabel.trim(),
-          },
+          applyForm,
         }),
       });
 
@@ -488,82 +466,12 @@ export function RecruitNoticeEditPanel() {
 
         {/* 공개 지원서(/recruit/apply)의 선택지·문항. 예전에는 화면 코드에 박혀 있어
             바꾸려면 배포가 필요했다. 지망 팀 목록은 여기가 아니라 "회원 관리"의 팀이 그대로 쓰인다. */}
+        {/* 공개 지원서(/recruit/apply)의 문항·안내·선택지. 예전에는 화면 코드에 박혀 있어
+            바꾸려면 배포가 필요했다. 항목 구성 자체는 recruit_applicants 컬럼과 묶여 있어 고정이고,
+            여기서 바꾸는 것은 문구·안내·선택지·필수 여부다. */}
         <div className="border-t border-cream-200 pt-6 space-y-4">
           <h2 className="text-base font-bold text-ink-900">지원서 양식 설정</h2>
-          <p className="text-[13px] text-ink-500">
-            공개 지원서에 나오는 선택지와 자기소개서 문항입니다. 선택지는 줄바꿈으로 구분하고,
-            문항을 비우면 그 문항은 지원서에서 빠집니다. 지망 팀 목록은 회원 관리의 팀을 그대로 씁니다.
-          </p>
-
-          <Field
-            label="지망 팀 선택지"
-            hint="신입이 지원하는 봉사 팀입니다. 회원 관리의 운영진 팀(기획팀·홍보팀 등)과는 별개입니다."
-          >
-            <textarea
-              className="h-28 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
-              placeholder="1팀&#10;2팀&#10;3팀&#10;4팀&#10;5팀"
-              value={wishTeamText}
-              onChange={(e) => setWishTeamText(e.target.value)}
-            />
-          </Field>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="성별 선택지">
-              <textarea
-                className="h-24 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
-                placeholder="여성&#10;남성&#10;기타"
-                value={genderText}
-                onChange={(e) => setGenderText(e.target.value)}
-              />
-            </Field>
-
-            <Field label="지원 경로 선택지">
-              <textarea
-                className="h-24 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
-                placeholder="에브리타임&#10;인스타그램&#10;지인 소개"
-                value={applyRouteText}
-                onChange={(e) => setApplyRouteText(e.target.value)}
-              />
-            </Field>
-
-            <Field label="OT 참석 여부 선택지">
-              <textarea
-                className="h-24 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
-                placeholder="참석 가능&#10;불참"
-                value={otAttendText}
-                onChange={(e) => setOtAttendText(e.target.value)}
-              />
-            </Field>
-
-            <Field label="면접 희망 방식 선택지">
-              <textarea
-                className="h-24 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
-                placeholder="대면 면접 희망&#10;비대면 면접 희망"
-                value={remoteWishText}
-                onChange={(e) => setRemoteWishText(e.target.value)}
-              />
-            </Field>
-          </div>
-
-          {/* 문항은 여러 줄로 쓰는 경우가 많아 textarea 로 둔다(예전 한 줄 입력이라 줄바꿈이 안 됐다).
-              줄바꿈은 지원서 화면에도 그대로 보인다. */}
-          <Field label="자기소개서 1번 문항" hint="비우면 이 문항을 받지 않습니다. 줄바꿈도 그대로 보입니다.">
-            <textarea
-              className="h-20 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
-              placeholder="자기소개와 동물에 대한 생각"
-              value={essayIntroLabel}
-              onChange={(e) => setEssayIntroLabel(e.target.value)}
-            />
-          </Field>
-
-          <Field label="자기소개서 2번 문항" hint="비우면 이 문항을 받지 않습니다. 줄바꿈도 그대로 보입니다.">
-            <textarea
-              className="h-20 w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-[13px] font-sans leading-relaxed text-ink-900 outline-none focus:border-blue-500"
-              placeholder="지원 동기와 가치관"
-              value={essayValuesLabel}
-              onChange={(e) => setEssayValuesLabel(e.target.value)}
-            />
-          </Field>
+          <ApplyFormEditor value={applyForm} onChange={setApplyForm} />
         </div>
 
         <div className="border-t border-cream-200 pt-6 space-y-4">
