@@ -7,7 +7,13 @@
 - `board_position`: president(회장) | vice_president(부회장) | treasurer(총무)   ← 회장단 3인 직책
 - `owner_type`: personal | team | global   ← global 은 공용 템플릿용(owner_id=null, 회장단 편집·전원 사용)
 - `visibility`: member | staff | board          ← RAG 문서 공개 범위(질문자 역할 이하만 검색)
-- `post_status`: draft → ready → scheduled → published | failed
+- `post_status`: draft → ready → scheduled → **publishing** → published | failed
+  - `publishing` = 발행 워커가 조건부 UPDATE 로 점유한 상태(마이그레이션 0017). pg_cron 이 매분 도는데
+    한 사이클은 건당 30초라 5건이면 2분 걸린다 — 점유가 없으면 다음 워커가 아직 `scheduled` 인 같은 글을
+    다시 집어 가 **카페에 중복 게시**된다(카페는 삭제 API 가 없어 되돌릴 수 없다).
+  - `updated_at` 이 점유의 임차 시각. `PUBLISH_LEASE_MS`(10분)를 넘긴 `publishing` 은 워커가 죽은 것으로
+    보고 회수한다. 결과 반영(`applyPublishResult`)도 `status='publishing'` 일 때만 적용해,
+    임차가 만료돼 회수된 뒤 뒤늦게 끝난 워커가 남의 결과를 덮어쓰지 못하게 한다.
 - `event_status`: draft → published → done | canceled   ← 공지 발행 회차 상태(신청 제거로 단순화, 마이그레이션 0002 적용)
 
 ## 테이블

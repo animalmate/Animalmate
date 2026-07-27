@@ -8,6 +8,10 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    // 통합 테스트는 데이터베이스 하나를 공유한다. 파일을 병렬로 돌리면 서로의 행을 건드려
+    // (예: 발행 워커 테스트가 다른 파일이 만든 예약 글을 점유해 버린다) 실패가 뒤섞인다.
+    // 실 DB 를 쓰는 테스트는 한 번에 한 파일씩 돈다.
+    fileParallelism: false,
   },
   resolve: {
     alias: {

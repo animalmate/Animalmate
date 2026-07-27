@@ -1,7 +1,7 @@
 // scheduled_posts 서비스 — 예약 글 작성/상태 전이 + 발행 결과 적용.
 // 상태머신(state-machine.ts)을 DB 에 반영한다. 사용자 행위는 권한+audit, 발행 워커 적용은 시스템(무액터).
 
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, lte, or } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { scheduledPosts, events } from '@/db/schema';
 import type * as schema from '@/db/schema';
@@ -153,16 +153,65 @@ export async function schedulePost(db: DB, actor: Actor, id: string): Promise<Sc
 }
 
 /** 발행 대상(due) 조회: scheduled + publish_at <= now + 15초(시계 오차·크론 경계 보정), 소량(≤limit). 발행 워커용. */
-export async function fetchDuePosts(db: DB, now: Date, limit = 5): Promise<ScheduledPost[]> {
+/**
+ * 워커가 죽은 채 남은 publishing 점유를 회수하기까지의 시간.
+ * 한 사이클 최대치(5건 × 30초 = 2분30초)보다 넉넉해야 살아 있는 워커의 글을 빼앗지 않는다.
+ */
+export const PUBLISH_LEASE_MS = 10 * 60_000;
+
+/**
+ * 발행 대상을 **원자적으로 점유**해서 가져온다.
+ *
+ * 왜 단순 SELECT 가 아닌가: pg_cron 이 매분 도는데 한 사이클은 건당 30초씩 걸린다(5건 = 2분).
+ * 예전에는 SELECT 로 목록만 읽고 카페 쓰기가 끝난 뒤에야 상태를 바꿔서, 그 사이에 시작된
+ * 다음 워커가 아직 scheduled 인 같은 글을 다시 집어 갔다. 정기 봉사 공지처럼 여러 팀 글이
+ * 같은 시각에 걸리면 흔히 일어나고, 카페는 삭제 API 가 없어 중복 게시를 되돌릴 수 없다.
+ *
+ * 조건부 UPDATE 는 원자적이라 두 워커가 동시에 실행돼도 한쪽만 행을 가져간다(pgbouncer 환경에서
+ * 세션 단위 advisory lock 은 쓸 수 없으므로 이 방식이 맞다).
+ */
+export async function claimDuePosts(db: DB, now: Date, limit = 5): Promise<ScheduledPost[]> {
   // 15초 세이프티 버퍼: pg_cron 경계 및 서버간 시계 오차(1~5초)로 인해 정시(예: 14:30:00) 예약이
   // 14:29:59.9 에 진입하여 14:31:00 크론으로 1분 밀리는 현상을 근본 방지한다.
   const cutoff = new Date(now.getTime() + 15_000);
-  return db
-    .select()
+  const staleBefore = new Date(now.getTime() - PUBLISH_LEASE_MS);
+  const take = Math.min(limit, 5); // 함수 타임아웃 방지: 한 사이클 최대 5건(02-TECH-STACK §3)
+
+  const candidates = await db
+    .select({ id: scheduledPosts.id })
     .from(scheduledPosts)
-    .where(and(eq(scheduledPosts.status, 'scheduled'), lte(scheduledPosts.publishAt, cutoff)))
+    .where(
+      and(
+        lte(scheduledPosts.publishAt, cutoff),
+        or(
+          eq(scheduledPosts.status, 'scheduled'),
+          // 점유한 채 죽은 워커의 글을 회수한다(그대로 두면 영영 발행되지 않는다).
+          and(eq(scheduledPosts.status, 'publishing'), lt(scheduledPosts.updatedAt, staleBefore))
+        )
+      )
+    )
     .orderBy(asc(scheduledPosts.publishAt))
-    .limit(Math.min(limit, 5)); // 함수 타임아웃 방지: 한 사이클 최대 5건(02-TECH-STACK §3)
+    .limit(take);
+
+  if (candidates.length === 0) return [];
+
+  // 후보를 읽는 사이 다른 워커가 가져갔을 수 있다. 여기서 조건을 다시 걸어 실제로 점유된 행만 받는다.
+  return db
+    .update(scheduledPosts)
+    .set({ status: 'publishing', updatedAt: new Date() })
+    .where(
+      and(
+        inArray(
+          scheduledPosts.id,
+          candidates.map((c) => c.id)
+        ),
+        or(
+          eq(scheduledPosts.status, 'scheduled'),
+          and(eq(scheduledPosts.status, 'publishing'), lt(scheduledPosts.updatedAt, staleBefore))
+        )
+      )
+    )
+    .returning();
 }
 
 /**
@@ -187,10 +236,12 @@ export async function applyPublishResult(
       ...(patch.failReason !== undefined ? { failReason: patch.failReason } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(scheduledPosts.id, post.id))
+    // 내가 점유한 상태 그대로일 때만 반영한다. 임차가 만료돼 다른 워커가 회수·처리했다면
+    // 여기서 걸러져, 뒤늦게 끝난 워커가 남의 결과를 덮어쓰지 않는다.
+    .where(and(eq(scheduledPosts.id, post.id), eq(scheduledPosts.status, 'publishing')))
     .returning();
 
-  // 사이클 도중 예약이 취소(삭제)되면 갱신 대상이 없다 — 조용히 건너뛴다(워커 크래시 방지).
+  // 예약이 취소(삭제)됐거나 다른 워커가 이미 처리한 경우 — 조용히 건너뛴다(워커 크래시 방지).
   if (!row) return null;
 
   const action =
@@ -224,9 +275,9 @@ export async function markUnpublishable(db: DB, post: ScheduledPost, reason: str
   const [row] = await db
     .update(scheduledPosts)
     .set({ status: 'failed', failReason: reason, updatedAt: new Date() })
-    .where(eq(scheduledPosts.id, post.id))
+    .where(and(eq(scheduledPosts.id, post.id), eq(scheduledPosts.status, 'publishing')))
     .returning();
-  if (!row) return null; // 사이클 도중 취소(삭제)됨
+  if (!row) return null; // 취소(삭제)됐거나 다른 워커가 이미 처리함
   await recordAudit(
     db,
     buildAuditEntry({

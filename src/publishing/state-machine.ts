@@ -16,7 +16,10 @@ export const MAX_RETRIES = 2;
 const ALLOWED: Record<PostStatus, PostStatus[]> = {
   draft: ['ready', 'scheduled'],
   ready: ['scheduled', 'draft'],
-  scheduled: ['published', 'failed', 'scheduled', 'draft'], // scheduled→scheduled = 대기 후 재시도, draft = 항목 미비 시 자동 복귀
+  // scheduled→publishing = 워커가 점유. draft = 항목 미비 시 자동 복귀.
+  scheduled: ['publishing', 'published', 'failed', 'scheduled', 'draft'],
+  // 점유 후 결과 반영. scheduled 로 되돌아가는 것은 대기 후 재시도(code 999)나 재시도 여유가 남은 오류.
+  publishing: ['published', 'failed', 'scheduled'],
   published: [],
   failed: ['scheduled', 'draft'], // 운영진이 재시도 큐에 되돌릴 수 있음
 };

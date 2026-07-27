@@ -8,7 +8,7 @@
 
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type * as schema from '@/db/schema';
-import { fetchDuePosts, applyPublishResult, markUnpublishable, type ScheduledPost } from './scheduled-posts';
+import { claimDuePosts, applyPublishResult, markUnpublishable, type ScheduledPost } from './scheduled-posts';
 import { classifyPublishResponse } from './state-machine';
 import { renderForPublish } from './final-render';
 import { postArticle, type CafeWriteResult } from '@/naver/cafe-write';
@@ -83,7 +83,7 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
   };
 
   const dueFetchedAt = new Date().toISOString();
-  const due = await fetchDuePosts(db, now, limit);
+  const due = await claimDuePosts(db, now, limit);
   summary.timings = { dueFetchedAt, posts: [] };
 
   if (due.length === 0) {

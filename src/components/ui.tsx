@@ -214,13 +214,18 @@ const STATUS: Record<string, string> = {
   draft: '작성중',
   ready: '완성',
   scheduled: '업로드 대기',
+  publishing: '업로드 중',
   published: '업로드됨',
   failed: '실패',
 };
 
+// 색상 변수가 따로 없는 상태는 성격이 가장 가까운 상태의 색을 빌려 쓴다.
+// (publishing 은 대기와 완료 사이의 짧은 진행 상태라 '대기' 색을 그대로 쓴다.)
+const STATUS_COLOR_KEY: Record<string, string> = { publishing: 'scheduled' };
+
 export function StatusBadge({ status }: { status: string }) {
   const label = STATUS[status] ?? status;
-  const key = STATUS[status] ? status : 'draft';
+  const key = STATUS[status] ? (STATUS_COLOR_KEY[status] ?? status) : 'draft';
   return (
     <span
       className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold"

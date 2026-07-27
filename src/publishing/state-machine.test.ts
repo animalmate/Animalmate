@@ -89,3 +89,34 @@ describe('카페 응답 분류', () => {
     if (r.kind === 'error') expect(r.reason).toContain('AP003');
   });
 });
+
+// 워커가 글을 점유(publishing)한 뒤의 전이. 이 상태가 없던 때는 카페 쓰기가 끝날 때까지
+// scheduled 로 남아, 매분 도는 다음 워커가 같은 글을 다시 집어 가 중복 게시가 났다.
+describe('publishing(점유) 상태 전이', () => {
+  it('점유는 예약된 글에서만 시작된다', () => {
+    expect(canTransition('scheduled', 'publishing')).toBe(true);
+    expect(canTransition('draft', 'publishing')).toBe(false);
+    expect(canTransition('published', 'publishing')).toBe(false);
+    // 실패한 글은 예약으로 되돌린 뒤에야 다시 발행 대상이 된다.
+    expect(canTransition('failed', 'publishing')).toBe(false);
+  });
+
+  it('점유 후에는 발행·실패·재시도(예약 복귀)로만 갈 수 있다', () => {
+    expect(canTransition('publishing', 'published')).toBe(true);
+    expect(canTransition('publishing', 'failed')).toBe(true);
+    expect(canTransition('publishing', 'scheduled')).toBe(true);
+    expect(canTransition('publishing', 'draft')).toBe(false);
+  });
+
+  it('점유 상태에서 결과를 반영해도 결과별 다음 상태는 그대로다', () => {
+    expect(nextStateForResult({ status: 'publishing', retryCount: 0 }, { kind: 'success', articleUrl: 'u' }).status)
+      .toBe('published');
+    // code 999 는 실패가 아니다 — 예약으로 돌아가 다음 사이클에 다시 시도한다.
+    expect(nextStateForResult({ status: 'publishing', retryCount: 0 }, { kind: 'rate_limited' }).status)
+      .toBe('scheduled');
+    expect(nextStateForResult({ status: 'publishing', retryCount: 0 }, { kind: 'error', reason: 'x' }).status)
+      .toBe('scheduled');
+    expect(nextStateForResult({ status: 'publishing', retryCount: MAX_RETRIES }, { kind: 'error', reason: 'x' }).status)
+      .toBe('failed');
+  });
+});

@@ -45,6 +45,11 @@ export const postStatusEnum = pgEnum('post_status', [
   'draft',
   'ready',
   'scheduled',
+  // 발행 워커가 집어 간 상태(카페 쓰기 진행 중). 크론이 매분 도는데 한 사이클은 건당 30초라
+  // 5건이면 2분 걸린다 — 그 사이 다음 워커가 아직 scheduled 인 글을 다시 집어 가서
+  // 같은 공지가 카페에 두 번 올라갈 수 있었다. 카페는 삭제 API 가 없어 되돌릴 수 없다(규칙 #2).
+  // updated_at 이 이 점유의 임차 시각이며, 오래된 publishing 은 워커가 죽은 것으로 보고 회수한다.
+  'publishing',
   'published',
   'failed',
 ]);
