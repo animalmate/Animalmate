@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTeams } from '@/components/use-teams';
+import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { EssayBlock } from '@/components/essay-block';
@@ -153,11 +154,7 @@ export function RecruitScreeningPanel() {
     }
   };
 
-  const filteredApplicants = applicants.filter((app) => {
-    if (selectedTeam === 'ALL') return true;
-    const effectiveTeam = app.assignedTeam || app.wishTeam1;
-    return effectiveTeam === selectedTeam || app.wishTeam1 === selectedTeam || app.wishTeam2 === selectedTeam;
-  });
+  const filteredApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
 
   const selectedApp = applicants.find((a) => a.id === selectedApplicantId);
   const currentDocScores = scores.filter(

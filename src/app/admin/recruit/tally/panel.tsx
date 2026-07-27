@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
+import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -15,6 +16,7 @@ export function RecruitTallyPanel() {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [aggregations, setAggregations] = useState<Record<string, any>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
   const [topNInput, setTopNInput] = useState('20');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -28,6 +30,12 @@ export function RecruitTallyPanel() {
       fetchApplicantsAndScores();
     }
   }, [selectedCohortId]);
+
+  // 팀·기수를 바꾸면 선택을 푼다. 안 그러면 1팀에서 고른 20명이 2팀 화면에서도 그대로 남아,
+  // 보이지 않는 사람들이 함께 확정된다.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [selectedTeam, selectedCohortId]);
 
   const fetchCohorts = async () => {
     try {
@@ -63,11 +71,15 @@ export function RecruitTallyPanel() {
     return avgB - avgA;
   });
 
-  const docPassCount = applicants.filter((a) =>
+  const filteredApplicants = sortedApplicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+
+  // 팀을 고르면 집계도 그 팀 기준이어야 한다 — 팀별로 나눠 보는 화면인데 KPI 만 전체를 세면
+  // "1팀 지원자 12명인데 합격자 31명" 같은 숫자가 나온다.
+  const docPassCount = filteredApplicants.filter((a) =>
     ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass', 'final_fail'].includes(a.status)
   ).length;
 
-  const deficientCount = applicants.filter((a) => aggregations[a.id]?.isDocSampleDeficient).length;
+  const deficientCount = filteredApplicants.filter((a) => aggregations[a.id]?.isDocSampleDeficient).length;
 
   const handleToggleSelect = (id: string) => {
     const next = new Set(selectedIds);
@@ -79,7 +91,9 @@ export function RecruitTallyPanel() {
   const handleSelectTopN = () => {
     const count = parseInt(topNInput, 10);
     if (isNaN(count) || count <= 0) return;
-    const topN = sortedApplicants.slice(0, count).map((a) => a.id);
+    // 지금 보고 있는 팀 안에서 고른다. 예전엔 전체에서 골라, 1팀만 보면서 "상위 20명"을 눌러도
+    // 화면에 없는 다른 팀 지원자가 선택되어 그대로 확정될 수 있었다.
+    const topN = filteredApplicants.slice(0, count).map((a) => a.id);
     setSelectedIds(new Set(topN));
   };
 
@@ -110,14 +124,6 @@ export function RecruitTallyPanel() {
       setLoading(false);
     }
   };
-
-  const [selectedTeam, setSelectedTeam] = useState('ALL');
-
-  const filteredApplicants = sortedApplicants.filter((app) => {
-    if (selectedTeam === 'ALL') return true;
-    const effectiveTeam = app.assignedTeam || app.wishTeam1;
-    return effectiveTeam === selectedTeam || app.wishTeam1 === selectedTeam || app.wishTeam2 === selectedTeam;
-  });
 
   const handleBulkReassignTeam = async (newTeam: string) => {
     if (selectedIds.size === 0) return;
@@ -188,8 +194,15 @@ export function RecruitTallyPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="flex items-center justify-between p-4">
           <div>
-            <div className="text-xs font-semibold text-ink-500">총 지원자 수</div>
-            <div className="text-2xl font-bold text-ink-900 mt-1">{applicants.length}명</div>
+            <div className="text-xs font-semibold text-ink-500">
+              {selectedTeam === 'ALL' ? '총 지원자 수' : `지원자 수 (${selectedTeam})`}
+            </div>
+            <div className="text-2xl font-bold text-ink-900 mt-1">
+              {filteredApplicants.length}명
+              {selectedTeam !== 'ALL' && (
+                <span className="ml-1 text-sm font-medium text-ink-400">/ 전체 {applicants.length}명</span>
+              )}
+            </div>
           </div>
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
             <Icon name="users" size={20} />

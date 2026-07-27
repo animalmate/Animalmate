@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
+import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { useTeams } from '@/components/use-teams';
@@ -212,16 +213,7 @@ export function RecruitInterviewAssignPanel() {
     await fetchSlotsAndApplicants();
   };
 
-  // 다른 모집 화면과 같은 규칙(배정팀이 있으면 그것, 없으면 희망 팀으로 본다).
-  const filteredApplicants = applicants.filter((app) => {
-    if (selectedTeam === 'ALL') return true;
-    const effectiveTeam = app.assignedTeam || app.wishTeam1;
-    return (
-      effectiveTeam === selectedTeam ||
-      app.wishTeam1 === selectedTeam ||
-      app.wishTeam2 === selectedTeam
-    );
-  });
+  const filteredApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
 
   return (
     <div className="space-y-6">

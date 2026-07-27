@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTeams } from '@/components/use-teams';
+import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
@@ -202,13 +203,7 @@ export function RecruitInterviewConsolePanel() {
 
   const filteredApplicants = applicants.filter((app) => {
     if (selectedSlotFilter !== 'ALL' && app.slotId !== selectedSlotFilter) return false;
-    if (selectedTeam !== 'ALL') {
-      const effectiveTeam = app.assignedTeam || app.wishTeam1;
-      if (effectiveTeam !== selectedTeam && app.wishTeam1 !== selectedTeam && app.wishTeam2 !== selectedTeam) {
-        return false;
-      }
-    }
-    return true;
+    return matchesTeamFilter(app, selectedTeam);
   });
 
   return (

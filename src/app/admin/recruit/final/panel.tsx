@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
+import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -16,6 +17,7 @@ export function RecruitFinalPanel() {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [aggregations, setAggregations] = useState<Record<string, any>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
 
   // 스위치 및 모달 상태
   const [schedulePublic, setSchedulePublic] = useState(false);
@@ -35,6 +37,12 @@ export function RecruitFinalPanel() {
       fetchCohortAndApplicants();
     }
   }, [selectedCohortId]);
+
+  // 팀·기수를 바꾸면 선택을 푼다. 최종 합격 확정은 되돌릴 수 없는데, 앞 팀에서 고른 사람이
+  // 화면에 보이지 않는 채로 남아 함께 확정될 수 있다.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [selectedTeam, selectedCohortId]);
 
   const fetchCohorts = async () => {
     try {
@@ -161,8 +169,6 @@ export function RecruitFinalPanel() {
     }
   };
 
-  const [selectedTeam, setSelectedTeam] = useState('ALL');
-
   const handleReassignTeam = async (id: string, newTeam: string) => {
     setLoading(true);
     try {
@@ -188,11 +194,7 @@ export function RecruitFinalPanel() {
     }
   };
 
-  const filteredApplicants = sortedApplicants.filter((app) => {
-    if (selectedTeam === 'ALL') return true;
-    const effectiveTeam = app.assignedTeam || app.wishTeam1;
-    return effectiveTeam === selectedTeam || app.wishTeam1 === selectedTeam || app.wishTeam2 === selectedTeam;
-  });
+  const filteredApplicants = sortedApplicants.filter((app) => matchesTeamFilter(app, selectedTeam));
 
   return (
     <div className="space-y-6">
