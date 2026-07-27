@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
-import { Button, Card, Field, Input, Select } from '@/components/ui';
+import { Button, Card, Field, Input, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitInterviewAssignPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -208,7 +209,7 @@ export function RecruitInterviewAssignPanel() {
                 !isRemote ? 'bg-blue-600 text-white shadow-sm' : 'bg-cream-100 text-ink-700 hover:bg-cream-200'
               }`}
             >
-              🏢 대면 면접
+              대면 면접
             </button>
             <button
               type="button"
@@ -217,7 +218,7 @@ export function RecruitInterviewAssignPanel() {
                 isRemote ? 'bg-blue-600 text-white shadow-sm' : 'bg-cream-100 text-ink-700 hover:bg-cream-200'
               }`}
             >
-              💻 비대면 면접 (Zoom/Meet)
+              비대면 면접 (Zoom/Meet)
             </button>
           </div>
         </div>
@@ -252,7 +253,7 @@ export function RecruitInterviewAssignPanel() {
               <Select value={selectedVenue} onChange={(e) => setSelectedVenue(e.target.value)}>
                 {venuePresets.map((v) => (
                   <option key={v} value={v}>
-                    📍 {v}
+                    {v}
                   </option>
                 ))}
               </Select>
@@ -275,18 +276,14 @@ export function RecruitInterviewAssignPanel() {
           </div>
         </div>
 
-        {message && (
-          <div className="rounded-xl border border-cream-200 bg-cream-50 p-3 text-xs font-semibold text-ink-900">
-            {message}
-          </div>
-        )}
+        <StatusMessage text={message} />
       </Card>
 
       {/* 2. 생성된 슬롯별 운영진(면접관) 및 지원자 배정 관리 */}
       <Card className="space-y-4">
         <div className="flex items-center justify-between border-b border-cream-200 pb-3">
           <h2 className="text-base font-bold text-ink-900">
-            📅 생성된 면접 슬롯 및 운영진(면접관) 배정 현황 ({slots.length}개 슬롯)
+            생성된 면접 슬롯 및 운영진(면접관) 배정 현황 ({slots.length}개 슬롯)
           </h2>
         </div>
 
@@ -305,7 +302,7 @@ export function RecruitInterviewAssignPanel() {
                   <div className="flex items-start justify-between border-b border-cream-100 pb-2.5">
                     <div>
                       <span className="text-sm font-bold text-ink-900 flex items-center gap-1.5">
-                        <span>⏰</span>
+                        <Icon name="clock" size={14} className="text-ink-500" />
                         {new Date(slot.startsAt).toLocaleString('ko-KR', {
                           month: 'numeric',
                           day: 'numeric',
@@ -316,7 +313,7 @@ export function RecruitInterviewAssignPanel() {
                         ({slot.durationMin}분)
                       </span>
                       <p className="text-xs font-semibold text-blue-700 mt-1">
-                        {slot.venue ? `📍 ${slot.venue}` : slot.link ? `💻 ${slot.link}` : '대면 면접'}
+                        {slot.venue ? slot.venue : slot.link ? `${slot.link}` : '대면 면접'}
                       </p>
                     </div>
 
@@ -332,7 +329,7 @@ export function RecruitInterviewAssignPanel() {
                   {/* 배정된 면접관 운영진 목록 */}
                   <div className="space-y-1.5">
                     <span className="text-[11px] font-bold text-ink-500 block">
-                      👥 배정된 운영진(면접관) ({interviewers.length}명)
+                      배정된 운영진(면접관) ({interviewers.length}명)
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {interviewers.map((int: any) => (
@@ -369,7 +366,7 @@ export function RecruitInterviewAssignPanel() {
                   {/* 배정된 지원자 목록 */}
                   <div className="space-y-1 pt-1 border-t border-cream-100">
                     <span className="text-[11px] font-bold text-ink-500 block">
-                      🎓 면접 대상자 지원자 ({assignedApps.length}명)
+                      면접 대상자 지원자 ({assignedApps.length}명)
                     </span>
                     {assignedApps.length === 0 ? (
                       <span className="text-[11px] text-ink-400 italic">배정된 지원자 없음</span>
@@ -431,7 +428,7 @@ export function RecruitInterviewAssignPanel() {
                       <option value="">-- 면접 슬롯 미배정 --</option>
                       {slots.map((s) => (
                         <option key={s.id} value={s.id}>
-                          ⏰ {new Date(s.startsAt).toLocaleString('ko-KR', {
+                          {new Date(s.startsAt).toLocaleString('ko-KR', {
                             month: 'numeric',
                             day: 'numeric',
                             hour: '2-digit',

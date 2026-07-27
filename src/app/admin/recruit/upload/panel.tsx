@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, Field, Select } from '@/components/ui';
+import { Button, Card, Field, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitUploadPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -166,7 +167,7 @@ export function RecruitUploadPanel() {
               <h2 className="text-base font-bold text-ink-900">데이터를 업로드할 모집 기수 선택</h2>
             </div>
             <a href="/admin/recruit/notice-edit" className="text-xs font-semibold text-blue-600 hover:underline">
-              ⚙️ 0. 공고 설정에서 새 기수 생성/관리하기 →
+              0. 공고 설정에서 새 기수 생성/관리하기 →
             </a>
           </div>
           <div>
@@ -204,7 +205,7 @@ export function RecruitUploadPanel() {
 
           {headers.length > 0 && (
             <div className="space-y-3 pt-2">
-              <h3 className="text-sm font-bold text-ink-900">엑셀 열 ↔ 지원 항목 연결</h3>
+              <h3 className="text-sm font-bold text-ink-900">엑셀 열 지원 항목 연결</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {Object.keys(fieldLabels).map((fieldKey) => (
                   <div key={fieldKey} className="flex items-center justify-between gap-2 rounded-xl border border-cream-200 bg-cream-25 p-2.5">
@@ -280,7 +281,7 @@ export function RecruitUploadPanel() {
                           {s.nearStation}
                           {hasAddressPattern && (
                             <span className="ml-2 inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                              ⚠️ 주소 감지 (역명 정제 추천)
+                              <Icon name="alert" size={12} className="inline" /> 주소 감지 (역명 정제 추천)
                             </span>
                           )}
                         </td>
@@ -303,11 +304,7 @@ export function RecruitUploadPanel() {
           </Card>
         )}
 
-        {message && (
-          <div className="rounded-xl border border-cream-200 bg-white p-4 text-sm font-semibold text-ink-900 shadow-card">
-            {message}
-          </div>
-        )}
+        <StatusMessage text={message} />
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
-import { Button, Card, Field, Input, Select } from '@/components/ui';
+import { Button, Card, Field, Input, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitScreeningPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -320,7 +320,7 @@ export function RecruitScreeningPanel() {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  {message ? <p className="text-xs font-semibold text-blue-700">{message}</p> : <span />}
+                  {message ? <StatusMessage text={message} /> : <span />}
                   <Button type="button" disabled={savingScore} onClick={handleSaveScore}>
                     {savingScore ? '저장 중…' : '서류 점수 저장'}
                   </Button>

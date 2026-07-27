@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select } from '@/components/ui';
+import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitFinalPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -237,15 +238,11 @@ export function RecruitFinalPanel() {
             onClick={() => setShowPurgeModal(true)}
             className="h-control"
           >
-            🗑️ 모집 종료 PII 데이터 일괄 파기
+            모집 종료 PII 데이터 일괄 파기
           </DangerButton>
         </div>
 
-        {message && (
-          <div className="rounded-xl border border-cream-200 bg-cream-50 p-3 text-xs font-semibold text-ink-900">
-            {message}
-          </div>
-        )}
+        <StatusMessage text={message} />
       </Card>
 
       {/* 최종 합격 결정 매트릭스 카드 */}
@@ -331,12 +328,12 @@ export function RecruitFinalPanel() {
                     <td className="p-3.5">
                       {hasNoInterviewScore && (
                         <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                          ⚠️ 면접 채점 미기록
+                          <Icon name="alert" size={12} className="inline" /> 면접 채점 미기록
                         </span>
                       )}
                       {app.status === 'interview_noshow' && (
                         <span className="inline-flex items-center rounded-md bg-coral-100 px-2 py-0.5 text-[10px] font-bold text-coral-700">
-                          🚨 면접 불참
+                          <Icon name="alert" size={12} className="inline" /> 면접 불참
                         </span>
                       )}
                     </td>
@@ -375,7 +372,7 @@ export function RecruitFinalPanel() {
         <div className="fixed inset-0 bg-ink-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <Card className="max-w-md w-full p-6 space-y-4 shadow-modal border-coral-100">
             <h2 className="text-lg font-bold text-coral-700 flex items-center gap-2">
-              🚨 모집 종료 데이터 영구 일괄 파기
+              모집 종료 데이터 영구 일괄 파기
             </h2>
             <p className="text-xs text-ink-500 leading-relaxed">
               모집 프로세스가 완료된 후 지원자의 이름, 연락처, 자기소개서, 개별 채점 기록 및 개인 메모를 안전하게 영구 파기합니다. 익명 통계(총 수치)만 보존됩니다.

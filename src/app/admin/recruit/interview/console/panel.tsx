@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
-import { Button, Card, Field, Input, Select } from '@/components/ui';
+import { Button, Card, Field, Input, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitInterviewConsolePanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -160,7 +160,7 @@ export function RecruitInterviewConsolePanel() {
               <option value="ALL">전체 면접 슬롯 보기</option>
               {slots.map((s) => (
                 <option key={s.id} value={s.id}>
-                  ⏰ {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}{' '}
+                  {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}{' '}
                   | {s.venue || '대면'}
                 </option>
               ))}
@@ -292,7 +292,7 @@ export function RecruitInterviewConsolePanel() {
                         rel="noreferrer"
                         className="text-xs text-blue-600 font-semibold underline hover:text-blue-700"
                       >
-                        🔗 면접 접속 URL 열기
+                        면접 접속 URL 열기
                       </a>
                     </div>
                   )}
@@ -373,7 +373,7 @@ export function RecruitInterviewConsolePanel() {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  {message ? <p className="text-xs font-semibold text-blue-700">{message}</p> : <span />}
+                  {message ? <StatusMessage text={message} /> : <span />}
                   <Button type="button" disabled={savingScore} onClick={handleSaveInterviewScore}>
                     {savingScore ? '저장 중…' : '면접 점수 저장 (상태 전이)'}
                   </Button>

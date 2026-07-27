@@ -136,6 +136,36 @@ const BANNER: Record<string, { icon: string; cls: string }> = {
   success: { icon: 'check', cls: 'bg-success-100 text-success-700' },
 };
 
+/**
+ * 화면 상단의 일회성 처리 결과 문구.
+ *
+ * 신입 모집 화면들은 결과를 `setMessage('✅ …')` / `setMessage('❌ …')` 처럼 이모지 접두사로
+ * 구분해 왔는데, 표시는 항상 같은 회색 상자여서 성공·실패가 색으로 드러나지 않았다.
+ * 여기서 접두사를 읽어 톤을 정하고 이모지는 지운 뒤 아이콘으로 바꾼다.
+ * 실패는 role="alert" 로 즉시 읽히게 하고, 성공은 role="status" 로 방해 없이 알린다.
+ */
+export function StatusMessage({ text }: { text: string }) {
+  if (!text) return null;
+  const failed = /^\s*(❌|⚠️?|🚨|🛑)/.test(text);
+  const ok = /^\s*(✅|🎉)/.test(text);
+  const body = text.replace(/^\s*(❌|⚠️?|🚨|🛑|✅|🎉)\s*/, '');
+  const tone = failed
+    ? 'border-coral-100 bg-coral-50 text-coral-700'
+    : ok
+      ? 'border-success bg-success-100 text-success-700'
+      : 'border-ink-200 bg-cream-50 text-ink-900';
+
+  return (
+    <div
+      role={failed ? 'alert' : 'status'}
+      className={`flex items-start gap-2 rounded-xl border p-3 text-[13px] font-semibold ${tone}`}
+    >
+      <Icon name={failed ? 'alert' : ok ? 'check' : 'info'} size={16} className="mt-px shrink-0" />
+      <span className="min-w-0 flex-1">{body}</span>
+    </div>
+  );
+}
+
 export function Banner({ kind = 'info', title, children }: { kind?: 'info' | 'warning' | 'error' | 'success'; title?: string; children?: ReactNode }) {
   const b = BANNER[kind] ?? BANNER.info;
   return (

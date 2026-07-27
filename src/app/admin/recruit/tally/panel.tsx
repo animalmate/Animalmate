@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Banner, Button, Card, DangerButton, Input, SecondaryButton, Select } from '@/components/ui';
+import { Banner, Button, Card, DangerButton, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitTallyPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -274,11 +275,7 @@ export function RecruitTallyPanel() {
           </div>
         </div>
 
-        {message && (
-          <div className="rounded-xl border border-cream-200 bg-cream-50 p-3 text-xs font-semibold text-ink-900">
-            {message}
-          </div>
-        )}
+        <StatusMessage text={message} />
 
         {/* 집계 표 */}
         <div className="overflow-x-auto rounded-xl border border-cream-200 bg-white shadow-card">
@@ -327,7 +324,7 @@ export function RecruitTallyPanel() {
                       <span className="font-semibold">{agg?.docScorerCount ?? 0}명</span>
                       {isDeficient && (
                         <span className="ml-2 inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                          ⚠️ 표본 부족 (&lt;3)
+                          <Icon name="alert" size={12} className="inline" /> 표본 부족 (&lt;3)
                         </span>
                       )}
                     </td>

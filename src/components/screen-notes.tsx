@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { Icon } from './icon';
 
 interface ScreenNotesProps {
@@ -8,11 +8,16 @@ interface ScreenNotesProps {
   title?: string;
 }
 
+/**
+ * 화면별 공용 메모지(09-RECRUIT-DESIGN §6.6). 운영진 누구나 같이 쓰고 지운다.
+ * 기본 접힘 — 심사 화면의 주 내용을 가리지 않게 한다.
+ */
 export function ScreenNotes({ contextKey, title = '운영진 공용 메모지' }: ScreenNotesProps) {
   const [content, setContent] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const panelId = useId();
 
   useEffect(() => {
     fetch(`/api/recruit/notes?contextKey=${encodeURIComponent(contextKey)}`)
@@ -34,60 +39,64 @@ export function ScreenNotes({ contextKey, title = '운영진 공용 메모지' }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contextKey, content }),
       });
-      if (res.ok) {
-        setLastSaved(new Date());
-      }
+      if (res.ok) setLastSaved(new Date());
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50/80 via-cream-50 to-amber-50/80 p-4 shadow-card">
-      <div
-        className="flex items-center justify-between cursor-pointer select-none"
-        onClick={() => setIsOpen(!isOpen)}
+    <section className="mb-6 rounded-2xl border border-amber-100 bg-amber-50/50 shadow-card">
+      {/* 헤더 전체가 하나의 버튼 — 예전엔 div 에 onClick 이 있고 버튼은 빈 껍데기라
+          키보드로는 펼칠 수 없었다. */}
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        className="flex min-h-tap w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-amber-100/50"
       >
-        <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+        <span className="flex items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
             <Icon name="layers" size={16} />
           </span>
           <span className="text-sm font-bold text-ink-900">{title}</span>
           {lastSaved && (
-            <span className="text-xs text-ink-500 font-medium">
-              (최근 저장: {lastSaved.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})
+            <span className="text-xs font-medium text-ink-500">
+              최근 저장 {lastSaved.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
-        </div>
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-ink-500 hover:bg-amber-100/60 hover:text-ink-900 transition-colors"
-        >
-          {isOpen ? '접기 ▲' : '펼치기 ▼'}
-        </button>
-      </div>
-
-      {isOpen && (
-        <div className="mt-3 space-y-2.5">
-          <textarea
-            className="w-full min-h-[110px] rounded-xl border border-amber-100/80 bg-white p-3 text-sm text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-sans leading-relaxed"
-            placeholder="심사 특이사항, 심사위원 간 조율 내용 등을 자유롭게 기록하세요. 운영진 모두에게 공유됩니다..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+        </span>
+        <span className="flex items-center gap-1 text-xs font-semibold text-ink-500">
+          {isOpen ? '접기' : '펼치기'}
+          <Icon
+            name="chevronDown"
+            size={16}
+            className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           />
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-ink-400">※ 이 메모는 운영진 권한 사용자 전체에게 실시간 공유됩니다.</span>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={handleSave}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 active:bg-amber-700 transition-colors disabled:opacity-50"
-            >
-              {saving ? '저장 중…' : '메모 저장'}
-            </button>
-          </div>
+        </span>
+      </button>
+
+      <div id={panelId} hidden={!isOpen} className="space-y-3 px-4 pb-4">
+        <textarea
+          className="min-h-[110px] w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-sm leading-relaxed text-ink-900 outline-none transition-colors placeholder:text-ink-400 focus:border-blue-500"
+          placeholder="심사 특이사항, 운영진 간 조율 내용을 자유롭게 기록하세요."
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          aria-label={title}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-ink-400">운영진 전체에게 공유됩니다.</span>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+            className="inline-flex h-control-sm min-h-tap items-center gap-1.5 rounded-xl border border-ink-300 bg-white px-3.5 text-sm font-semibold text-ink-900 transition-colors hover:bg-cream-50 disabled:opacity-50"
+          >
+            {saving ? '저장 중…' : '메모 저장'}
+          </button>
         </div>
-      )}
-    </div>
+      </div>
+    </section>
   );
 }

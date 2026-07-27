@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select } from '@/components/ui';
+import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitNoticeEditPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -246,7 +247,7 @@ export function RecruitNoticeEditPanel() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-cream-100 text-ink-900 border border-ink-200 rounded-xl text-xs font-bold transition-all shadow-sm no-underline"
           >
-            <span>📢 공개 공고 페이지 바로가기 ↗</span>
+            <span>공개 공고 페이지 바로가기 ↗</span>
           </a>
         </div>
       </div>
@@ -256,7 +257,7 @@ export function RecruitNoticeEditPanel() {
       {/* 모집 기수 선택 및 관리 */}
       <Card className="space-y-4">
         <div className="flex items-center justify-between border-b border-cream-200 pb-3">
-          <h2 className="text-base font-bold text-ink-900">🚩 모집 기수 선택 및 생성 / 삭제</h2>
+          <h2 className="text-base font-bold text-ink-900">모집 기수 선택 및 생성 / 삭제</h2>
           <span className="text-xs text-ink-500">새로운 신입 기수를 생성하거나 기존 기수를 관리합니다.</span>
         </div>
 
@@ -297,7 +298,7 @@ export function RecruitNoticeEditPanel() {
                 onClick={() => setShowDeleteModal(true)}
                 className="h-control whitespace-nowrap"
               >
-                🗑️ 기수 삭제
+                기수 삭제
               </DangerButton>
             )}
           </div>
@@ -308,7 +309,7 @@ export function RecruitNoticeEditPanel() {
       <Card className="p-5 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-cream-50 to-blue-50/40 border-cream-200 shadow-card">
         <div className="flex items-center gap-3">
           <span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-2xl font-bold ${isClosed ? 'bg-coral-100 text-coral-700' : 'bg-emerald-100 text-emerald-800'}`}>
-            {isClosed ? '🔒' : '📢'}
+            <Icon name={isClosed ? "alert" : "megaphone"} size={18} />
           </span>
           <div>
             <div className="text-sm font-bold text-ink-900 flex items-center gap-2">
@@ -333,14 +334,14 @@ export function RecruitNoticeEditPanel() {
               : 'bg-coral-600 text-white hover:bg-coral-700 active:scale-95'
           }`}
         >
-          {saving ? '상태 변경 중…' : isClosed ? '🔓 모집 재개하기 (지원서 열기)' : '🛑 모집 중단하기 (지원 마감)'}
+          {saving ? '상태 변경 중…' : isClosed ? '모집 재개하기 (지원서 열기)' : '모집 중단하기 (지원 마감)'}
         </button>
       </Card>
 
       {/* 설정 입력 카드 */}
       <Card className="space-y-6">
         <div className="border-b border-cream-200 pb-3">
-          <h2 className="text-base font-bold text-ink-900">📋 공개 모집 공고 내용 및 이미지</h2>
+          <h2 className="text-base font-bold text-ink-900">공개 모집 공고 내용 및 이미지</h2>
         </div>
 
         <Field label="모집 공고 상세 안내글 (마크다운 / 일반 텍스트)" hint="공개 공고 페이지(/recruit/notice)에 표시될 전체 안내글">
@@ -355,12 +356,12 @@ export function RecruitNoticeEditPanel() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-xs font-bold text-ink-900 block">🖼️ 모집 포스터 및 안내 이미지 첨부</label>
+              <label className="text-xs font-bold text-ink-900 block">모집 포스터 및 안내 이미지 첨부</label>
               <p className="text-[11px] text-ink-500">컴퓨터에서 포스터 이미지 파일(PNG, JPG, WEBP)을 선택하여 바로 첨부할 수 있습니다.</p>
             </div>
 
             <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all">
-              <span>📂 이미지 파일 추가</span>
+              <span>이미지 파일 추가</span>
               <input type="file" accept="image/*" multiple onChange={handleImageFileUpload} className="hidden" />
             </label>
           </div>
@@ -389,7 +390,7 @@ export function RecruitNoticeEditPanel() {
         </div>
 
         <div className="border-t border-cream-200 pt-6 space-y-4">
-          <h2 className="text-base font-bold text-ink-900">📍 대면 면접 장소 프리셋 (줄바꿈 구분)</h2>
+          <h2 className="text-base font-bold text-ink-900">대면 면접 장소 프리셋 (줄바꿈 구분)</h2>
           <Field label="대면 면접 장소 후보 목록" hint="면접 배정 시 클릭 한 번으로 선택 가능한 장소 프리셋입니다. (최대 2~3곳)">
             <textarea
               className="w-full h-20 rounded-xl border border-ink-200 bg-white p-3 text-xs font-sans text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500"
@@ -401,12 +402,12 @@ export function RecruitNoticeEditPanel() {
         </div>
 
         <div className="border-t border-cream-200 pt-6 space-y-4">
-          <h2 className="text-base font-bold text-ink-900">🏆 최종 합격자 축하 멘트 및 합격 후 안내</h2>
+          <h2 className="text-base font-bold text-ink-900">최종 합격자 축하 멘트 및 합격 후 안내</h2>
 
           <Field label="최종 합격 축하 멘트" hint="합격자가 결과 조회 시 표시되는 축하 멘트">
             <Input
               type="text"
-              placeholder="🎉 축하합니다! 애니멀메이트 33기 신입 부원으로 최종 합격하셨습니다."
+              placeholder="축하합니다! 애니멀메이트 33기 신입 부원으로 최종 합격하셨습니다."
               value={congratsMessage}
               onChange={(e) => setCongratsMessage(e.target.value)}
             />
@@ -422,15 +423,11 @@ export function RecruitNoticeEditPanel() {
           </Field>
         </div>
 
-        {message && (
-          <div className="rounded-xl border border-cream-200 bg-cream-50 p-4 text-xs font-semibold text-ink-900">
-            {message}
-          </div>
-        )}
+        <StatusMessage text={message} />
 
         <div className="flex justify-end pt-2">
           <Button type="button" disabled={saving} onClick={handleSaveSettings} className="h-control px-8 text-sm font-bold">
-            {saving ? '저장 중…' : '💾 공고 및 안내 설정 저장'}
+            {saving ? '저장 중…' : '공고 및 안내 설정 저장'}
           </Button>
         </div>
       </Card>
@@ -440,7 +437,7 @@ export function RecruitNoticeEditPanel() {
         <div className="fixed inset-0 bg-ink-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <Card className="max-w-md w-full p-6 space-y-4 shadow-modal rounded-3xl border-coral-100 bg-white">
             <div className="flex items-center gap-3 text-coral-700">
-              <span className="text-2xl">⚠️</span>
+              <Icon name="alert" size={24} className="text-coral-600" />
               <h2 className="text-lg font-bold text-ink-900">정말 이 기수를 삭제하시겠습니까?</h2>
             </div>
             <p className="text-xs text-ink-500 leading-relaxed">
