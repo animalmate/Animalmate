@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseCsv, mapRowToApplicant, detectDuplicates, detectDelimiter, autoMapHeaders } from './csv';
+import {
+  parseCsv,
+  mapRowToApplicant,
+  detectDuplicates,
+  detectDelimiter,
+  autoMapHeaders,
+  missingRequiredMappings,
+} from './csv';
 
 // 지원서에 항목을 추가하고 CSV 경로(csv.ts·업로드 화면·bulkCreateApplicants)를 빠뜨리면
 // 업로드가 그 값을 조용히 버린다 — 실제로 가치관 주제·영문 이름이 그렇게 누락돼 있었다.
@@ -95,5 +102,25 @@ describe('자동 항목 연결 규칙', () => {
     const m = autoMapHeaders(['이름', '성별', '학교', '학과', '영문 이름']);
     const used = Object.values(m);
     expect(new Set(used).size).toBe(used.length);
+  });
+});
+
+// 이름·전화번호가 안 붙으면 모든 행이 버려져 "0명"만 나온다. 왜 0명인지 단서가 없어 실제로 헤맸다.
+// 화면과 API 가 이 함수 하나를 같이 본다 — 규칙을 양쪽에 적으면 한쪽만 고쳐진다.
+describe('필수 항목 연결 검사', () => {
+  const headers = ['타임스탬프', '성함', '연락처', '학교'];
+
+  it('필수 항목이 모두 연결되면 통과한다', () => {
+    expect(missingRequiredMappings(headers, { name: '성함', phone: '연락처' })).toEqual([]);
+  });
+
+  it('연결이 비어 있으면 잡아낸다', () => {
+    expect(missingRequiredMappings(headers, { name: '성함' })).toEqual(['phone']);
+    expect(missingRequiredMappings(headers, {})).toEqual(['name', 'phone']);
+  });
+
+  it('머리글에 없는 열을 가리키면 연결되지 않은 것으로 본다', () => {
+    // 다른 파일을 다시 붙여넣으면 이전 연결이 남는다 — 화면엔 연결된 듯 보이는데 서버는 전부 버린다.
+    expect(missingRequiredMappings(headers, { name: '이름', phone: '연락처' })).toEqual(['name']);
   });
 });

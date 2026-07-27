@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import { internalError } from '@/http/errors';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
-import { parseCsv, mapRowToApplicant, detectDuplicates, ApplicantImportInput } from '@/recruit/csv';
+import {
+  parseCsv,
+  mapRowToApplicant,
+  detectDuplicates,
+  missingRequiredMappings,
+  REQUIRED_MAPPING_LABELS,
+  ApplicantImportInput,
+} from '@/recruit/csv';
 import { bulkCreateApplicants, listApplicantsByCohort } from '@/recruit/applicants';
 
 export const runtime = 'nodejs';
@@ -22,6 +29,22 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const { headers, rows } = parseCsv(csvText);
+
+    // 이름·전화번호가 연결되지 않으면 mapRowToApplicant 가 모든 행을 버려서 "0명"만 나온다.
+    // 왜 0명인지 화면에 아무 단서가 없어 실제로 한 번 헤맸다 — 원인을 그대로 돌려준다.
+    const missing = missingRequiredMappings(headers, mapping);
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'unmapped_required_field',
+          message: `필수 항목(${missing
+            .map((k) => REQUIRED_MAPPING_LABELS[k])
+            .join(', ')})이 엑셀 열과 연결되지 않았습니다. 항목 연결을 확인해 주세요.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const parsedApplicants: ApplicantImportInput[] = [];
 
     rows.forEach((row) => {

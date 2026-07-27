@@ -131,7 +131,11 @@ interview_done ──(회장단 최종확정)──▶ final_pass 또는 final_f
 ## 8. 폐기 (회장단, 되돌릴 수 없음)
 - 2단계 확인(모달 + 라벨 재입력). 실행 = `archived_stats` 계산(지원자 수·서류합격·최종합격·평균 서류/면접 점수,
   전부 익명 수치) → cohort.closed_at·archived_stats 기록 → applicants delete(cascade 로 slots/scores/memos 동반).
-  screen_notes(recruit:*), mapping_presets 는 재사용 자산이라 유지하되, cohort 종속 메모지는 함께 지운다.
+  mapping_presets 는 재사용 자산이라 유지. 공용 메모지는 키가 `recruit:{cohortId}:{화면}:{팀}` 이라
+  기수 단위로 전량 삭제한다(운영진이 메모지에 지원자 실명을 적으므로, 남기면 "모두 폐기" 고지를 어긴다).
+- 재폐기 차단: `archived_stats` 가 이미 있으면 409. 두 번 실행하면 지원자가 0명이라 집계가 0 으로 덮여
+  폐기 후 유일하게 남는 기록이 사라진다. 없는 기수도 409(조용한 성공 금지).
+- 확인 모달에 **대상 기수·인원**을 표시하고 확인 문구는 매번 새로 입력받는다(닫을 때 비운다).
 - audit `recruit.purge` [high]. 확인 단계에서 "복구 불가" 명시. 04-TODO 파일럿 체크리스트에 "모집 종료 후 폐기" 추가.
 
 ## 9. RLS·테스트
@@ -152,8 +156,11 @@ interview_done ──(회장단 최종확정)──▶ final_pass 또는 final_f
 - **6**: 최종 결정 + 공개 스위치 + 폐기.
 - **7**: `/recruit` 비로그인 조회 + nav/home + 04-TODO 체크리스트 + 07-DECISIONS 정식화.
 
-## 11. v2 백로그 (구현 금지, 항목만)
-- 모집 공고 페이지 / 지원서 접수 폼(구글폼 대체, 위 필드 + 자기소개서 2문항) / 지원자 메일 알림.
+## 11. v2 백로그
+- ~~모집 공고 페이지 / 지원서 접수 폼~~ → **v1 에 구현됨**(`/recruit/notice`, `/recruit/apply`).
+  문항·선택지는 하드코딩이 아니라 "0. 공고 설정"에서 기수마다 수정한다(`recruit_cohorts.apply_form`).
+  33기까지는 구글폼 병행이라 업로드 화면이 남아 있고, 34기부터 이 폼으로 일원화 예정.
+- 남은 항목: 지원자 메일 알림.
 
 ---
 

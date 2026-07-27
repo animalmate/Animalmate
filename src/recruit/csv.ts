@@ -245,3 +245,30 @@ export function autoMapHeaders(headers: string[]): Record<string, string> {
   }
   return mapping;
 }
+
+/** 이 둘이 연결되지 않으면 mapRowToApplicant 가 모든 행을 버려 "0명"만 남는다. */
+export const REQUIRED_MAPPING_FIELDS = ['name', 'phone'] as const;
+export type RequiredMappingField = (typeof REQUIRED_MAPPING_FIELDS)[number];
+
+export const REQUIRED_MAPPING_LABELS: Record<RequiredMappingField, string> = {
+  name: '이름',
+  phone: '전화번호',
+};
+
+/**
+ * 필수 항목 중 아직 엑셀 열에 연결되지 않은 것들.
+ * 연결값이 실제 머리글 목록에 있는지까지 본다 — 다른 파일을 다시 붙여넣으면 지금 없는 열을
+ * 가리킨 채 남을 수 있고, 그러면 화면은 "연결됨"으로 보이는데 서버는 전부 버린다.
+ *
+ * 업로드 화면과 API 가 같은 함수를 쓴다. 규칙을 양쪽에 따로 적으면 한쪽만 고쳐져
+ * 화면은 통과시키고 서버는 막는(또는 그 반대) 상태가 된다.
+ */
+export function missingRequiredMappings(
+  headers: string[],
+  mapping: Record<string, string>
+): RequiredMappingField[] {
+  return REQUIRED_MAPPING_FIELDS.filter((k) => {
+    const header = mapping[k];
+    return !header || !headers.includes(header);
+  });
+}

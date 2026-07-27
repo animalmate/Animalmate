@@ -148,13 +148,38 @@ export function RecruitInterviewAssignPanel() {
   };
 
   const handleDeleteSlot = async (id: string) => {
-    if (!confirm('정말 이 면접 슬롯을 삭제하시겠습니까?')) return;
-    await fetch(`/api/recruit/slots?id=${id}`, { method: 'DELETE' });
+    // 슬롯을 지우면 거기 배정된 지원자의 배정이 조용히 풀린다(slot_id → null).
+    // 몇 명이 풀리는지 알려주지 않으면, 배정을 다 해놓고 슬롯 하나 지웠다가
+    // 누가 그 시간이었는지도 모른 채 처음부터 다시 배정해야 한다.
+    const slot = slots.find((s) => s.id === id);
+    const assigned = applicants.filter((a) => a.slotId === id);
+    const when = slot
+      ? new Date(slot.startsAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
+      : '이 슬롯';
+    const warn =
+      assigned.length > 0
+        ? `${when} 슬롯을 삭제합니다.\n\n배정된 지원자 ${assigned.length}명(${assigned
+            .map((a) => a.name)
+            .join(', ')})의 면접 시간 배정이 함께 해제됩니다. 되돌리려면 한 명씩 다시 배정해야 합니다.\n\n삭제할까요?`
+        : `${when} 슬롯을 삭제합니다. 배정된 지원자는 없습니다.\n\n삭제할까요?`;
+    if (!confirm(warn)) return;
+
+    const res = await fetch(`/api/recruit/slots?id=${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setMessage(`❌ 슬롯 삭제 실패: ${data.message || data.error || res.status}`);
+      return;
+    }
+    setMessage(
+      assigned.length > 0
+        ? `✅ 슬롯을 삭제했습니다. 지원자 ${assigned.length}명의 배정이 해제되었습니다.`
+        : '✅ 슬롯을 삭제했습니다.'
+    );
     await fetchSlotsAndApplicants();
   };
 
   const handleAssignSlot = async (applicantId: string, slotId: string | null) => {
-    await fetch('/api/recruit/applicants', {
+    const res = await fetch('/api/recruit/applicants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -163,18 +188,26 @@ export function RecruitInterviewAssignPanel() {
         slotId: slotId || null,
       }),
     });
+    // 실패를 삼키면 드롭다운만 바뀌고 저장은 안 된 상태로 넘어간다.
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setMessage(`❌ 면접 시간 배정 실패: ${data.message || data.error || res.status}`);
+    }
     await fetchSlotsAndApplicants();
   };
 
   const handleToggleInterviewer = async (slotId: string, userId: string, isAssigned: boolean) => {
-    if (isAssigned) {
-      await fetch(`/api/recruit/slot-interviewers?slotId=${slotId}&userId=${userId}`, { method: 'DELETE' });
-    } else {
-      await fetch('/api/recruit/slot-interviewers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotId, userId }),
-      });
+    const res = isAssigned
+      ? await fetch(`/api/recruit/slot-interviewers?slotId=${slotId}&userId=${userId}`, { method: 'DELETE' })
+      : await fetch('/api/recruit/slot-interviewers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slotId, userId }),
+        });
+    // 실패해도 표시가 없으면 면접관이 배정된 줄 알고 당일에야 빈 것을 안다.
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setMessage(`❌ 면접관 ${isAssigned ? '해제' : '배정'} 실패: ${data.message || data.error || res.status}`);
     }
     await fetchSlotsAndApplicants();
   };

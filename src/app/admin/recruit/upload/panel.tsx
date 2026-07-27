@@ -2,9 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
-import { autoMapHeaders, parseCsv } from '@/recruit/csv';
+import { autoMapHeaders, parseCsv, missingRequiredMappings, REQUIRED_MAPPING_LABELS } from '@/recruit/csv';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, Field, Select, StatusMessage } from '@/components/ui';
+
+// 연결 가능한 항목 전체. 새 데이터를 붙여넣을 때 여기서부터 다시 시작한다.
+const BLANK_MAPPING: Record<string, string> = {
+  name: '', phone: '', gender: '', birthDate: '', school: '', department: '', email: '',
+  applyRoute: '', otherActivities: '', expectedFrequency: '', wishTeam1: '', wishTeam2: '',
+  nearStation: '', otAttend: '', remoteInterviewWish: '', essayIntro: '', essayValues: '',
+  essayValuesTopic: '', englishName: '',
+};
 
 export function RecruitUploadPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -13,31 +21,14 @@ export function RecruitUploadPanel() {
   const [selectedCohortId, setSelectedCohortId] = useState('');
   const [csvText, setCsvText] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
-  const [mapping, setMapping] = useState<Record<string, string>>({
-    name: '',
-    phone: '',
-    gender: '',
-    birthDate: '',
-    school: '',
-    department: '',
-    email: '',
-    applyRoute: '',
-    otherActivities: '',
-    expectedFrequency: '',
-    wishTeam1: '',
-    wishTeam2: '',
-    nearStation: '',
-    otAttend: '',
-    remoteInterviewWish: '',
-    essayIntro: '',
-    essayValues: '',
-    essayValuesTopic: '',
-    englishName: '',
-  });
+  const [mapping, setMapping] = useState<Record<string, string>>(BLANK_MAPPING);
 
   const [previewResult, setPreviewResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+
+  // 판정 규칙은 API 와 같은 함수를 쓴다 — 양쪽에 따로 적으면 한쪽만 고쳐진다.
+  const unmappedRequired = missingRequiredMappings(headers, mapping);
 
   const fieldLabels: Record<string, string> = {
     name: '이름 (필수)',
@@ -82,14 +73,27 @@ export function RecruitUploadPanel() {
 
   const handleCsvInput = (text: string) => {
     setCsvText(text);
+    // 붙여넣은 내용이 바뀌면 앞의 미리보기 숫자는 더 이상 이 데이터의 것이 아니다.
+    setPreviewResult(null);
+    setMessage('');
     // 헤더도 본 파서로 읽는다 — 예전에는 split(',') 였는데, 구글 시트에서 복사한 탭 구분
     // 데이터나 따옴표 안에 쉼표가 든 헤더에서 잘못 잘렸다.
     const { headers: parsedHeaders } = parseCsv(text);
     if (parsedHeaders.length > 0) {
       setHeaders(parsedHeaders);
+      // 이전 연결을 남기지 않는다 — 다른 파일을 다시 붙여넣으면 지금 없는 열을 가리킨 채로
+      // 남아 그 항목이 통째로 비어 들어간다.
       // 자동 연결 규칙은 csv.ts 의 공용 함수를 쓴다(화면과 테스트가 같은 코드를 본다).
-      setMapping({ ...mapping, ...autoMapHeaders(parsedHeaders) });
+      setMapping({ ...BLANK_MAPPING, ...autoMapHeaders(parsedHeaders) });
+    } else {
+      setHeaders([]);
+      setMapping(BLANK_MAPPING);
     }
+  };
+
+  const updateMapping = (fieldKey: string, header: string) => {
+    setMapping((prev) => ({ ...prev, [fieldKey]: header }));
+    setPreviewResult(null); // 연결을 바꾸면 미리보기 숫자도 옛것이 된다
   };
 
   const handlePreview = async () => {
@@ -110,8 +114,11 @@ export function RecruitUploadPanel() {
       const data = await res.json();
       if (res.ok) {
         setPreviewResult(data);
+        if (data.totalParsed === 0) {
+          setMessage('⚠️ 읽어온 지원자가 0명입니다. 항목 연결(특히 이름·전화번호)과 붙여넣은 범위에 머리글 행이 포함됐는지 확인해 주세요.');
+        }
       } else {
-        setMessage(`미리보기 오류: ${data.error}`);
+        setMessage(`❌ 미리보기 오류: ${data.message || data.error}`);
       }
     } finally {
       setLoading(false);
@@ -137,7 +144,7 @@ export function RecruitUploadPanel() {
         setMessage(`✅ 업로드 성공! 총 ${data.importedCount}명 등록됨 (기존 중복 ${data.skippedCount}명 자동 제외)`);
         setPreviewResult(null);
       } else {
-        setMessage(`❌ 업로드 실패: ${data.error}`);
+        setMessage(`❌ 업로드 실패: ${data.message || data.error}`);
       }
     } finally {
       setLoading(false);
@@ -232,8 +239,13 @@ export function RecruitUploadPanel() {
                     <span className="text-xs font-semibold text-ink-900 truncate">{fieldLabels[fieldKey]}</span>
                     <select
                       value={mapping[fieldKey] || ''}
-                      onChange={(e) => setMapping({ ...mapping, [fieldKey]: e.target.value })}
-                      className="h-8 rounded-lg border border-ink-200 bg-white px-2 text-xs text-ink-900 outline-none max-w-[140px]"
+                      onChange={(e) => updateMapping(fieldKey, e.target.value)}
+                      aria-label={fieldLabels[fieldKey]}
+                      className={`h-8 rounded-lg border bg-white px-2 text-xs text-ink-900 outline-none max-w-[140px] ${
+                        unmappedRequired.includes(fieldKey as (typeof unmappedRequired)[number])
+                          ? 'border-error'
+                          : 'border-ink-200'
+                      }`}
                     >
                       <option value="">-- 연결 안 함 --</option>
                       {headers.map((h) => (
@@ -246,10 +258,17 @@ export function RecruitUploadPanel() {
                 ))}
               </div>
 
-              <div className="pt-2">
-                <Button type="button" disabled={loading} onClick={handlePreview}>
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Button type="button" disabled={loading || unmappedRequired.length > 0} onClick={handlePreview}>
                   {loading ? '분석 중…' : '미리보기 & 중복 검사'}
                 </Button>
+                {/* 필수 항목이 비면 서버가 모든 행을 버려 "0명"만 나온다 — 누르기 전에 알려준다. */}
+                {unmappedRequired.length > 0 && (
+                  <p className="text-[13px] font-semibold text-error" role="alert">
+                    {unmappedRequired.map((k) => REQUIRED_MAPPING_LABELS[k]).join(', ')} 항목을 엑셀 열과
+                    연결해야 등록할 수 있습니다.
+                  </p>
+                )}
               </div>
             </div>
           )}
