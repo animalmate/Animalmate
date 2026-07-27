@@ -49,7 +49,7 @@ export default async function PublicRecruitNoticePage() {
   }
 
   return (
-    <main className="min-h-screen bg-cream-25 font-sans">
+    <main className="min-h-screen font-sans">
       {/* 로그인·가입 화면과 같은 장식(커서 따라다니는 강아지). 컴포넌트 주석의 의도대로 모집 화면에도 붙인다. */}
       <CursorDog />
       {/* 히어로 — 로그인·가입 화면과 같은 인사 방식(동아리 로고 + 따뜻한 배경)을 쓴다.
@@ -90,14 +90,14 @@ export default async function PublicRecruitNoticePage() {
                 src={url}
                 alt={`${notice.label} 모집 공고 이미지 ${idx + 1}`}
                 loading="lazy"
-                className="scroll-reveal w-full rounded-3xl border border-cream-200 shadow-card"
+                className="w-full rounded-3xl border border-cream-200 shadow-card"
               />
             ))}
           </section>
         )}
 
         {notice.noticeContent ? (
-          <section className="scroll-reveal space-y-5 rounded-3xl border border-cream-200 bg-white p-6 shadow-card sm:p-9">
+          <section className="space-y-5 rounded-3xl border border-cream-200 bg-white p-6 shadow-card sm:p-9">
             <h2 className="flex items-center gap-2 text-base font-bold text-ink-900">
               <Icon name="doc" size={18} className="text-blue-500" />
               모집 안내
@@ -110,7 +110,7 @@ export default async function PublicRecruitNoticePage() {
           <p className="text-center text-sm text-ink-400">상세 모집 요강이 준비 중입니다.</p>
         )}
 
-        <footer className="scroll-reveal space-y-3 border-t border-cream-200 pt-8 text-center">
+        <footer className="space-y-3 border-t border-cream-200 pt-8 text-center">
           <p className="text-sm text-ink-500">이미 지원하셨나요?</p>
           <a
             href="/recruit"

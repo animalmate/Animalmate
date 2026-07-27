@@ -109,12 +109,33 @@ export function Textarea({ className = '', ...props }: ComponentPropsWithRef<'te
   return <textarea className={`px-3.5 py-2.5 leading-relaxed ${CONTROL} ${className}`} {...props} />;
 }
 
+/**
+ * `loading` 을 주면 목록을 받아오는 동안 그 사실을 보여 준다.
+ *
+ * 왜 필요한가: 목록을 아직 못 받았을 때 빈 셀렉트를 그대로 두면, 열어 봐도 아무것도 없어서
+ * 사용자는 "고를 게 없다"고 오해한다(실제로는 1~3초 뒤에 채워진다). 컨트롤을 아예 감췄다가
+ * 나중에 나타나게 하면 레이아웃까지 튄다. 자리는 지키고 상태만 알려 주는 쪽이 맞다.
+ */
 export function Select({
   className = '',
   uiSize = 'md',
+  loading = false,
+  children,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & { uiSize?: ControlSize }) {
-  return <select className={`${SIZE[uiSize]} px-3 ${CONTROL} ${className}`} {...props} />;
+}: SelectHTMLAttributes<HTMLSelectElement> & { uiSize?: ControlSize; loading?: boolean }) {
+  const cls = `${SIZE[uiSize]} px-3 ${CONTROL} ${className}`;
+  if (loading) {
+    return (
+      <select className={cls} disabled aria-busy="true">
+        <option>불러오는 중…</option>
+      </select>
+    );
+  }
+  return (
+    <select className={cls} {...props}>
+      {children}
+    </select>
+  );
 }
 
 /**
@@ -125,8 +146,10 @@ export function Select({
 export function ToolbarSelect({
   label,
   className = '',
+  loading = false,
+  children,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
+}: SelectHTMLAttributes<HTMLSelectElement> & { label: string; loading?: boolean }) {
   // 높이는 min-h-tap(44px)에 맞춘다 — 옆에 서는 버튼들이 min-h-tap 때문에 실측 44px 이라
   // 여기만 36px 이면 한 줄에서 눈에 띄게 어긋난다(접근성 최소 터치 타깃도 44px).
   return (
@@ -134,11 +157,41 @@ export function ToolbarSelect({
       <span className="flex h-full shrink-0 items-center border-r border-ink-100 bg-cream-50 px-2.5 text-[12px] font-semibold text-ink-500">
         {label}
       </span>
-      <select
-        className={`h-full min-w-0 border-0 bg-transparent px-2 pr-7 text-[13px] font-medium text-ink-900 outline-none ${className}`}
-        {...props}
-      />
+      {loading ? (
+        <select
+          className={`h-full min-w-0 border-0 bg-transparent px-2 pr-7 text-[13px] font-medium text-ink-500 outline-none ${className}`}
+          disabled
+          aria-busy="true"
+        >
+          <option>불러오는 중…</option>
+        </select>
+      ) : (
+        <select
+          className={`h-full min-w-0 border-0 bg-transparent px-2 pr-7 text-[13px] font-medium text-ink-900 outline-none ${className}`}
+          {...props}
+        >
+          {children}
+        </select>
+      )}
     </label>
+  );
+}
+
+/**
+ * 팀 선택 <option> 목록. 목록은 teams 테이블에서 온다(useTeams).
+ * 불러오는 중과 "팀이 없음"을 구분해 보여 준다 — 빈 셀렉트만 뜨면 어느 쪽인지 알 수 없다.
+ */
+export function TeamOptions({ teams, loading }: { teams: string[]; loading: boolean }) {
+  if (loading) return <option disabled>불러오는 중…</option>;
+  if (teams.length === 0) return <option disabled>등록된 팀이 없습니다</option>;
+  return (
+    <>
+      {teams.map((t) => (
+        <option key={t} value={t}>
+          {t}
+        </option>
+      ))}
+    </>
   );
 }
 

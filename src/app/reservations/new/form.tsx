@@ -142,17 +142,25 @@ export function NewReservationForm() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // 게시판·팀·양식 목록을 받아오는 동안임을 셀렉트에 표시하기 위한 상태.
+  // 이게 없으면 1~3초 동안 빈 드롭다운이 보여서 "고를 게 없다"고 오해하게 된다.
+  const [listsLoading, setListsLoading] = useState(true);
+
   useEffect(() => {
     void (async () => {
-      const [b, t, tpl] = await Promise.all([
-        apiGet<{ boards: Board[] }>('/api/boards'),
-        apiGet<{ teams: Team[] }>('/api/teams'),
-        apiGet<{ templates: Template[] }>('/api/templates'),
-      ]);
-      // 서버 게이트(getWritableBoard)와 같은 조건 — 목록에 있는데 저장에서 거부되는 일이 없게.
-      if (b.ok) setBoards((b.data.boards ?? []).filter((x) => x.botCanWrite && x.isActive).sort(byName));
-      if (t.ok) setTeams(t.data.teams ?? []);
-      if (tpl.ok) setTemplates(tpl.data.templates ?? []);
+      try {
+        const [b, t, tpl] = await Promise.all([
+          apiGet<{ boards: Board[] }>('/api/boards'),
+          apiGet<{ teams: Team[] }>('/api/teams'),
+          apiGet<{ templates: Template[] }>('/api/templates'),
+        ]);
+        // 서버 게이트(getWritableBoard)와 같은 조건 — 목록에 있는데 저장에서 거부되는 일이 없게.
+        if (b.ok) setBoards((b.data.boards ?? []).filter((x) => x.botCanWrite && x.isActive).sort(byName));
+        if (t.ok) setTeams(t.data.teams ?? []);
+        if (tpl.ok) setTemplates(tpl.data.templates ?? []);
+      } finally {
+        setListsLoading(false);
+      }
     })();
   }, []);
 
@@ -262,9 +270,15 @@ export function NewReservationForm() {
           </Select>
         </Field>
 
-        {templates.length > 0 ? (
+        {/* 불러오는 중에는 필드를 감추지 않는다 — 예전에는 목록이 비어 있으면 필드 자체가 없다가
+            응답이 오는 순간 갑자기 나타나서 화면이 튀고, 그 사이 아무 안내도 없었다. */}
+        {listsLoading || templates.length > 0 ? (
           <Field label="양식 불러오기">
-            <Select value={templateId} onChange={(e) => loadTemplate(e.target.value)}>
+            <Select
+              loading={listsLoading}
+              value={templateId}
+              onChange={(e) => loadTemplate(e.target.value)}
+            >
               <option value="">선택 안 함</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -277,7 +291,7 @@ export function NewReservationForm() {
 
         {kind === 'volunteer' ? (
           <Field label="팀">
-            <Select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+            <Select loading={listsLoading} value={teamId} onChange={(e) => setTeamId(e.target.value)}>
               <option value="">선택</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -288,8 +302,15 @@ export function NewReservationForm() {
           </Field>
         ) : null}
 
-        <Field label="게시판" hint={boards.length === 0 ? '봇 글쓰기 가능한 게시판이 없습니다(게시판 메뉴에서 추가).' : undefined}>
-          <Select value={boardMenuid} onChange={(e) => setBoardMenuid(e.target.value)}>
+        <Field
+          label="게시판"
+          hint={
+            !listsLoading && boards.length === 0
+              ? '봇 글쓰기 가능한 게시판이 없습니다(게시판 메뉴에서 추가).'
+              : undefined
+          }
+        >
+          <Select loading={listsLoading} value={boardMenuid} onChange={(e) => setBoardMenuid(e.target.value)}>
             <option value="">선택</option>
             {boards.map((b) => (
               <option key={b.menuid} value={b.menuid}>

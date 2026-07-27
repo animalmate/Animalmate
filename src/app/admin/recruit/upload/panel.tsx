@@ -7,6 +7,8 @@ import { Button, Card, Field, Select, StatusMessage } from '@/components/ui';
 
 export function RecruitUploadPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
+  // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
+  const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
   const [csvText, setCsvText] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
@@ -59,13 +61,17 @@ export function RecruitUploadPanel() {
   }, []);
 
   const fetchCohorts = async () => {
-    const res = await fetch('/api/recruit/cohorts');
-    const data = await res.json();
-    if (data.cohorts) {
-      setCohorts(data.cohorts);
-      if (data.cohorts.length > 0 && !selectedCohortId) {
-        setSelectedCohortId(data.cohorts[0].id);
+    try {
+      const res = await fetch('/api/recruit/cohorts');
+      const data = await res.json();
+      if (data.cohorts) {
+        setCohorts(data.cohorts);
+        if (data.cohorts.length > 0 && !selectedCohortId) {
+          setSelectedCohortId(data.cohorts[0].id);
+        }
       }
+    } finally {
+      setCohortsLoading(false);
     }
   };
 
@@ -172,7 +178,7 @@ export function RecruitUploadPanel() {
           </div>
           <div>
             <Field label="현재 업로드 대상 기수">
-              <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)} className="max-w-md">
+              <Select loading={cohortsLoading} value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)} className="max-w-md">
                 {cohorts.length > 0 ? (
                   cohorts.map((c) => (
                     <option key={c.id} value={c.id}>

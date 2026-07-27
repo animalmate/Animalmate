@@ -11,8 +11,6 @@ interface CohortSummary {
   isClosed: boolean;
 }
 
-const TEAMS = ['봉사 1팀', '봉사 2팀', '기획팀', '홍보팀'] as const;
-
 const EMPTY_FORM = {
   name: '',
   phone: '',
@@ -76,7 +74,14 @@ const linkPrimary =
 const linkQuiet =
   'flex min-h-tap w-full items-center justify-center rounded-xl bg-cream-100 px-4 text-sm font-semibold text-ink-700 no-underline transition-colors hover:bg-cream-200';
 
-export function PublicRecruitApplyPanel({ cohort }: { cohort: CohortSummary | null }) {
+export function PublicRecruitApplyPanel({
+  cohort,
+  teams,
+}: {
+  cohort: CohortSummary | null;
+  // 실제 teams 테이블에서 온 목록(서버가 넘겨준다) — 코드에 박아 두지 않는다.
+  teams: string[];
+}) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ name: string; phone: string } | null>(null);
@@ -188,7 +193,7 @@ export function PublicRecruitApplyPanel({ cohort }: { cohort: CohortSummary | nu
   }
 
   return (
-    <main className="min-h-screen bg-cream-25 p-4 font-sans sm:p-8">
+    <main className="min-h-screen p-4 font-sans sm:p-8">
       <CursorDog />
       <div className="mx-auto max-w-2xl">
         <div className="space-y-6 rounded-2xl border border-ink-200 bg-white p-6 shadow-card sm:p-8">
@@ -305,7 +310,7 @@ export function PublicRecruitApplyPanel({ cohort }: { cohort: CohortSummary | nu
                 <Field label="1지망 팀">
                   <Select value={form.wishTeam1} onChange={(e) => set('wishTeam1', e.target.value)}>
                     <option value="">선택해 주세요</option>
-                    {TEAMS.map((t) => (
+                    {teams.map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
@@ -316,7 +321,7 @@ export function PublicRecruitApplyPanel({ cohort }: { cohort: CohortSummary | nu
                 <Field label="2지망 팀">
                   <Select value={form.wishTeam2} onChange={(e) => set('wishTeam2', e.target.value)}>
                     <option value="">선택해 주세요</option>
-                    {TEAMS.filter((t) => t !== form.wishTeam1).map((t) => (
+                    {teams.filter((t) => t !== form.wishTeam1).map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>

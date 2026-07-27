@@ -1,12 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTeams } from '@/components/use-teams';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
-import { Button, Card, Field, Input, Select, StatusMessage } from '@/components/ui';
+import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitScreeningPanel() {
+  const { teams, loading: teamsLoading } = useTeams();
   const [cohorts, setCohorts] = useState<any[]>([]);
+  // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
+  const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
   const [applicants, setApplicants] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
@@ -31,11 +35,15 @@ export function RecruitScreeningPanel() {
   }, [selectedCohortId]);
 
   const fetchCohorts = async () => {
-    const res = await fetch('/api/recruit/cohorts');
-    const data = await res.json();
-    if (data.cohorts && data.cohorts.length > 0) {
-      setCohorts(data.cohorts);
-      setSelectedCohortId(data.cohorts[0].id);
+    try {
+      const res = await fetch('/api/recruit/cohorts');
+      const data = await res.json();
+      if (data.cohorts && data.cohorts.length > 0) {
+        setCohorts(data.cohorts);
+        setSelectedCohortId(data.cohorts[0].id);
+      }
+    } finally {
+      setCohortsLoading(false);
     }
   };
 
@@ -133,32 +141,25 @@ export function RecruitScreeningPanel() {
           <p className="mt-1 text-sm text-ink-500">각 팀장단 및 운영진이 지원서와 자기소개서를 검토하고 점수를 부여합니다.</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
-            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-36 text-xs">
-              <option value="ALL">전체 팀 보기</option>
-              <option value="봉사 1팀">봉사 1팀</option>
-              <option value="봉사 2팀">봉사 2팀</option>
-              <option value="기획팀">기획팀</option>
-              <option value="홍보팀">홍보팀</option>
-            </Select>
-          </div>
+        {/* 2. 서류 집계 화면과 같은 툴바 형태로 통일한다. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <ToolbarSelect label="팀" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
+            <option value="ALL">전체</option>
+            <TeamOptions teams={teams} loading={teamsLoading} />
+          </ToolbarSelect>
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink-700">기수:</span>
-            <Select
-              value={selectedCohortId}
-              onChange={(e) => setSelectedCohortId(e.target.value)}
-              className="w-40 text-xs"
-            >
-              {cohorts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <ToolbarSelect
+            label="기수"
+            loading={cohortsLoading}
+            value={selectedCohortId}
+            onChange={(e) => setSelectedCohortId(e.target.value)}
+          >
+            {cohorts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </ToolbarSelect>
         </div>
       </div>
 
@@ -243,11 +244,8 @@ export function RecruitScreeningPanel() {
                       onChange={(e) => handleReassignTeam(e.target.value)}
                       className="w-32 text-xs h-7"
                     >
-                      <option value="봉사 1팀">봉사 1팀</option>
-                      <option value="봉사 2팀">봉사 2팀</option>
-                      <option value="기획팀">기획팀</option>
-                      <option value="홍보팀">홍보팀</option>
-                    </Select>
+                <TeamOptions teams={teams} loading={teamsLoading} />
+              </Select>
                   </div>
                   {selectedApp.nearStation && (
                     <p className="text-xs text-ink-500 font-medium">

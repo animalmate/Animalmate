@@ -28,15 +28,17 @@ export function RecruitNav() {
               <a
                 href={link.href}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex min-h-tap items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold no-underline transition-colors ${
+                // 현재 단계는 색을 채우지 않고 테두리로만 표시한다.
+                // 파란 배경 위 흰 글씨는 이 크기(13px)에서 잘 안 읽혔다.
+                className={`flex min-h-tap items-center gap-2 rounded-xl px-3 py-2 text-[13px] no-underline transition-colors ${
                   isActive
-                    ? 'bg-primary text-white'
-                    : 'text-ink-700 hover:bg-cream-100 hover:text-ink-900'
+                    ? 'border-[1.5px] border-ink-900 font-bold text-ink-900'
+                    : 'border-[1.5px] border-transparent font-semibold text-ink-500 hover:bg-cream-100 hover:text-ink-900'
                 }`}
               >
                 <span
                   className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[11px] font-bold ${
-                    isActive ? 'bg-white/25 text-white' : 'bg-cream-200 text-ink-700'
+                    isActive ? 'bg-cream-200 text-ink-900' : 'bg-cream-200 text-ink-700'
                   }`}
                 >
                   {link.step}

@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
+import { useTeams } from '@/components/use-teams';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, ToolbarSelect } from '@/components/ui';
+import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitTallyPanel() {
+  const { teams, loading: teamsLoading } = useTeams();
   const [cohorts, setCohorts] = useState<any[]>([]);
+  // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
+  const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
   const [applicants, setApplicants] = useState<any[]>([]);
   const [aggregations, setAggregations] = useState<Record<string, any>>({});
@@ -26,11 +30,15 @@ export function RecruitTallyPanel() {
   }, [selectedCohortId]);
 
   const fetchCohorts = async () => {
-    const res = await fetch('/api/recruit/cohorts');
-    const data = await res.json();
-    if (data.cohorts && data.cohorts.length > 0) {
-      setCohorts(data.cohorts);
-      setSelectedCohortId(data.cohorts[0].id);
+    try {
+      const res = await fetch('/api/recruit/cohorts');
+      const data = await res.json();
+      if (data.cohorts && data.cohorts.length > 0) {
+        setCohorts(data.cohorts);
+        setSelectedCohortId(data.cohorts[0].id);
+      }
+    } finally {
+      setCohortsLoading(false);
     }
   };
 
@@ -155,14 +163,12 @@ export function RecruitTallyPanel() {
             onChange={(e) => setSelectedTeam(e.target.value)}
           >
             <option value="ALL">전체</option>
-            <option value="봉사 1팀">봉사 1팀</option>
-            <option value="봉사 2팀">봉사 2팀</option>
-            <option value="기획팀">기획팀</option>
-            <option value="홍보팀">홍보팀</option>
-          </ToolbarSelect>
+                <TeamOptions teams={teams} loading={teamsLoading} />
+              </ToolbarSelect>
 
           <ToolbarSelect
             label="기수"
+            loading={cohortsLoading}
             value={selectedCohortId}
             onChange={(e) => setSelectedCohortId(e.target.value)}
           >
@@ -255,11 +261,8 @@ export function RecruitTallyPanel() {
               }}
             >
               <option value="">선택…</option>
-              <option value="봉사 1팀">봉사 1팀</option>
-              <option value="봉사 2팀">봉사 2팀</option>
-              <option value="기획팀">기획팀</option>
-              <option value="홍보팀">홍보팀</option>
-            </ToolbarSelect>
+                <TeamOptions teams={teams} loading={teamsLoading} />
+              </ToolbarSelect>
 
             <SecondaryButton
               type="button"

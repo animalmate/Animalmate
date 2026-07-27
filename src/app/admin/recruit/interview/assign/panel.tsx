@@ -4,10 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
-import { Button, Card, Field, Input, Select, StatusMessage } from '@/components/ui';
+import { Button, Card, Field, Input, Select, StatusMessage, ToolbarSelect } from '@/components/ui';
 
 export function RecruitInterviewAssignPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
+  // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
+  const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
   const [slots, setSlots] = useState<any[]>([]);
   const [applicants, setApplicants] = useState<any[]>([]);
@@ -49,11 +51,15 @@ export function RecruitInterviewAssignPanel() {
   }, [selectedCohortId]);
 
   const fetchCohorts = async () => {
-    const res = await fetch('/api/recruit/cohorts');
-    const data = await res.json();
-    if (data.cohorts && data.cohorts.length > 0) {
-      setCohorts(data.cohorts);
-      setSelectedCohortId(data.cohorts[0].id);
+    try {
+      const res = await fetch('/api/recruit/cohorts');
+      const data = await res.json();
+      if (data.cohorts && data.cohorts.length > 0) {
+        setCohorts(data.cohorts);
+        setSelectedCohortId(data.cohorts[0].id);
+      }
+    } finally {
+      setCohortsLoading(false);
     }
   };
 
@@ -177,19 +183,19 @@ export function RecruitInterviewAssignPanel() {
           <p className="mt-1 text-sm text-ink-500">면접 슬롯을 10분 단위로 세분화하여 생성하고, 지원자 및 운영진 면접관을 배정합니다.</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink-900">기수:</span>
-          <Select
+        <div className="flex flex-wrap items-center gap-2">
+          <ToolbarSelect
+            label="기수"
+            loading={cohortsLoading}
             value={selectedCohortId}
             onChange={(e) => setSelectedCohortId(e.target.value)}
-            className="w-48"
           >
             {cohorts.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
               </option>
             ))}
-          </Select>
+          </ToolbarSelect>
         </div>
       </div>
 

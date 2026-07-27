@@ -7,6 +7,8 @@ import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, Stat
 
 export function RecruitNoticeEditPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
+  // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
+  const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
   const [newCohortLabel, setNewCohortLabel] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -34,21 +36,25 @@ export function RecruitNoticeEditPanel() {
 
   const fetchCohorts = async (selectIdOverride?: string) => {
     try {
-      const res = await fetch('/api/recruit/cohorts');
-      const data = await res.json();
-      const list = data.cohorts || [];
-      setCohorts(list);
-      if (list.length > 0) {
-        setSelectedCohortId((prev) => {
-          const targetId = selectIdOverride || prev;
-          const exists = list.some((c: any) => c.id === targetId);
-          return exists ? targetId : list[0].id;
-        });
-      } else {
-        setSelectedCohortId('');
+      try {
+        const res = await fetch('/api/recruit/cohorts');
+        const data = await res.json();
+        const list = data.cohorts || [];
+        setCohorts(list);
+        if (list.length > 0) {
+          setSelectedCohortId((prev) => {
+            const targetId = selectIdOverride || prev;
+            const exists = list.some((c: any) => c.id === targetId);
+            return exists ? targetId : list[0].id;
+          });
+        } else {
+          setSelectedCohortId('');
+        }
+      } catch (e) {
+        console.error('Failed to fetch cohorts', e);
       }
-    } catch (e) {
-      console.error('Failed to fetch cohorts', e);
+    } finally {
+      setCohortsLoading(false);
     }
   };
 
@@ -264,7 +270,7 @@ export function RecruitNoticeEditPanel() {
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[220px]">
             <Field label="현재 선택된 모집 기수">
-              <Select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)}>
+              <Select loading={cohortsLoading} value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)}>
                 {cohorts.length > 0 ? (
                   cohorts.map((c) => (
                     <option key={c.id} value={c.id}>

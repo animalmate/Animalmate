@@ -154,7 +154,7 @@ export function PublicRecruitLookupPanel() {
   const meta = result ? STAGE_META[result.stage] : null;
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-cream-25 p-4 font-sans sm:p-6">
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 font-sans sm:p-6">
       <CursorDog />
       <div className="w-full max-w-md space-y-4">
         <div className="space-y-5 rounded-2xl border border-ink-200 bg-white p-6 shadow-card sm:p-7">
