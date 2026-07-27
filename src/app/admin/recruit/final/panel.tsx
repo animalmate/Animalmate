@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
+import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -17,7 +18,7 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
   const { teams, loading: teamsLoading } = useTeams(selectedCohortId);
 
   const [applicants, setApplicants] = useState<any[]>([]);
-  const [aggregations, setAggregations] = useState<Record<string, any>>({});
+  const [aggregations, setAggregations] = useState<Record<string, ApplicantAggregate>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedTeam, setSelectedTeam] = useState('ALL');
 

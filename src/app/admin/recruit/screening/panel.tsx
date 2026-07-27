@@ -5,6 +5,7 @@ import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
+import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { EssayBlock } from '@/components/essay-block';
@@ -19,7 +20,9 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
   const { teams, loading: teamsLoading } = useTeams(selectedCohortId);
   const [applicants, setApplicants] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
-  const [aggregations, setAggregations] = useState<Record<string, any>>({});
+  // `any` 로 두면 없는 필드를 읽어도 조용히 undefined 가 된다 — 실제로 `docAvg` 오타 때문에
+  // 채점을 마친 지원자가 계속 '미채점'으로 보였다. 타입을 붙여 컴파일 단계에서 잡는다.
+  const [aggregations, setAggregations] = useState<Record<string, ApplicantAggregate>>({});
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
 
@@ -130,6 +133,7 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
   };
 
   const [selectedTeam, setSelectedTeam] = useState('ALL');
+  const [scoreFilter, setScoreFilter] = useState('ALL');
   const [reassigning, setReassigning] = useState(false);
 
   const handleReassignTeam = async (newTeam: string) => {
@@ -166,7 +170,23 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
     }
   };
 
-  const filteredApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  // 목록 배지의 기준은 '내가 채점했는지'다. 이 화면은 운영진 각자가 전원을 채점하는 곳이라
+  // 전체 평균만 띄우면 남이 채점한 사람에게도 점수가 찍혀 내가 누구를 남겼는지 알 수 없다.
+  const myDocScores: Record<string, number> = {};
+  scores.forEach((s) => {
+    if (s.stage === 'document' && s.scorerUserId === viewerUserId) {
+      myDocScores[s.applicantId] = parseFloat(s.score);
+    }
+  });
+
+  const teamApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  const filteredApplicants = teamApplicants.filter((app) => {
+    if (scoreFilter === 'TODO') return myDocScores[app.id] === undefined;
+    if (scoreFilter === 'DONE') return myDocScores[app.id] !== undefined;
+    return true;
+  });
+  // 진행률은 채점 필터와 무관하게 팀 기준으로 센다('내 채점 전'만 보는 동안 0/N 이 되면 안 된다).
+  const myScoredCount = teamApplicants.filter((a) => myDocScores[a.id] !== undefined).length;
 
   const selectedApp = applicants.find((a) => a.id === selectedApplicantId);
   const currentDocScores = scores.filter(
@@ -189,6 +209,13 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
           <ToolbarSelect label="팀" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
             <option value="ALL">전체</option>
             <TeamOptions teams={teams} loading={teamsLoading} />
+          </ToolbarSelect>
+
+          {/* 50명 규모에서는 표시만으로 부족하다 — 아직 안 한 사람만 남겨 놓고 훑을 수 있어야 한다. */}
+          <ToolbarSelect label="내 채점" value={scoreFilter} onChange={(e) => setScoreFilter(e.target.value)}>
+            <option value="ALL">전체</option>
+            <option value="TODO">내 채점 전</option>
+            <option value="DONE">내 채점 완료</option>
           </ToolbarSelect>
 
           <ToolbarSelect
@@ -223,6 +250,9 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
             <span className="text-xs font-bold uppercase tracking-wider text-ink-400">
               지원자 목록 ({filteredApplicants.length}명)
             </span>
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+              내 채점 {myScoredCount}/{teamApplicants.length}
+            </span>
           </div>
 
           <div className="space-y-2">
@@ -230,6 +260,8 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
               const isSelected = app.id === selectedApplicantId;
               const agg = aggregations[app.id];
               const effectiveTeam = app.assignedTeam || app.wishTeam1 || '팀 미지정';
+              const myDocScore = myDocScores[app.id];
+              const docAvg = agg?.docScoreAvg;
               return (
                 <div
                   key={app.id}
@@ -247,13 +279,25 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
                         {effectiveTeam}
                       </span>
                     </span>
-                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-                      {agg?.docAvg !== undefined ? `${agg.docAvg}점` : '미채점'}
+                    <span
+                      className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-bold ${
+                        myDocScore !== undefined
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {myDocScore !== undefined ? `내 ${myDocScore.toFixed(1)}점` : '내 채점 전'}
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-ink-500 flex justify-between">
                     <span>1지망: {app.wishTeam1 || '-'}</span>
                     <span>2지망: {app.wishTeam2 || '-'}</span>
+                  </div>
+                  {/* 내 채점 여부와 전체 평균은 다른 정보다. 평균은 보조로 아래 줄에 둔다. */}
+                  <div className="mt-1 text-[11px] text-ink-400">
+                    {docAvg !== null && docAvg !== undefined
+                      ? `전체 평균 ${docAvg}점 · ${agg?.docScorerCount ?? 0}명 채점`
+                      : '채점한 운영진 없음'}
                   </div>
                 </div>
               );

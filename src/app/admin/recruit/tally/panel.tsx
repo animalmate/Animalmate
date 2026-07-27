@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
+import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -16,7 +17,7 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
   const [selectedCohortId, setSelectedCohortId] = useState('');
   const { teams, loading: teamsLoading } = useTeams(selectedCohortId);
   const [applicants, setApplicants] = useState<any[]>([]);
-  const [aggregations, setAggregations] = useState<Record<string, any>>({});
+  const [aggregations, setAggregations] = useState<Record<string, ApplicantAggregate>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedTeam, setSelectedTeam] = useState('ALL');
   const [topNInput, setTopNInput] = useState('20');
