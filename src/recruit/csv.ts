@@ -88,6 +88,8 @@ export interface ApplicantImportInput {
   remoteInterviewWish?: string;
   essayIntro?: string;
   essayValues?: string;
+  essayValuesTopic?: string;
+  englishName?: string;
 }
 
 /**
@@ -138,6 +140,8 @@ export function mapRowToApplicant(
     remoteInterviewWish: getValue('remoteInterviewWish'),
     essayIntro: getValue('essayIntro'),
     essayValues: getValue('essayValues'),
+    essayValuesTopic: getValue('essayValuesTopic'),
+    englishName: getValue('englishName'),
   };
 }
 

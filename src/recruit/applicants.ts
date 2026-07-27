@@ -32,6 +32,8 @@ export async function bulkCreateApplicants(
     remoteInterviewWish: app.remoteInterviewWish,
     essayIntro: app.essayIntro,
     essayValues: app.essayValues,
+    essayValuesTopic: app.essayValuesTopic,
+    englishName: app.englishName,
     status: 'received' as const,
   }));
 

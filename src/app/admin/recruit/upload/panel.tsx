@@ -30,6 +30,8 @@ export function RecruitUploadPanel() {
     remoteInterviewWish: '',
     essayIntro: '',
     essayValues: '',
+    essayValuesTopic: '',
+    englishName: '',
   });
 
   const [previewResult, setPreviewResult] = useState<any>(null);
@@ -53,7 +55,9 @@ export function RecruitUploadPanel() {
     otAttend: 'OT 참가 여부',
     remoteInterviewWish: '비대면 면접 희망',
     essayIntro: '자기소개',
-    essayValues: '가치관',
+    essayValues: '가치관 답변',
+    essayValuesTopic: '가치관 주제',
+    englishName: '영문 이름',
   };
 
   useEffect(() => {
@@ -95,7 +99,16 @@ export function RecruitUploadPanel() {
         if (h.includes('경로')) autoMapping.applyRoute = h;
         if (h.includes('역') || h.includes('주소')) autoMapping.nearStation = h;
         if (h.includes('소개')) autoMapping.essayIntro = h;
-        if (h.includes('가치관')) autoMapping.essayValues = h;
+        // '가치관 주제'가 '가치관'도 포함하므로 주제를 먼저 판별한다.
+        if (h.includes('가치관') && h.includes('주제')) autoMapping.essayValuesTopic = h;
+        else if (h.includes('가치관')) autoMapping.essayValues = h;
+        if (h.includes('영문')) autoMapping.englishName = h;
+        if (h.includes('비대면')) autoMapping.remoteInterviewWish = h;
+        if (h.includes('OT') || h.includes('참가')) autoMapping.otAttend = h;
+        if (h.includes('1순위') || h.includes('1지망')) autoMapping.wishTeam1 = h;
+        if (h.includes('2순위') || h.includes('2지망')) autoMapping.wishTeam2 = h;
+        if (h.includes('주기')) autoMapping.expectedFrequency = h;
+        if (h.includes('대외') || h.includes('아르바이트')) autoMapping.otherActivities = h;
       });
       setMapping(autoMapping);
     }
