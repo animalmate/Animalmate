@@ -8,12 +8,14 @@ import { users, recruitCohorts, recruitApplicants, recruitScores, screenNotes, a
 import { recordScore, deleteScore, getScoresForCohort } from '@/recruit/scores';
 import { aggregateScoresByApplicant } from '@/recruit/aggregate';
 import { purgeCohortApplicants, PurgeNotAllowedError } from '@/recruit/purge';
+import { listApplicantsByIds } from '@/recruit/applicants';
 import { buildNoteKey } from '@/recruit/note-keys';
 
 const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const suite = DIRECT_URL ? describe : describe.skip;
 
 const COHORT_LABEL = 'QA-SCORING-TEST기수';
+const OTHER_COHORT_LABEL = 'QA-SCORING-다른기수';
 const EMAILS = ['qa-scorer-1@example.invalid', 'qa-scorer-2@example.invalid', 'qa-scorer-3@example.invalid'];
 
 // 단위 테스트는 규칙을 베껴 쓰기 쉽다. 여기서는 실제 서비스 함수를 실 DB 에 대고 돌려
@@ -22,10 +24,14 @@ suite('모집 채점 — 자동 상태 전이·집계·폐기 (실 DB)', () => {
   let sql: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let cohortId: string;
+  let otherCohortId: string;
   let scorers: string[] = [];
 
   async function cleanup() {
-    const olds = await db.select({ id: recruitCohorts.id }).from(recruitCohorts).where(eq(recruitCohorts.label, COHORT_LABEL));
+    const olds = await db
+      .select({ id: recruitCohorts.id })
+      .from(recruitCohorts)
+      .where(inArray(recruitCohorts.label, [COHORT_LABEL, OTHER_COHORT_LABEL]));
     for (const c of olds) {
       await db.delete(screenNotes).where(like(screenNotes.contextKey, `recruit:${c.id}:%`));
       await db.delete(auditLogs).where(eq(auditLogs.targetId, c.id));
@@ -34,11 +40,20 @@ suite('모집 채점 — 자동 상태 전이·집계·폐기 (실 DB)', () => {
     await db.delete(users).where(inArray(users.email, EMAILS));
   }
 
-  /** 상태를 지정해 지원자 한 명을 만든다. */
-  async function makeApplicant(name: string, status: 'received' | 'doc_pass' | 'final_pass') {
+  /** 상태를 지정해 지원자 한 명을 만든다. 기수를 주지 않으면 기본 기수에 넣는다. */
+  async function makeApplicant(
+    name: string,
+    status: 'received' | 'doc_pass' | 'final_pass',
+    inCohortId?: string
+  ) {
     const [a] = await db
       .insert(recruitApplicants)
-      .values({ cohortId, name, phone: `0100000${Math.floor(Math.random() * 9000 + 1000)}`, status })
+      .values({
+        cohortId: inCohortId ?? cohortId,
+        name,
+        phone: `0100000${Math.floor(Math.random() * 9000 + 1000)}`,
+        status,
+      })
       .returning();
     return a!.id;
   }
@@ -57,11 +72,31 @@ suite('모집 채점 — 자동 상태 전이·집계·폐기 (실 DB)', () => {
     scorers = created.map((u) => u.id);
     const [c] = await db.insert(recruitCohorts).values({ label: COHORT_LABEL, createdBy: scorers[0]! }).returning();
     cohortId = c!.id;
+    // 기수 범위 검증용 — 일괄 확정이 다른 기수로 새는지 보려면 기수가 둘 있어야 한다.
+    const [other] = await db
+      .insert(recruitCohorts)
+      .values({ label: OTHER_COHORT_LABEL, createdBy: scorers[0]! })
+      .returning();
+    otherCohortId = other!.id;
   });
 
   afterAll(async () => {
     await cleanup();
     await sql.end({ timeout: 5 });
+  });
+
+  // 일괄 확정(bulk_status)은 지원자 id 목록만 받는다. 기수로 좁히지 않으면 조작된 요청이
+  // 화면에서 고른 기수 밖의 사람까지 최종 합격으로 바꿀 수 있다(규칙 #6).
+  it('기수를 지정하면 다른 기수 지원자는 조회에서 빠진다', async () => {
+    const mine = await makeApplicant('우리기수사람', 'doc_pass');
+    const theirs = await makeApplicant('다른기수사람', 'doc_pass', otherCohortId);
+
+    const scoped = await listApplicantsByIds([mine, theirs], cohortId);
+    expect(scoped.map((a) => a.id)).toEqual([mine]);
+
+    // 범위를 주지 않으면 둘 다 나온다 — 그래서 라우트가 cohortId 를 반드시 넘긴다.
+    const unscoped = await listApplicantsByIds([mine, theirs]);
+    expect(unscoped.map((a) => a.id).sort()).toEqual([mine, theirs].sort());
   });
 
   it('서류 합격자에게 면접 점수를 매기면 면접 완료로 자동 전환된다', async () => {

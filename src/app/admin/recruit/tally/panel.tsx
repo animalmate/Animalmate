@@ -106,11 +106,18 @@ export function RecruitTallyPanel() {
           action: 'bulk_status',
           ids: Array.from(selectedIds),
           status: passStatus,
+          // 서버가 이 기수 소속만 바꾸도록 범위를 함께 보낸다.
+          cohortId: selectedCohortId,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        const skipped = data.skippedCount ? ` (${data.skippedCount}명은 이미 확정됐거나 단계가 맞지 않아 제외)` : '';
+        // 제외 사유를 뭉뚱그리면 다른 기수를 고른 실수를 단계 문제로 오해한다.
+        const reasons = [
+          data.skippedCount ? `${data.skippedCount}명은 이미 확정됐거나 단계가 맞지 않음` : '',
+          data.outOfScopeCount ? `${data.outOfScopeCount}명은 이 기수 소속이 아님` : '',
+        ].filter(Boolean);
+        const skipped = reasons.length > 0 ? ` (제외: ${reasons.join(', ')})` : '';
         setMessage(`✅ ${data.updatedCount}명을 [${passStatus === 'doc_pass' ? '서류 합격' : '서류 불합격'}]으로 확정했습니다.${skipped}`);
         setSelectedIds(new Set());
         await fetchApplicantsAndScores();

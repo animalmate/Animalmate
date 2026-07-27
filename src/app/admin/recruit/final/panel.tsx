@@ -120,13 +120,20 @@ export function RecruitFinalPanel() {
           action: 'bulk_status',
           ids: Array.from(selectedIds),
           status,
+          // 서버가 이 기수 소속만 바꾸도록 범위를 함께 보낸다.
+          cohortId: selectedCohortId,
         }),
       });
       // 실패를 삼키지 않는다 — 예전에는 res.ok 가 아니면 아무 표시도 없어서,
       // 서버가 거절해도 화면상 "눌러도 아무 일도 안 일어나는" 상태였다.
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const skipped = data.skippedCount ? ` (${data.skippedCount}명은 면접 단계가 아니라 제외)` : '';
+        // 제외 사유를 뭉뚱그리면 다른 기수를 고른 실수를 단계 문제로 오해한다.
+        const reasons = [
+          data.skippedCount ? `${data.skippedCount}명은 면접 단계가 아님` : '',
+          data.outOfScopeCount ? `${data.outOfScopeCount}명은 이 기수 소속이 아님` : '',
+        ].filter(Boolean);
+        const skipped = reasons.length > 0 ? ` (제외: ${reasons.join(', ')})` : '';
         setMessage(`✅ ${data.updatedCount}명을 [${status === 'final_pass' ? '최종 합격' : '최종 불합격'}]으로 확정했습니다.${skipped}`);
         setSelectedIds(new Set());
         await fetchCohortAndApplicants();

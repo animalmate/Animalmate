@@ -9,7 +9,10 @@ import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { EssayBlock } from '@/components/essay-block';
 import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
-const DEFAULT_SCORE = '8.0';
+// 점수칸은 비워 둔 채 시작한다. 예전에는 '8.0' 이 미리 채워져 있어서, 면접관이 점수칸을 건드리지
+// 않고 저장만 눌러도 8.0 이 '면접관이 매긴 점수'로 기록되고 상태까지 면접 완료로 전이됐다.
+// 채점하지 않은 것과 8점을 준 것은 완전히 다른 사실이고, 뒤섞이면 집계·표본 부족 판정이 무너진다.
+const NO_SCORE = '';
 
 export function RecruitInterviewConsolePanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -24,7 +27,7 @@ export function RecruitInterviewConsolePanel() {
   const [staffNames, setStaffNames] = useState<Record<string, string>>({});
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
 
-  const [myScore, setMyScore] = useState<string>(DEFAULT_SCORE);
+  const [myScore, setMyScore] = useState<string>(NO_SCORE);
   const [myComment, setMyComment] = useState<string>('');
   const [personalMemo, setPersonalMemo] = useState<string>('');
   const [memoState, setMemoState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -66,7 +69,7 @@ export function RecruitInterviewConsolePanel() {
         s.stage === 'interview' &&
         s.scorerUserId === viewerUserId
     );
-    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : DEFAULT_SCORE);
+    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : NO_SCORE);
     setMyComment(mine?.comment ?? '');
   }, [selectedApplicantId, viewerUserId, scores]);
 
@@ -163,8 +166,12 @@ export function RecruitInterviewConsolePanel() {
     memoTimer.current = setTimeout(flushMemo, 700);
   };
 
+  // 점수를 고르지 않았으면 저장할 것이 없다. 서버도 빈 값을 400 으로 막지만(규칙 #6),
+  // 버튼을 눌러 놓고 오류를 보는 것보다 애초에 못 누르게 하는 편이 면접 중에 덜 헷갈린다.
+  const hasScore = myScore.trim() !== '';
+
   const handleSaveInterviewScore = async () => {
-    if (!selectedApplicantId) return;
+    if (!selectedApplicantId || !hasScore) return;
     setSavingScore(true);
     setMessage('');
     try {
@@ -420,6 +427,7 @@ export function RecruitInterviewConsolePanel() {
                         min="0"
                         max="10"
                         step="0.5"
+                        placeholder="미입력"
                         value={myScore}
                         onChange={(e) => setMyScore(e.target.value)}
                       />
@@ -460,8 +468,18 @@ export function RecruitInterviewConsolePanel() {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  {message ? <StatusMessage text={message} /> : <span />}
-                  <Button type="button" disabled={savingScore} onClick={handleSaveInterviewScore}>
+                  {message ? (
+                    <StatusMessage text={message} />
+                  ) : !hasScore ? (
+                    <span className="text-xs text-ink-500">점수를 입력하거나 아래 버튼에서 골라 주세요.</span>
+                  ) : (
+                    <span />
+                  )}
+                  <Button
+                    type="button"
+                    disabled={savingScore || !hasScore}
+                    onClick={handleSaveInterviewScore}
+                  >
                     {savingScore ? '저장 중…' : '면접 점수 저장 (상태 전이)'}
                   </Button>
                 </div>

@@ -83,12 +83,25 @@ export async function getApplicantById(id: string) {
 }
 
 /** 상태 전이 검증을 위해 대상 지원자들의 현재 상태를 한 번에 읽는다. */
-export async function listApplicantsByCohortIds(ids: string[]) {
+/**
+ * 지원자 id 목록으로 조회한다. `cohortId` 를 주면 그 기수 소속만 남긴다.
+ *
+ * 이름 주의: 예전 이름은 `listApplicantsByCohortIds` 였는데 실제로는 **지원자 id** 로 찾는 함수라,
+ * 기수 id 로 거르는 줄 오해하기 딱 좋았다. 하필 최종 합격을 확정하는 bulk_status 경로에서 쓰인다.
+ *
+ * `cohortId` 를 받는 이유: 그 오해대로 기수 범위가 실제로는 걸리지 않아, 조작된 요청이면 화면에서
+ * 고른 기수가 아닌 다른 기수 지원자의 상태까지 바꿀 수 있었다(규칙 #6 — 화면으로 거르는 것은 검증이 아니다).
+ */
+export async function listApplicantsByIds(ids: string[], cohortId?: string) {
   if (ids.length === 0) return [];
   return db
     .select({ id: recruitApplicants.id, status: recruitApplicants.status })
     .from(recruitApplicants)
-    .where(inArray(recruitApplicants.id, ids));
+    .where(
+      cohortId
+        ? and(inArray(recruitApplicants.id, ids), eq(recruitApplicants.cohortId, cohortId))
+        : inArray(recruitApplicants.id, ids)
+    );
 }
 
 export async function updateApplicantStatus(id: string, status: RecruitStatus) {

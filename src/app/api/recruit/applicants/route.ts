@@ -4,7 +4,7 @@ import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import {
   listApplicantsByCohort,
   listApplicantsByCohortSlim,
-  listApplicantsByCohortIds,
+  listApplicantsByIds,
   getApplicantById,
   updateApplicantStatus,
   bulkUpdateApplicantStatus,
@@ -52,7 +52,7 @@ export async function PATCH(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { action, id, ids, status, slotId, interviewLink, nearStation, assignedTeam } = body;
+    const { action, id, ids, status, cohortId, slotId, interviewLink, nearStation, assignedTeam } = body;
 
     // 지원자 상태·배정을 바꾸는 행위는 전부 "결정" → 회장단 전용(09-RECRUIT-DESIGN §0·§4).
     // change_team/bulk_team 도 여기 포함된다: 예전엔 isPRTeamOrPrivileged 를 썼지만 그 함수는
@@ -66,16 +66,22 @@ export async function PATCH(req: Request): Promise<Response> {
 
     if (action === 'bulk_status') {
       if (!Array.isArray(ids) || !status) return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
+      // 기수를 반드시 받아 그 범위로 좁힌다. 없으면 id 만으로 전 기수에서 찾게 되어,
+      // 조작된 요청이 화면에서 고른 기수 밖의 지원자까지 확정할 수 있다.
+      if (!cohortId) return NextResponse.json({ error: 'missing_cohort' }, { status: 400 });
 
       // 단계를 건너뛴 확정을 서버에서 막는다(09-RECRUIT-DESIGN §3).
       // 최종 결정 화면은 팀으로만 걸러서 심사 전 지원자도 목록에 뜨므로, 전체 선택 후 확정하면
       // 서류·면접을 안 거친 사람이 최종 합격이 될 수 있었다.
       // 자격이 되는 사람만 바꾸고, 제외된 인원은 숫자로 알려 준다(1명 때문에 전체를 막지 않는다).
-      const targets = await listApplicantsByCohortIds(ids);
+      const targets = await listApplicantsByIds(ids, cohortId);
       const eligible = targets
         .filter((a) => canTransition(a.status as RecruitStatus, status as RecruitStatus))
         .map((a) => a.id);
-      const skipped = ids.length - eligible.length;
+      // 두 가지 제외를 구분한다. 예전엔 둘을 합쳐 놓고 "단계가 맞지 않아 제외"라고만 알려 줘서,
+      // 없는 id 나 다른 기수 사람을 골랐을 때도 단계 문제인 줄 알고 넘어갔다.
+      const skippedCount = targets.length - eligible.length; // 실제로 단계가 안 맞는 사람
+      const outOfScopeCount = ids.length - targets.length; // 이 기수에 없는 id
 
       if (eligible.length === 0) {
         return NextResponse.json(
@@ -83,7 +89,8 @@ export async function PATCH(req: Request): Promise<Response> {
             error: 'invalid_transition',
             message: '선택한 지원자는 지금 단계에서 이 상태로 바꿀 수 없습니다.',
             updatedCount: 0,
-            skippedCount: skipped,
+            skippedCount,
+            outOfScopeCount,
           },
           { status: 409 }
         );
@@ -97,11 +104,18 @@ export async function PATCH(req: Request): Promise<Response> {
           actorUserId: actor.userId,
           action: 'recruit.applicant.bulkStatus',
           targetTable: 'recruit_applicants',
-          after: { status, applicantIds: eligible, count: updated.length, skipped },
+          after: {
+            status,
+            cohortId,
+            applicantIds: eligible,
+            count: updated.length,
+            skipped: skippedCount,
+            outOfScope: outOfScopeCount,
+          },
           severity: 'high',
         })
       );
-      return NextResponse.json({ updatedCount: updated.length, skippedCount: skipped });
+      return NextResponse.json({ updatedCount: updated.length, skippedCount, outOfScopeCount });
     }
 
     if (action === 'assign_slot') {
