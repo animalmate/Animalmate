@@ -5,9 +5,10 @@
 
 > 상태: **Phase 1 전부 구현·배포 완료** — 반복 공지 발행 루프, 권한/보안, 인증, 운영 화면,
 > **실카페 발행 전환**(봇 카페스탭 임명 + `NAVER_PUBLISH_DRY_RUN=false`), **RAG 챗봇**까지 라이브.
-> **Phase 2 F9 신입 모집 착수**(2026-07-25) — 설계 확정 + 데이터 기반(마이그레이션 0013·권한) 완료,
-> 서비스·화면은 구현 예정([`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md)).
-> 남은 것 = 운영 작업(안내 문서 입력), Phase 2(총무 F8·신입모집 F9 잔여).
+> **Phase 2 F9 신입 모집 구현·QA 완료**(2026-07-25 착수 → 07-27 QA) — CSV 업로드부터 서류 채점·면접
+> 배정·면접 콘솔·최종 결정·비로그인 결과 조회·데이터 폐기까지 전 과정 동작
+> ([`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md)).
+> 남은 것 = 운영 작업(안내 문서 입력), Phase 2 잔여(총무 F8, 평가셋·지표 대시보드·자동 백업).
 
 ## 무엇을 / 왜
 
@@ -111,6 +112,11 @@ npm run test:rls         # RLS 기본 거부 증명 + 서비스 통합(실 Supab
 `SUPABASE_URL`/`SUPABASE_ANON_KEY`/`DIRECT_URL`이 없으면 건너뛴다. `test/rls.security.test.ts`는
 `pg_tables`에서 테이블을 런타임 수집하므로 **새 테이블이 RLS를 빠뜨리면 자동으로 실패**한다.
 
+모집(recruit) 서비스는 db를 인자로 받지 않고 `src/db/client.ts` 싱글턴을 쓰므로 `DATABASE_URL`도
+필요하다(CI는 `DIRECT_URL` 값을 그대로 넘긴다). 이 싱글턴은 **지연 초기화(Proxy)** 라 import만으로는
+죽지 않는다 — 예전엔 모듈 최상단에서 throw 해서, env 없는 환경이면 `describe.skip` 가드가 무색하게
+수집 단계부터 깨졌다(07-DECISIONS 27).
+
 ## 스케줄러 · 배포 · 인증
 
 - 스케줄러(pg_cron SQL), Vercel 배포 체크리스트, Gmail SMTP/인증 준비 절차는
@@ -119,8 +125,16 @@ npm run test:rls         # RLS 기본 거부 증명 + 서비스 통합(실 Supab
 ## CI
 
 `.github/workflows/ci.yml`이 push/PR마다 타입체크 → 단위 테스트 → RLS 테스트를 실행한다.
-GitHub 리포 Settings > Secrets and variables > Actions에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-`DIRECT_URL`을 등록해야 RLS 테스트가 돈다.
+RLS 테스트는 GitHub 리포 Settings > Secrets and variables > Actions의 `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, `DIRECT_URL`(**Repository secret**으로 등록 — Environment secret은
+워크플로에 `environment:` 선언이 없어 안 읽힌다)을 쓴다. 2026-07-27 등록 완료.
+
+> **초록불이 곧 검증은 아니다.** 통합 테스트는 env가 없으면 스스로 `describe.skip`으로 건너뛴다.
+> 시크릿이 비었거나 **이름이 한 글자라도 틀리면 실패가 아니라 조용한 skip**이 되어, 아무것도
+> 검증하지 않은 채 CI가 통과한다. 판별은 **"RLS 보안 테스트" 단계 소요시간**으로 한다 —
+> **약 13초 = 전부 skip**, **6~8분 = 실제 실행**(로컬은 ~50초, CI는 서울 리전 왕복 지연으로 느리다).
+> 조회: `curl -s https://api.github.com/repos/animalmate/Animalmate/actions/runs/<id>/jobs`
+> (리포가 public이라 인증 없이 읽힌다.)
 
 ## 라이선스
 

@@ -72,9 +72,19 @@ interview_done ──(회장단 최종확정)──▶ final_pass 또는 final_f
 - **최종 결정 화면 경고**: `slot_id`가 있는데 면접 점수가 0개인 지원자(=interview_noshow 아님)를
   **"면접 기록 없음"**으로 강조 → 회장단이 누락을 눈으로 잡는다. noshow 는 기본 제외 대상으로 표시.
 
+- **면접 점수칸은 비워 둔 채 시작한다**(기본값 없음, 2026-07-27 QA). 미입력이면 저장 버튼이 잠기고
+  서버도 400 으로 거절한다. "채점 안 함"과 "8점 줌"은 다른 사실이고, 기본값이 들어 있으면 점수칸을
+  건드리지 않은 저장이 실제 평가로 기록되면서 상태까지 interview_done 으로 전이된다 → 집계와
+  표본 부족 판정이 함께 무너진다(07-DECISIONS 28).
+- **일괄 상태 변경(bulk_status)은 `cohortId` 필수**. 지원자 id 만으로는 기수 범위가 걸리지 않아
+  화면에서 고른 기수 밖의 지원자까지 확정될 수 있다. 제외 인원은 '단계 불일치'와 '기수 밖'을
+  나눠 돌려준다(07-DECISIONS 29).
+
 순수 함수로 분리(단위 테스트 필수):
 - `nextStatusOnScoreChange(current, interviewScoreCount)` — 점수 수 변화 → 다음 상태(자동 전환/복귀만).
 - `canConfirmDoc/Final(status)` 등 확정 가능 여부 가드.
+- `canTransition(from, to)` — 회장단 수동 전이 가드. 서버 라우트에서 단건·일괄 모두 호출한다
+  (화면에서 감추는 것은 검증이 아니다 — 규칙 #6).
 
 ## 4. 권한 (permissions.ts Action 추가)
 - `{ kind: 'recruit.score' }` — **staff+**. 본인 점수·코멘트, 개인 메모, 공용 메모지 쓰기.
