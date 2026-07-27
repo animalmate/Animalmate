@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, InfoText, Input, RoleBadge, SecondaryButton, Select } from '@/components/ui';
+import { Button, Card, DangerButton, ErrorText, Field, InfoText, Input, RoleBadge, SecondaryButton, Select } from '@/components/ui';
+import { Modal } from '@/components/modal';
 
 interface UserTeam { teamId: string; teamName: string; position: 'leader' | 'member'; label: string }
 interface Member {
@@ -27,6 +28,10 @@ export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [withdrawTarget, setWithdrawTarget] = useState<Member | null>(null);
+  const [confirmName, setConfirmName] = useState('');
+  const [withdrawError, setWithdrawError] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
 
   async function load() {
     const [m, t] = await Promise.all([
@@ -46,6 +51,29 @@ export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; 
     setError('');
     const r = await apiPost(`/api/admin/members/${id}`, body, 'PATCH');
     if (!r.ok) return setError(errorMessage(r.data.error));
+    await load();
+  }
+
+  /**
+   * 강제 탈퇴 — 비활성화와 달리 되돌릴 수 없고 개인정보가 실제로 지워진다.
+   * 그래서 확인 한 번이 아니라 **이름을 정확히 다시 입력**하게 한다(서버도 같은 값을 요구).
+   */
+  async function confirmWithdraw() {
+    const m = withdrawTarget;
+    if (!m) return;
+    setWithdrawError('');
+    setWithdrawing(true);
+    const res = await fetch(`/api/admin/members/${m.userId}?confirmName=${encodeURIComponent(confirmName.trim())}`, {
+      method: 'DELETE',
+    });
+    setWithdrawing(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setWithdrawError(d.message || errorMessage(d.error));
+      return;
+    }
+    setWithdrawTarget(null);
+    setConfirmName('');
     await load();
   }
 
@@ -71,7 +99,18 @@ export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; 
         <ul className="space-y-2">
           {list.map((m) => (
             <li key={m.userId}>
-              <MemberCard m={m} teams={teams} isSelf={m.userId === selfUserId} isSysadmin={isSysadmin} onPatch={(b) => patchMember(m.userId, b)} />
+              <MemberCard
+                m={m}
+                teams={teams}
+                isSelf={m.userId === selfUserId}
+                isSysadmin={isSysadmin}
+                onPatch={(b) => patchMember(m.userId, b)}
+                onWithdraw={() => {
+                  setWithdrawTarget(m);
+                  setConfirmName('');
+                  setWithdrawError('');
+                }}
+              />
             </li>
           ))}
         </ul>
@@ -102,6 +141,36 @@ export function MembersPanel({ isSysadmin, selfUserId }: { isSysadmin: boolean; 
           {section('회장단', buckets.board)}
         </div>
       )}
+
+      {withdrawTarget ? (
+        <Modal title={`${withdrawTarget.name} 님을 탈퇴 처리할까요?`} onClose={() => setWithdrawTarget(null)}>
+          <div className="space-y-4">
+            <ul className="space-y-1.5 text-[13px] leading-relaxed text-ink-700">
+              <li>· 이름·이메일·전화번호가 지워지고 계정이 영구 잠깁니다. <strong>되돌릴 수 없습니다.</strong></li>
+              <li>· 작성했던 예약·양식·문서는 남고, 작성자만 &lsquo;탈퇴한 회원&rsquo;으로 바뀝니다.</li>
+              <li>· 잠시 활동을 쉬는 경우라면 탈퇴 대신 <strong>비활성화</strong>를 쓰세요(되돌릴 수 있어요).</li>
+            </ul>
+            <Field label={`계속하려면 회원 이름 "${withdrawTarget.name}"을(를) 그대로 입력해 주세요`}>
+              <Input
+                value={confirmName}
+                onChange={(e) => setConfirmName(e.target.value)}
+                placeholder={withdrawTarget.name}
+                autoComplete="off"
+              />
+            </Field>
+            <ErrorText>{withdrawError}</ErrorText>
+            <div className="flex justify-end gap-2">
+              <SecondaryButton onClick={() => setWithdrawTarget(null)}>돌아가기</SecondaryButton>
+              <DangerButton
+                disabled={withdrawing || confirmName.trim() !== withdrawTarget.name.trim()}
+                onClick={confirmWithdraw}
+              >
+                {withdrawing ? '처리 중…' : '탈퇴 처리'}
+              </DangerButton>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -130,12 +199,14 @@ function MemberCard({
   isSelf,
   isSysadmin,
   onPatch,
+  onWithdraw,
 }: {
   m: Member;
   teams: Team[];
   isSelf: boolean;
   isSysadmin: boolean;
   onPatch: (body: Record<string, unknown>) => void;
+  onWithdraw: () => void;
 }) {
   const [confirmRevoke, setConfirmRevoke] = useState(false);
 
@@ -178,6 +249,10 @@ function MemberCard({
               >
                 {confirmRevoke ? '한 번 더 누르면 실행' : '모든 기기에서 로그아웃'}
               </SecondaryButton>
+              {/* 탈퇴는 비활성화 옆에 두되 위험 색으로 구분한다 — 되돌릴 수 있는 조치와 없는 조치. */}
+              <DangerButton title="개인정보를 지우고 계정을 영구 잠급니다. 되돌릴 수 없습니다." onClick={onWithdraw}>
+                탈퇴 처리
+              </DangerButton>
             </>
           )}
         </div>
@@ -291,6 +366,8 @@ function TeamsSection({ teams, onChange, onError }: { teams: Team[]; onChange: (
     onChange();
   }
   async function removeTeam(t: Team) {
+    // 회차·예약이 걸린 팀은 서버가 막아 주지만, 아직 안 쓴 팀은 클릭 한 번에 사라진다.
+    if (typeof window !== 'undefined' && !window.confirm(`"${t.name}" 팀을 삭제할까요? 되돌릴 수 없습니다.`)) return;
     onError('');
     const res = await fetch(`/api/admin/teams/${t.id}`, { method: 'DELETE' });
     if (!res.ok) {

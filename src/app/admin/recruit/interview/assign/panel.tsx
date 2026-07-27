@@ -1,5 +1,6 @@
 'use client';
 
+import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { matchesTeamFilter } from '@/recruit/team-filter';
@@ -8,7 +9,7 @@ import { ScreenNotes } from '@/components/screen-notes';
 import { useTeams } from '@/components/use-teams';
 import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
-export function RecruitInterviewAssignPanel() {
+export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -302,7 +303,7 @@ export function RecruitInterviewAssignPanel() {
         </div>
       </div>
 
-      <RecruitNav />
+      <RecruitNav role={role} />
 
       <ScreenNotes
         screen="interview-assign"

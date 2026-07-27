@@ -1,5 +1,6 @@
 'use client';
 
+import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { autoMapHeaders, parseCsv, missingRequiredMappings, REQUIRED_MAPPING_LABELS } from '@/recruit/csv';
@@ -14,7 +15,7 @@ const BLANK_MAPPING: Record<string, string> = {
   essayValuesTopic: '', englishName: '',
 };
 
-export function RecruitUploadPanel() {
+export function RecruitUploadPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -160,7 +161,7 @@ export function RecruitUploadPanel() {
         <p className="mt-1 text-sm text-ink-500">구글 폼 지원서 응답 데이터를 읽어와 기수별 지원자 명단을 등록합니다.</p>
       </div>
 
-      <RecruitNav />
+      <RecruitNav role={role} />
 
       <div className="space-y-6">
         {/* Step 1: 업로드 기수 선택 */}

@@ -8,7 +8,7 @@ export default async function Page() {
   const actor = await requireStaff();
   return (
     <ConsoleShell actor={actor}>
-      <RecruitNoticeEditPanel />
+      <RecruitNoticeEditPanel role={actor.role} />
     </ConsoleShell>
   );
 }

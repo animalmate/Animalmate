@@ -1,5 +1,6 @@
 'use client';
 
+import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
@@ -9,7 +10,7 @@ import { EssayBlock } from '@/components/essay-block';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
-export function RecruitScreeningPanel() {
+export function RecruitScreeningPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -201,7 +202,7 @@ export function RecruitScreeningPanel() {
         </div>
       </div>
 
-      <RecruitNav />
+      <RecruitNav role={role} />
 
       <ScreenNotes
         screen="doc"

@@ -52,11 +52,15 @@ export class MemberError extends Error {
       | 'last_sysadmin'
       | 'last_privileged'
       | 'bad_role'
+      | 'already_withdrawn'
   ) {
     super(code);
     this.name = 'MemberError';
   }
 }
+
+/** 탈퇴 계정의 표시 이름. 예약·양식·문서의 작성자 자리에 이 값이 남는다. */
+export const WITHDRAWN_NAME = '탈퇴한 회원';
 
 function ensureValidRole(role: string): asserts role is Role {
   if (!ASSIGNABLE_ROLES.includes(role as Role)) throw new MemberError('bad_role');
@@ -64,7 +68,10 @@ function ensureValidRole(role: string): asserts role is Role {
 
 /** 전체 가입 계정 목록(시스템 계정 제외). 회장단/시스템관리자 전용(라우트에서 게이트). */
 export async function listMembers(db: Db): Promise<MemberRow[]> {
-  const us = await db.select({ id: users.id, email: users.email, name: users.name, phone: users.phone }).from(users).orderBy(desc(users.createdAt));
+  const us = await db
+    .select({ id: users.id, email: users.email, name: users.name, phone: users.phone, withdrawnAt: users.withdrawnAt })
+    .from(users)
+    .orderBy(desc(users.createdAt));
   const ms = await db.select({ userId: memberships.userId, role: memberships.role, status: memberships.status }).from(memberships);
   const tms = await db
     .select({ userId: teamMembers.userId, teamId: teamMembers.teamId, teamName: teams.name, position: teamMembers.position, label: teamMembers.label })
@@ -86,7 +93,9 @@ export async function listMembers(db: Db): Promise<MemberRow[]> {
   }
 
   return us
-    .filter((u) => u.email !== SYSTEM_EMAIL)
+    // 탈퇴 계정은 더 이상 회원이 아니다 — 명단에서 뺀다. 껍데기 행이 남는 것은
+    // 작성물·감사 기록의 참조를 지키기 위해서지 관리 대상이어서가 아니다.
+    .filter((u) => u.email !== SYSTEM_EMAIL && u.withdrawnAt == null)
     .map((u) => ({
       userId: u.id,
       email: u.email,
@@ -110,7 +119,7 @@ export async function listMembers(db: Db): Promise<MemberRow[]> {
 async function notifyPrivilegedChange(
   db: Db,
   actor: Actor,
-  info: { targetUserId: string; summary: string; detail?: string },
+  info: { targetUserId: string; summary: string; detail?: string; targetLabel?: string },
   mailer: Mailer = defaultMailer()
 ): Promise<void> {
   try {
@@ -120,12 +129,15 @@ async function notifyPrivilegedChange(
       db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, actor.userId)).limit(1),
       db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, info.targetUserId)).limit(1),
     ]);
+    // 탈퇴처럼 대상 정보를 이미 지운 뒤에 알리는 경우엔 호출부가 지우기 전 표기를 넘긴다
+    // (알림 본문에만 쓰이고 DB 에는 저장되지 않는다).
+    const targetLabel = info.targetLabel ?? `${target?.name ?? '(알 수 없음)'} <${target?.email ?? info.targetUserId}>`;
     await mailer.send({
       to,
       subject: '[애니멀메이트] ⚠️ 회장단 권한 변경 알림',
       text:
         `${info.summary}\n\n` +
-        `• 대상: ${target?.name ?? '(알 수 없음)'} <${target?.email ?? info.targetUserId}>\n` +
+        `• 대상: ${targetLabel}\n` +
         `• 수행: ${who?.name ?? '(알 수 없음)'} <${who?.email ?? actor.userId}>\n` +
         `• 시각: ${new Date().toISOString()}\n\n` +
         `${info.detail ?? ''}\n` +
@@ -341,6 +353,116 @@ export async function setMemberActive(db: Db, actor: Actor, targetUserId: string
     await notifyPrivilegedChange(db, actor, {
       targetUserId,
       summary: `회장단 계정이 ${active ? '활성화' : '비활성화'}되었습니다.`,
+    });
+  }
+}
+
+/**
+ * 탈퇴를 막아야 하는 경우인지 판정한다(막을 이유가 없으면 null).
+ *
+ * wouldRemoveLastPrivileged 와 같은 이유로 순수 함수다 — 판단이 "DB 전체의 활성 권한자 수"라는
+ * 전역 상태에 걸려 있어, 실 계정이 여러 개인 공용 DB 통합 테스트로는 조건을 만들 수 없다.
+ *
+ * 비활성화와 달리 **본인 탈퇴는 허용**한다(self_forbidden 아님). 다만 마지막 권한자는 자기 자신도
+ * 탈퇴할 수 없다 — 나가면 아무도 권한을 되돌릴 수 없어 동아리가 콘솔에서 잠긴다.
+ */
+export function withdrawBlockReason(input: {
+  isSelf: boolean;
+  actorRole: Role;
+  targetRole: Role | null;
+  activePrivileged: number;
+  activeSysadmin: number;
+}): 'sysadmin_only' | 'last_sysadmin' | 'last_privileged' | null {
+  const { isSelf, actorRole, targetRole, activePrivileged, activeSysadmin } = input;
+  // 남을 내보내는 경우, 시스템관리자는 시스템관리자만 건드릴 수 있다.
+  if (!isSelf && targetRole === 'sysadmin' && actorRole !== 'sysadmin') return 'sysadmin_only';
+  if (targetRole === 'sysadmin' && activeSysadmin <= 1) return 'last_sysadmin';
+  if (wouldRemoveLastPrivileged(targetRole, null, activePrivileged)) return 'last_privileged';
+  return null;
+}
+
+/** 탈퇴 계정의 대체 이메일. 원문을 남기지 않으면서 unique 제약을 지킨다. */
+function withdrawnEmail(userId: string): string {
+  // .invalid 는 예약 TLD 라 실제로 메일이 갈 수 없다(RFC 2606).
+  return `withdrawn+${userId}@animalmate.invalid`;
+}
+
+/**
+ * 회원 탈퇴 — **되돌릴 수 없다.** 비활성화(setMemberActive)와의 차이:
+ * 비활성화는 접근만 끊고 이름·연락처가 그대로 남아 언제든 되살릴 수 있지만,
+ * 탈퇴는 개인정보를 실제로 지우고 계정을 영구 잠근다.
+ *
+ * 하는 일:
+ *  1. 이름·이메일·전화를 지운다(이름은 '탈퇴한 회원', 이메일은 수신 불가 주소로 치환).
+ *  2. 모든 멤버십 expired + 팀 배정 해제 → 권한·명단에서 빠진다.
+ *  3. session_version + 1 → 열려 있던 모든 기기에서 즉시 로그아웃.
+ *  4. withdrawn_at 기록 → loadActor 가 영구 거부.
+ *
+ * 작성물(예약·양식·문서)은 지우지 않는다. 팀이 쓰던 공지 양식이나 챗봇 문서가 사람 한 명
+ * 나갈 때마다 사라지면 다음 학기 운영이 막힌다 — 작성자 표기만 '탈퇴한 회원'이 된다.
+ *
+ * @param actor 수행자. 본인 탈퇴면 actor.userId === targetUserId.
+ */
+export async function withdrawMember(db: Db, actor: Actor, targetUserId: string): Promise<void> {
+  const isSelf = targetUserId === actor.userId;
+  // 남을 내보내는 것은 권한 회수와 같은 무게다. 본인 탈퇴는 누구나 할 수 있다.
+  if (!isSelf) requireAuthorized(actor, { kind: 'membership.manage' });
+
+  const [target] = await db
+    .select({ id: users.id, withdrawnAt: users.withdrawnAt, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
+  if (!target) throw new MemberError('not_found');
+  if (target.withdrawnAt) throw new MemberError('already_withdrawn');
+  // 지우기 전에 붙잡아 둔다 — 회장단 탈퇴 알림에 "탈퇴한 회원"만 찍히면 탈취 탐지에 쓸모가 없다.
+  const targetLabel = `${target.name} <${target.email}>`;
+
+  const targetRole = await activeRoleOf(db, targetUserId);
+  const blocked = withdrawBlockReason({
+    isSelf,
+    actorRole: actor.role,
+    targetRole,
+    activePrivileged: await activePrivilegedCount(db),
+    activeSysadmin: await activeSysadminCount(db),
+  });
+  if (blocked) throw new MemberError(blocked);
+
+  await db.update(memberships).set({ status: 'expired' }).where(eq(memberships.userId, targetUserId));
+  await db.delete(teamMembers).where(eq(teamMembers.userId, targetUserId));
+  await db
+    .update(users)
+    .set({
+      name: WITHDRAWN_NAME,
+      email: withdrawnEmail(targetUserId),
+      phone: null,
+      withdrawnAt: new Date(),
+      sessionVersion: sql`${users.sessionVersion} + 1`,
+    })
+    .where(eq(users.id, targetUserId));
+
+  // ⚠ audit 에 이름·이메일·전화를 남기지 않는다. 방금 지운 개인정보를 감사 기록에 옮겨
+  // 적으면 탈퇴가 아무 의미가 없어진다(규칙 #4 는 "무엇을 했는지"를 요구하지 계정 주인의
+  // 인적사항을 요구하지 않는다). 누가·언제·어떤 계정인지는 actor/targetId/시각으로 충분하다.
+  await recordAudit(
+    db,
+    buildAuditEntry({
+      actorUserId: actor.userId,
+      action: isSelf ? 'membership.withdraw_self' : 'membership.withdraw_forced',
+      targetTable: 'users',
+      targetId: targetUserId,
+      before: { role: targetRole },
+      after: { withdrawn: true, personalDataErased: true },
+      severity: targetRole != null && isPrivileged(targetRole) ? 'high' : undefined,
+    })
+  );
+
+  if (targetRole != null && isPrivileged(targetRole)) {
+    await notifyPrivilegedChange(db, actor, {
+      targetUserId,
+      targetLabel,
+      summary: isSelf ? '회장단 계정이 스스로 탈퇴했습니다.' : '회장단 계정이 강제 탈퇴 처리되었습니다.',
+      detail: '탈퇴는 되돌릴 수 없습니다. 인수인계가 끝나지 않았다면 즉시 확인해 주세요.',
     });
   }
 }

@@ -49,6 +49,14 @@ export function ReservationsPanel() {
     void load();
   }
 
+  // 취소는 되돌릴 수 없는데 '수정' 바로 옆 버튼이라 잘못 누르기 쉽다 —
+  // 게시판 비활성화·양식 삭제·문서 삭제와 같은 기준으로 한 번 더 묻는다.
+  function cancel(r: Reservation) {
+    const when = r.publishAt ? fmt(r.publishAt) : '업로드 시각 미정';
+    if (typeof window !== 'undefined' && !window.confirm(`"${r.title}" 예약을 취소할까요?\n(${when} 업로드 예정 — 취소하면 되돌릴 수 없습니다)`)) return;
+    void act(r.id, 'cancel');
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -128,7 +136,7 @@ export function ReservationsPanel() {
                     {r.status === 'failed' ? (
                       <SecondaryButton onClick={() => act(r.id, 'schedule')}>재시도(업로드 대기)</SecondaryButton>
                     ) : null}
-                    <SecondaryButton onClick={() => act(r.id, 'cancel')}>취소</SecondaryButton>
+                    <SecondaryButton onClick={() => cancel(r)}>취소</SecondaryButton>
                   </div>
                 ) : null}
               </Card>

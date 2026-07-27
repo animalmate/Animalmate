@@ -1,5 +1,6 @@
 'use client';
 
+import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useRef } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
@@ -14,7 +15,7 @@ import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect }
 // 채점하지 않은 것과 8점을 준 것은 완전히 다른 사실이고, 뒤섞이면 집계·표본 부족 판정이 무너진다.
 const NO_SCORE = '';
 
-export function RecruitInterviewConsolePanel() {
+export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -265,7 +266,7 @@ export function RecruitInterviewConsolePanel() {
         </div>
       </div>
 
-      <RecruitNav />
+      <RecruitNav role={role} />
 
       <ScreenNotes
         screen="interview-console"

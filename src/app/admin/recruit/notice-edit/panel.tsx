@@ -1,13 +1,18 @@
 'use client';
 
+import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
+import { isPrivileged } from '@/auth/permissions';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
 import { DEFAULT_APPLY_FORM, resolveApplyForm, type ApplyFormConfig } from '@/recruit/apply-form';
 import { ApplyFormEditor } from './apply-form-editor';
 
-export function RecruitNoticeEditPanel() {
+export function RecruitNoticeEditPanel({ role }: { role: Role }) {
+  // 홍보팀(운영진)은 공고 본문·포스터·지원서 문항까지. 마감 스위치와 합격자 안내문처럼
+  // 지원자에게 직접 효력이 가는 값은 회장단만 바꾼다. 서버도 같은 기준으로 막는다(규칙 #6).
+  const canManage = isPrivileged(role);
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -226,21 +231,24 @@ export function RecruitNoticeEditPanel() {
       const res = await fetch('/api/recruit/notice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // 회장단 전용 필드는 아예 보내지 않는다. 화면에 없는 값을 실어 보내면
+        // 서버가 "바꾸려 했다"고 볼 여지가 생긴다.
         body: JSON.stringify({
           cohortId: selectedCohortId,
           noticeContent,
           noticeImages,
-          congratsMessage,
-          postPassNotice,
-          isClosed,
-          venues,
           applyForm,
+          ...(canManage ? { congratsMessage, postPassNotice, isClosed, venues } : {}),
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        setMessage('✅ 모집 공고 본문, 포스터 이미지, 마감 스위치 및 안내 설정이 DB에 성공적으로 저장되었습니다.');
+        setMessage(
+          canManage
+            ? '✅ 모집 공고 본문, 포스터 이미지, 마감 스위치 및 안내 설정이 DB에 성공적으로 저장되었습니다.'
+            : '✅ 공고 글·포스터·지원서 문항이 저장되었습니다.'
+        );
       } else {
         setMessage(`❌ 저장 실패 (${res.status}): ${data.message || data.error || '알 수 없는 서버 오류'}`);
       }
@@ -289,7 +297,11 @@ export function RecruitNoticeEditPanel() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
-          <p className="mt-1 text-sm text-ink-500">신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.</p>
+          <p className="mt-1 text-sm text-ink-500">
+            {canManage
+              ? '신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.'
+              : '공개 공고 글과 포스터, 지원서 문항을 작성합니다. 기수 생성·모집 마감·합격자 안내문은 회장단이 맡습니다.'}
+          </p>
         </div>
 
         <div>
@@ -304,13 +316,15 @@ export function RecruitNoticeEditPanel() {
         </div>
       </div>
 
-      <RecruitNav />
+      <RecruitNav role={role} />
 
       {/* 모집 기수 선택 및 관리 */}
       <Card className="space-y-4">
         <div className="flex items-center justify-between border-b border-cream-200 pb-3">
-          <h2 className="text-base font-bold text-ink-900">모집 기수 선택 및 생성 / 삭제</h2>
-          <span className="text-xs text-ink-500">새로운 신입 기수를 생성하거나 기존 기수를 관리합니다.</span>
+          <h2 className="text-base font-bold text-ink-900">{canManage ? '모집 기수 선택 및 생성 / 삭제' : '모집 기수 선택'}</h2>
+          <span className="text-xs text-ink-500">
+            {canManage ? '새로운 신입 기수를 생성하거나 기존 기수를 관리합니다.' : '작성할 공고의 기수를 고릅니다.'}
+          </span>
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
@@ -330,30 +344,32 @@ export function RecruitNoticeEditPanel() {
             </Field>
           </div>
 
-          <div className="flex items-end gap-2 flex-1 min-w-[320px]">
-            <div className="flex-1">
-              <Field label="새 신입 기수 생성">
-                <Input
-                  type="text"
-                  placeholder="예: 33기 (또는 34기)"
-                  value={newCohortLabel}
-                  onChange={(e) => setNewCohortLabel(e.target.value)}
-                />
-              </Field>
+          {canManage ? (
+            <div className="flex items-end gap-2 flex-1 min-w-[320px]">
+              <div className="flex-1">
+                <Field label="새 신입 기수 생성">
+                  <Input
+                    type="text"
+                    placeholder="예: 33기 (또는 34기)"
+                    value={newCohortLabel}
+                    onChange={(e) => setNewCohortLabel(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <Button type="button" onClick={handleCreateCohort} className="h-control whitespace-nowrap">
+                + 기수 생성
+              </Button>
+              {selectedCohortId && (
+                <DangerButton
+                  type="button"
+                  onClick={() => setShowDeleteModal(true)}
+                  className="h-control whitespace-nowrap"
+                >
+                  기수 삭제
+                </DangerButton>
+              )}
             </div>
-            <Button type="button" onClick={handleCreateCohort} className="h-control whitespace-nowrap">
-              + 기수 생성
-            </Button>
-            {selectedCohortId && (
-              <DangerButton
-                type="button"
-                onClick={() => setShowDeleteModal(true)}
-                className="h-control whitespace-nowrap"
-              >
-                기수 삭제
-              </DangerButton>
-            )}
-          </div>
+          ) : null}
         </div>
       </Card>
 
@@ -371,23 +387,32 @@ export function RecruitNoticeEditPanel() {
               </span>
             </div>
             <p className="text-xs text-ink-500 mt-1">
-              모집 중단 스위치를 켜면 지원서 작성 페이지 버튼이 즉시 비활성화되고 마감 팝업이 노출됩니다.
+              {canManage
+                ? '모집 중단 스위치를 켜면 지원서 작성 페이지 버튼이 즉시 비활성화되고 마감 팝업이 노출됩니다.'
+                : '모집을 열고 닫는 것은 회장단이 합니다.'}
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={saving}
-          onClick={handleToggleClosed}
-          className={`px-6 py-3 rounded-xl text-xs font-bold transition-all shadow-card cursor-pointer ${
-            isClosed
-              ? 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'
-              : 'bg-coral-600 text-white hover:bg-coral-700 active:scale-95'
-          }`}
-        >
-          {saving ? '상태 변경 중…' : isClosed ? '모집 재개하기 (지원서 열기)' : '모집 중단하기 (지원 마감)'}
-        </button>
+        {canManage ? (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleToggleClosed}
+            className={`px-6 py-3 rounded-xl text-xs font-bold transition-all shadow-card cursor-pointer ${
+              isClosed
+                ? 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'
+                : 'bg-coral-600 text-white hover:bg-coral-700 active:scale-95'
+            }`}
+          >
+            {saving ? '상태 변경 중…' : isClosed ? '모집 재개하기 (지원서 열기)' : '모집 중단하기 (지원 마감)'}
+          </button>
+        ) : (
+          <span className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-ink-400 ring-1 ring-ink-200">
+            <Icon name="lock" size={14} />
+            회장단 전용
+          </span>
+        )}
       </Card>
 
       {/* 설정 입력 카드 */}
@@ -452,17 +477,19 @@ export function RecruitNoticeEditPanel() {
           )}
         </div>
 
-        <div className="border-t border-cream-200 pt-6 space-y-4">
-          <h2 className="text-base font-bold text-ink-900">대면 면접 장소 프리셋 (줄바꿈 구분)</h2>
-          <Field label="대면 면접 장소 후보 목록" hint="면접 배정 시 클릭 한 번으로 선택 가능한 장소 프리셋입니다. (최대 2~3곳)">
-            <textarea
-              className="w-full h-20 rounded-xl border border-ink-200 bg-white p-3 text-xs font-sans text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500"
-              placeholder="학생회관 301호&#10;학생회관 302호"
-              value={venuesText}
-              onChange={(e) => setVenuesText(e.target.value)}
-            />
-          </Field>
-        </div>
+        {canManage ? (
+          <div className="border-t border-cream-200 pt-6 space-y-4">
+            <h2 className="text-base font-bold text-ink-900">대면 면접 장소 프리셋 (줄바꿈 구분)</h2>
+            <Field label="대면 면접 장소 후보 목록" hint="면접 배정 시 클릭 한 번으로 선택 가능한 장소 프리셋입니다. (최대 2~3곳)">
+              <textarea
+                className="w-full h-20 rounded-xl border border-ink-200 bg-white p-3 text-xs font-sans text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500"
+                placeholder="학생회관 301호&#10;학생회관 302호"
+                value={venuesText}
+                onChange={(e) => setVenuesText(e.target.value)}
+              />
+            </Field>
+          </div>
+        ) : null}
 
         {/* 공개 지원서(/recruit/apply)의 선택지·문항. 예전에는 화면 코드에 박혀 있어
             바꾸려면 배포가 필요했다. 지망 팀 목록은 여기가 아니라 "회원 관리"의 팀이 그대로 쓰인다. */}
@@ -474,6 +501,7 @@ export function RecruitNoticeEditPanel() {
           <ApplyFormEditor value={applyForm} onChange={setApplyForm} />
         </div>
 
+        {canManage ? (
         <div className="border-t border-cream-200 pt-6 space-y-4">
           <h2 className="text-base font-bold text-ink-900">최종 합격자 축하 멘트 및 합격 후 안내</h2>
 
@@ -495,6 +523,7 @@ export function RecruitNoticeEditPanel() {
             />
           </Field>
         </div>
+        ) : null}
 
         <StatusMessage text={message} />
 

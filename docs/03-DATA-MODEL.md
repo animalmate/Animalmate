@@ -18,12 +18,19 @@
 
 ## 테이블
 ### 조직/계정
-- `users` (id, email, name, phone?, session_version, created_at)
+- `users` (id, email, name, phone?, session_version, withdrawn_at?, created_at)
   - `session_version`: 세션 세대(0010). 발급된 JWT 에 이 값을 담고 요청마다 대조 — 값을 1 올리면
     그 계정의 **모든 기기 세션이 즉시 무효**. 세션 테이블 불필요. 올라가는 경우 3가지(07-DECISIONS 11·13):
     ① 회원 관리 > "모든 기기에서 로그아웃" ② **비활성화** ③ **강등**(승격·재활성화는 올리지 않는다).
   - `phone`: 연락처(0012 추가). **가입 시 입력, 본인이 내 정보에서 수정**. 봉사 공지 `{{팀장단}}`에
     팀장단 배정된 계정의 이름·전화로 자동 삽입된다. PII — RAG 인덱스 금지(규칙 #5), 코드/시드/커밋 금지(규칙 #4).
+  - `withdrawn_at`: 탈퇴 시각(0018). 값이 있으면 **탈퇴 계정** — `loadActor` 가 영구 거부하고
+    회원 명단(`listMembers`)에서도 빠진다. 탈퇴 = 행 삭제가 아니라 **개인정보 삭제 + 영구 잠금**:
+    name→'탈퇴한 회원', email→`withdrawn+<id>@animalmate.invalid`, phone→null, 멤버십 전부 expired,
+    팀 배정 삭제, session_version+1. 행을 남기는 이유는 `scheduled_posts`·`post_templates`·`documents`·
+    `join_codes`·`recruit_cohorts` 의 `created_by` 가 이 행을 참조해 DELETE 가 거부되고,
+    `audit_logs.actor_user_id`(ON DELETE SET NULL)를 지우면 "누가 했는지"가 사라지기 때문(규칙 #4).
+    원래 이메일을 남기지 않으므로 **같은 주소로 재가입 가능**(별개의 새 계정). 07-DECISIONS 30.
 - `memberships` (user_id, role, board_position?, term_start, term_end, status[active|expired])
   - 크론이 매일 term_end 경과 건을 expired로 강등. 회장단만 memberships를 변경 가능.
 - `teams` (id, name, kind[activity|functional], is_active, leaders jsonb)

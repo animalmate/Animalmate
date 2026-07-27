@@ -168,11 +168,14 @@ async function currentRole(db: DB, userId: string, _now?: Date): Promise<Role> {
  */
 export async function loadActor(db: DB, userId: string, sessionVersion?: number): Promise<Actor | null> {
   const [u] = await db
-    .select({ id: users.id, sessionVersion: users.sessionVersion })
+    .select({ id: users.id, sessionVersion: users.sessionVersion, withdrawnAt: users.withdrawnAt })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
   if (!u) return null;
+  // 탈퇴 계정은 어떤 경로로도 살아나지 않는다. 탈퇴 시 session_version 을 올려 토큰을
+  // 무효화하지만, 그건 "지금 발급된 토큰"만 막는다 — 여기서 한 번 더 못 박는다.
+  if (u.withdrawnAt) return null;
   // "모든 기기에서 로그아웃" 이후 발급된 토큰만 통과한다.
   if (sessionVersion !== undefined && sessionVersion !== u.sessionVersion) return null;
   const ms = await db

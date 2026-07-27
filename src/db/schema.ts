@@ -90,6 +90,16 @@ export const users = pgTable('users', {
    * 같은 SELECT 에 컬럼 하나를 얹는 것이라 추가 조회 비용이 없다.
    */
   sessionVersion: integer('session_version').notNull().default(0),
+  /**
+   * 탈퇴 시각. 값이 있으면 **탈퇴한 계정**이며 로그인·복구가 불가능하다.
+   *
+   * 왜 행을 지우지 않는가: scheduled_posts·post_templates·documents·join_codes·recruit_cohorts 의
+   * created_by 가 이 행을 참조하므로 DELETE 자체가 거부되고, audit_logs.actor_user_id 는
+   * ON DELETE SET NULL 이라 지우면 "누가 했는지"가 감사 기록에서 사라진다(규칙 #4 위반).
+   * 그래서 탈퇴는 행 삭제가 아니라 **개인정보(이름·이메일·전화) 삭제 + 영구 잠금**으로 구현한다.
+   * 원래 이메일은 남기지 않으므로 같은 주소로 새로 가입할 수 있다(별개의 새 계정).
+   */
+  withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

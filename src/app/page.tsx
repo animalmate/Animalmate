@@ -22,6 +22,19 @@ const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations', label: '예약', desc: '공지 예약을 만들고 관리해요', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식을 저장해요', icon: 'doc' },
 ];
+// 신입 모집은 역할에 따라 들어가는 문이 다르다 — 운영진이 맡는 일은 채점, 회장단은 절차 전체.
+const RECRUIT_STAFF: Shortcut = {
+  href: '/admin/recruit/screening',
+  label: '신입모집',
+  desc: '지원자 서류를 채점해요',
+  icon: 'userPlus',
+};
+const RECRUIT_BOARD: Shortcut = {
+  href: '/admin/recruit/notice-edit',
+  label: '신입모집',
+  desc: '공고부터 최종 발표까지 진행해요',
+  icon: 'userPlus',
+};
 const BOARD_SHORTCUTS: Shortcut[] = [
   { href: '/documents', label: '문서', desc: '챗봇이 답할 안내 문서를 관리해요', icon: 'layers' },
   { href: '/admin/members', label: '회원·팀 관리', desc: '역할·팀·직함을 지정해요', icon: 'users' },
@@ -61,7 +74,12 @@ const TONE: Record<ExternalLink['tone'], { chip: string; hover: string }> = {
 export default async function HomePage() {
   const actor = await requireActor();
   const staff = isStaffPlus(actor.role);
-  const shortcuts = [...(staff ? STAFF_SHORTCUTS : []), ...(isPrivileged(actor.role) ? BOARD_SHORTCUTS : [])];
+  const board = isPrivileged(actor.role);
+  const shortcuts = [
+    ...(staff ? STAFF_SHORTCUTS : []),
+    ...(staff ? [board ? RECRUIT_BOARD : RECRUIT_STAFF] : []),
+    ...(board ? BOARD_SHORTCUTS : []),
+  ];
   const externals = EXTERNAL_LINKS.filter((l) => !l.staffOnly || staff); // 부원은 드라이브 제외
   const [me] = await db.select({ name: users.name }).from(users).where(eq(users.id, actor.userId)).limit(1);
   const name = me?.name?.trim() || '회원';

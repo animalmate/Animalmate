@@ -1,5 +1,6 @@
 'use client';
 
+import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
@@ -7,7 +8,7 @@ import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
-export function RecruitTallyPanel() {
+export function RecruitTallyPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -192,7 +193,7 @@ export function RecruitTallyPanel() {
         </div>
       </div>
 
-      <RecruitNav />
+      <RecruitNav role={role} />
 
       {/* KPI 통계 카드 */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
