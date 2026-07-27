@@ -171,7 +171,8 @@ export function RecruitFinalPanel() {
 
   const handleReassignTeam = async (id: string, newTeam: string) => {
     // 행마다 드롭다운이 있는 표다. 매번 전체를 다시 불러오면 한 명 바꿀 때마다 화면이 멈춘다.
-    const previous = applicants;
+    // 실패하면 서버에서 다시 읽는다 — 여러 행을 연달아 바꾸는 화면이라 스냅샷을 되돌리면
+    // 그 사이 성공한 다른 행까지 함께 지워진다.
     setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, assignedTeam: newTeam } : a)));
     try {
       const res = await fetch('/api/recruit/applicants', {
@@ -188,12 +189,12 @@ export function RecruitFinalPanel() {
       if (res.ok) {
         setMessage(`✅ 최종 배정 팀이 [${newTeam}](으)로 변경되었습니다.`);
       } else {
-        setApplicants(previous);
         setMessage(`❌ ${data.message || data.error || '팀 변경에 실패했습니다.'}`);
+        await fetchCohortAndApplicants();
       }
     } catch {
-      setApplicants(previous);
       setMessage('❌ 팀을 변경하지 못했습니다. 연결을 확인해 주세요.');
+      await fetchCohortAndApplicants();
     }
   };
 

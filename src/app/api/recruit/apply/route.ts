@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { clientIp, consumeRateLimit, RateLimitError, RULES } from '@/http/rate-limit';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
-import { createSingleApplicant } from '@/recruit/applicants';
+import { createSingleApplicant, findApplicantInCohort } from '@/recruit/applicants';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
 
@@ -55,10 +55,12 @@ export async function POST(req: Request): Promise<Response> {
     let cohortId = String(body.cohortId ?? '').trim();
 
     if (!cohortId) {
+      // 마감·폐기된 기수는 건너뛰고 접수 중인 최신 기수를 고른다.
+      // 예전엔 무조건 최신 기수를 집어서, 그 기수가 마감이면 접수 자체가 막혔다.
       const activeList = await listCohorts();
-      const firstCohort = activeList[0];
-      if (!firstCohort) return NextResponse.json({ error: 'no_cohort', message: '현재 진행 중인 신입 모집 기수가 없습니다.' }, { status: 400 });
-      cohortId = firstCohort.id;
+      const open = activeList.find((c) => !c.isClosed && !c.archivedStats);
+      if (!open) return NextResponse.json({ error: 'no_cohort', message: '현재 진행 중인 신입 모집 기수가 없습니다.' }, { status: 400 });
+      cohortId = open.id;
     }
 
     const cohort = await getCohortById(cohortId);
@@ -67,6 +69,15 @@ export async function POST(req: Request): Promise<Response> {
     if (cohort.isClosed) {
       return NextResponse.json(
         { error: 'closed', message: '해당 기수의 신입 모집이 마감되었습니다.' },
+        { status: 400 }
+      );
+    }
+
+    // 폐기된 기수는 지원자 데이터가 이미 삭제된 상태다. 여기에 새 지원서가 들어가면
+    // 아무도 보지 않는 곳에 남는다(마감 스위치와 별개라 isClosed 검사만으로는 막히지 않는다).
+    if (cohort.archivedStats) {
+      return NextResponse.json(
+        { error: 'closed', message: '해당 기수의 신입 모집이 종료되었습니다.' },
         { status: 400 }
       );
     }
@@ -97,6 +108,20 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ error: 'missing_required', message: '이름과 전화번호는 필수 입력 항목입니다.' }, { status: 400 });
     }
     checkApplicantLengths(fields);
+
+    // 두 번 누르거나 제출 후 새로고침하면 같은 지원서가 한 건 더 들어간다.
+    // 그러면 심사 목록에 같은 사람이 두 번 뜨고, 결과 조회도 어느 지원서를 볼지 모호해진다.
+    const already = await findApplicantInCohort(cohortId, fields.name, fields.phone);
+    if (already) {
+      return NextResponse.json(
+        {
+          error: 'already_applied',
+          message: '이미 접수된 지원서가 있습니다. 내용을 고치려면 운영진에게 문의해 주세요.',
+          applicantId: already.id,
+        },
+        { status: 409 }
+      );
+    }
 
     const applicant = await createSingleApplicant({
       cohortId,

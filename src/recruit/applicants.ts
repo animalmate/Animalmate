@@ -1,7 +1,7 @@
 // F9 신입 모집 지원자 CRUD 및 관리 서비스
 import { db } from '../db/client';
 import { recruitApplicants } from '../db/schema';
-import { eq, inArray, asc } from 'drizzle-orm';
+import { eq, and, inArray, asc } from 'drizzle-orm';
 import { ApplicantImportInput } from './csv';
 import { RecruitStatus } from './status';
 
@@ -153,6 +153,27 @@ export async function bulkUpdateApplicantTeam(ids: string[], assignedTeam: strin
     .set({ assignedTeam })
     .where(inArray(recruitApplicants.id, ids))
     .returning();
+}
+
+/**
+ * 같은 기수에 같은 이름+전화번호로 이미 접수된 지원서를 찾는다.
+ * 공개 접수 폼은 두 번 누르거나 새로고침하면 그대로 한 건 더 들어가고, 그러면 심사 목록에
+ * 같은 사람이 두 번 뜨고 결과 조회도 어느 쪽을 볼지 모호해진다.
+ */
+export async function findApplicantInCohort(cohortId: string, name: string, phone: string) {
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const [found] = await db
+    .select({ id: recruitApplicants.id })
+    .from(recruitApplicants)
+    .where(
+      and(
+        eq(recruitApplicants.cohortId, cohortId),
+        eq(recruitApplicants.name, name.trim()),
+        eq(recruitApplicants.phone, cleanPhone)
+      )
+    )
+    .limit(1);
+  return found ?? null;
 }
 
 export async function createSingleApplicant(input: {

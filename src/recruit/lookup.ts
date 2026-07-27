@@ -4,7 +4,7 @@
 
 import { db } from '../db/client';
 import { recruitApplicants, recruitCohorts, recruitSlots } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { consumeRateLimit, resetRateLimit, RULES } from '../http/rate-limit';
 import { visibleLookupResult, type PublicStage } from './lookup-visibility';
 import type { RecruitStatus } from './status';
@@ -57,7 +57,11 @@ export async function lookupApplicantResult(
         eq(recruitApplicants.name, cleanName),
         eq(recruitApplicants.phone, cleanPhone)
       )
-    );
+    )
+    // 재지원자는 이름+전화가 여러 기수에 남는다. 정렬이 없으면 어느 행이 나올지 정해지지 않아
+    // 이번 기수 결과를 보러 온 사람에게 지난 기수 결과가 뜰 수 있다. 항상 최신 지원서를 본다.
+    .orderBy(desc(recruitApplicants.createdAt))
+    .limit(1);
 
   if (!applicant) {
     return null;

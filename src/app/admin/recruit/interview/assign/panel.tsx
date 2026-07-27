@@ -204,7 +204,6 @@ export function RecruitInterviewAssignPanel() {
 
   const handleAssignSlot = async (applicantId: string, slotId: string | null) => {
     // 드롭다운을 즉시 반영하고 저장은 뒤에서 한다(전체 새로고침을 기다리지 않는다).
-    const previous = applicants;
     setApplicants((prev) =>
       prev.map((a) => (a.id === applicantId ? { ...a, slotId: slotId || null } : a))
     );
@@ -222,19 +221,20 @@ export function RecruitInterviewAssignPanel() {
       // 실패를 삼키면 드롭다운만 바뀌고 저장은 안 된 상태로 넘어간다.
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setApplicants(previous);
         setMessage(`❌ 면접 시간 배정 실패: ${data.message || data.error || res.status}`);
+        await fetchSlotsAndApplicants();
       }
     } catch {
-      setApplicants(previous);
       setMessage('❌ 면접 시간을 저장하지 못했습니다. 연결을 확인해 주세요.');
+      await fetchSlotsAndApplicants();
     }
   };
 
   const handleToggleInterviewer = async (slotId: string, userId: string, isAssigned: boolean) => {
     // 화면을 먼저 바꾸고 요청을 보낸다. 예전엔 요청 4번(추가 1 + 전체 새로고침 3)을 다 기다려서
-    // 체크 한 번에 2초씩 걸렸다. 실패하면 되돌리고 이유를 띄운다.
-    const previous = slotInterviewersMap;
+    // 체크 한 번에 2초씩 걸렸다.
+    // 실패하면 스냅샷을 되돌리는 대신 서버에서 다시 읽는다 — 빠르게 두 번 누르면 스냅샷이
+    // 낡아서, 먼저 성공한 변경까지 함께 지워 버린다.
     const staff = staffMembers.find((s) => s.id === userId);
     setSlotInterviewersMap((prev) => {
       const current = prev[slotId] ?? [];
@@ -257,12 +257,12 @@ export function RecruitInterviewAssignPanel() {
       // 실패해도 표시가 없으면 면접관이 배정된 줄 알고 당일에야 빈 것을 안다.
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setSlotInterviewersMap(previous);
         setMessage(`❌ 면접관 ${isAssigned ? '해제' : '배정'} 실패: ${data.message || data.error || res.status}`);
+        await fetchSlotsAndApplicants();
       }
     } catch {
-      setSlotInterviewersMap(previous);
       setMessage('❌ 면접관 배정을 저장하지 못했습니다. 연결을 확인해 주세요.');
+      await fetchSlotsAndApplicants();
     }
   };
 

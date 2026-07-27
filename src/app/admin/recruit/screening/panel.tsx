@@ -133,8 +133,8 @@ export function RecruitScreeningPanel() {
   const handleReassignTeam = async (newTeam: string) => {
     if (!selectedApplicantId) return;
     // 화면을 먼저 바꾸고 저장한다. 전체를 다시 불러오면 배포 환경에서 왕복이 두 번 더 붙어
-    // 팀 하나 바꾸는 데 1.5초씩 걸렸다. 실패하면 되돌린다.
-    const previous = applicants;
+    // 팀 하나 바꾸는 데 1.5초씩 걸렸다.
+    // 실패하면 서버에서 다시 읽는다(스냅샷 복원은 그 사이 성공한 다른 변경까지 지운다).
     const id = selectedApplicantId;
     setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, assignedTeam: newTeam } : a)));
     setReassigning(true);
@@ -153,12 +153,12 @@ export function RecruitScreeningPanel() {
         setMessage(`✅ 지원자 소속 팀이 '${newTeam}'(으)로 이관되었습니다.`);
       } else {
         const data = await res.json().catch(() => ({}));
-        setApplicants(previous);
         setMessage(`❌ 팀 이관 실패: ${data.message || data.error}`);
+        await fetchApplicantsAndScores();
       }
     } catch {
-      setApplicants(previous);
       setMessage('❌ 팀을 변경하지 못했습니다. 연결을 확인해 주세요.');
+      await fetchApplicantsAndScores();
     } finally {
       setReassigning(false);
     }
