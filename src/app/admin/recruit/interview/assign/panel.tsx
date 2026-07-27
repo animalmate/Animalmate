@@ -211,7 +211,7 @@ export function RecruitInterviewAssignPanel() {
           <div
             role="radiogroup"
             aria-label="면접 방식"
-            className="inline-flex h-control-sm items-center gap-0.5 rounded-xl bg-cream-100 p-1 text-[13px] font-semibold"
+            className="inline-flex items-center gap-0.5 rounded-xl bg-cream-100 p-1 text-[13px] font-semibold"
           >
             {[
               { remote: false, label: '대면' },
@@ -223,7 +223,7 @@ export function RecruitInterviewAssignPanel() {
                 role="radio"
                 aria-checked={isRemote === opt.remote}
                 onClick={() => setIsRemote(opt.remote)}
-                className={`rounded-lg px-3.5 py-1.5 transition-colors ${
+                className={`flex min-h-tap items-center rounded-lg px-4 transition-colors ${
                   isRemote === opt.remote
                     ? 'bg-white text-ink-900 shadow-card'
                     : 'text-ink-500 hover:text-ink-900'

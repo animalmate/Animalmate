@@ -32,15 +32,29 @@ export function publicUrlFor(path: string): string {
   return `${base}/storage/v1/object/public/${NOTICE_BUCKET}/${path}`;
 }
 
+/**
+ * URL 에서 버킷 내부 경로만 뽑는다. 우리 버킷 URL 이 아니거나 경로가 수상하면 null.
+ *
+ * `..` 를 막는 이유: 접두사만 확인하면
+ * `.../object/public/recruit-notice/../../other/file` 같은 주소가 통과하고, fetch 가 경로를
+ * 정규화하면서 버킷 밖 객체를 가리키게 된다. 삭제는 회장단만 호출하지만 값싼 방어라 넣는다.
+ */
+export function storagePathFromUrl(url: string, base: string): string | null {
+  if (!base) return null;
+  const prefix = `${base.replace(/\/$/, '')}/storage/v1/object/public/${NOTICE_BUCKET}/`;
+  if (!url.startsWith(prefix)) return null;
+
+  const path = url.slice(prefix.length).split(/[?#]/)[0] ?? '';
+  if (!path) return null;
+  // 경로 조작·절대경로 차단. 정상 경로는 `{cohortId}/{uuid}.{ext}` 형태다.
+  if (path.startsWith('/') || path.split('/').some((seg) => seg === '..' || seg === '')) return null;
+  if (!/^[A-Za-z0-9/_.-]+$/.test(path)) return null;
+  return path;
+}
+
 /** 우리 버킷이 발급한 URL 인지 — 임의 외부 URL 이 공고에 섞여 들어오는 것을 막는다. */
 export function isOwnStorageUrl(url: string): boolean {
-  try {
-    const base = (process.env.SUPABASE_URL ?? '').replace(/\/$/, '');
-    if (!base) return false;
-    return url.startsWith(`${base}/storage/v1/object/public/${NOTICE_BUCKET}/`);
-  } catch {
-    return false;
-  }
+  return storagePathFromUrl(url, process.env.SUPABASE_URL ?? '') !== null;
 }
 
 export interface UploadedImage {
@@ -84,10 +98,9 @@ export async function uploadNoticeImage(
  * 실패해도 예외를 던지지 않는다 — 화면에서 이미 제거된 이미지 때문에 저장이 막히면 안 된다.
  */
 export async function deleteNoticeImageByUrl(url: string): Promise<boolean> {
-  if (!isOwnStorageUrl(url)) return false;
   try {
     const { base, key } = storageBase();
-    const path = url.split(`/object/public/${NOTICE_BUCKET}/`)[1];
+    const path = storagePathFromUrl(url, base);
     if (!path) return false;
     const res = await fetch(`${base}/storage/v1/object/${NOTICE_BUCKET}/${path}`, {
       method: 'DELETE',

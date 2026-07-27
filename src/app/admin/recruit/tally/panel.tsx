@@ -233,6 +233,8 @@ export function RecruitTallyPanel() {
               <Input
                 type="number"
                 uiSize="sm"
+                min={1}
+                aria-label="자동 선택할 상위 인원 수"
                 value={topNInput}
                 onChange={(e) => setTopNInput(e.target.value)}
                 className="w-20 min-h-tap text-center font-bold"

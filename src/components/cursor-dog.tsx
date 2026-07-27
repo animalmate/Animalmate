@@ -252,7 +252,8 @@ export function CursorDog() {
         onClick={toggle}
         aria-label={enabled ? '커서 강아지 끄기' : '커서 강아지 켜기'}
         title={enabled ? '커서 강아지 끄기' : '커서 강아지 켜기'}
-        className="fixed bottom-3 right-3 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-ink-200 bg-white/90 text-base shadow-card backdrop-blur transition-colors hover:bg-cream-50"
+        // 44px = 최소 터치 타깃. 지원자용 공개 화면(모바일 비중이 높다)에도 나오므로 맞춘다.
+        className="fixed bottom-3 right-3 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-ink-200 bg-white/90 text-base shadow-card backdrop-blur transition-colors hover:bg-cream-50"
       >
         <span style={{ opacity: enabled ? 1 : 0.35 }}>🐾</span>
       </button>

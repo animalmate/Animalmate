@@ -2,6 +2,7 @@
 
 import React, { useEffect, useId, useState } from 'react';
 import { Icon } from './icon';
+import { AutoGrowTextarea } from './auto-grow-textarea';
 
 interface ScreenNotesProps {
   contextKey: string;
@@ -77,14 +78,18 @@ export function ScreenNotes({ contextKey, title = '운영진 공용 메모지' }
         </span>
       </button>
 
+      {/* 펼치면 내용 전체가 한 번에 보이게 한다 — 고정 높이 상자 안에서 스크롤하며 읽지 않도록.
+          hidden 일 때는 높이 계산이 0 이 되므로, 접힌 동안에는 아예 렌더하지 않는다. */}
       <div id={panelId} hidden={!isOpen} className="space-y-3 px-4 pb-4">
-        <textarea
-          className="min-h-[110px] w-full rounded-xl border-[1.5px] border-ink-200 bg-white p-3 text-sm leading-relaxed text-ink-900 outline-none transition-colors placeholder:text-ink-400 focus:border-blue-500"
-          placeholder="심사 특이사항, 운영진 간 조율 내용을 자유롭게 기록하세요."
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          aria-label={title}
-        />
+        {isOpen && (
+          <AutoGrowTextarea
+            minRows={4}
+            placeholder="심사 특이사항, 운영진 간 조율 내용을 자유롭게 기록하세요."
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            aria-label={title}
+          />
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-ink-400">운영진 전체에게 공유됩니다.</span>
           <button

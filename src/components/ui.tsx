@@ -151,10 +151,11 @@ export function ToolbarSelect({
   children,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement> & { label: string; loading?: boolean }) {
-  // 높이는 min-h-tap(44px)에 맞춘다 — 옆에 서는 버튼들이 min-h-tap 때문에 실측 44px 이라
-  // 여기만 36px 이면 한 줄에서 눈에 띄게 어긋난다(접근성 최소 터치 타깃도 44px).
+  // 높이를 44px(h-11)로 못 박는다. 옆에 서는 버튼이 min-h-tap 때문에 실측 44px 인데,
+  // h-control-sm(36)+min-h-tap 조합은 테두리 계산 탓에 42px 로 떨어져 2px 어긋났다.
+  // 44px 은 접근성 최소 터치 타깃이기도 하다.
   return (
-    <label className="inline-flex h-control-sm min-h-tap items-center gap-0 overflow-hidden rounded-xl border-[1.5px] border-ink-200 bg-white focus-within:border-blue-500">
+    <label className="inline-flex h-11 items-center gap-0 overflow-hidden rounded-xl border-[1.5px] border-ink-200 bg-white focus-within:border-blue-500">
       <span className="flex h-full shrink-0 items-center border-r border-ink-100 bg-cream-50 px-2.5 text-[12px] font-semibold text-ink-500">
         {label}
       </span>
