@@ -3,14 +3,34 @@ import { db } from '@/db/client';
 import { clientIp, consumeRateLimit, RateLimitError, RULES } from '@/http/rate-limit';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { createSingleApplicant } from '@/recruit/applicants';
-import { escapeHtml } from '@/naver/cafe-write';
+import { internalError } from '@/http/errors';
+import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function sanitize(text?: string | null): string | null {
-  if (!text) return null;
-  return escapeHtml(text.trim());
+// 저장 시점에 HTML 이스케이프하지 않는다.
+// 화면은 전부 React 가 텍스트로 렌더하고(dangerouslySetInnerHTML 미사용) 원본이 필요한 곳도
+// 있어서(CSV export, 심사 화면의 자기소개서 원문), 저장 단계에서 escapeHtml 을 걸면 "김&박" 이
+// "김&amp;박" 으로 굳어 이중 이스케이프로 보인다. 이스케이프는 HTML 로 나가는 경로
+// (네이버 카페 글쓰기)에서만 한다.
+function clean(text?: unknown): string | null {
+  if (text == null) return null;
+  const s = String(text).trim();
+  return s === '' ? null : s;
+}
+
+/** 공개 접수 폼이라 길이 상한이 없으면 누구나 수 MB 를 밀어 넣을 수 있다(무료 티어 소진). */
+function checkApplicantLengths(f: Record<string, string | null>): void {
+  checkLength('이름', f.name, LIMITS.name);
+  checkLength('전화번호', f.phone, LIMITS.phone);
+  checkLength('이메일', f.email, LIMITS.email);
+  for (const key of ['gender', 'birthDate', 'school', 'department', 'applyRoute', 'expectedFrequency', 'wishTeam1', 'wishTeam2', 'nearStation', 'otAttend', 'remoteInterviewWish']) {
+    checkLength(key, f[key] ?? null, LIMITS.name);
+  }
+  checkLength('다른 대외활동', f.otherActivities, LIMITS.purpose);
+  checkLength('자기소개', f.essayIntro, LIMITS.contentMd);
+  checkLength('가치관', f.essayValues, LIMITS.contentMd);
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -49,32 +69,36 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    const name = String(body.name ?? '').trim();
-    const phone = String(body.phone ?? '').trim();
+    const fields = {
+      name: clean(body.name),
+      phone: clean(body.phone),
+      gender: clean(body.gender),
+      birthDate: clean(body.birthDate),
+      school: clean(body.school),
+      department: clean(body.department),
+      email: clean(body.email),
+      applyRoute: clean(body.applyRoute),
+      otherActivities: clean(body.otherActivities),
+      expectedFrequency: clean(body.expectedFrequency),
+      wishTeam1: clean(body.wishTeam1),
+      wishTeam2: clean(body.wishTeam2),
+      nearStation: clean(body.nearStation),
+      otAttend: clean(body.otAttend),
+      remoteInterviewWish: clean(body.remoteInterviewWish),
+      essayIntro: clean(body.essayIntro),
+      essayValues: clean(body.essayValues),
+    };
 
-    if (!name || !phone) {
+    if (!fields.name || !fields.phone) {
       return NextResponse.json({ error: 'missing_required', message: '이름과 전화번호는 필수 입력 항목입니다.' }, { status: 400 });
     }
+    checkApplicantLengths(fields);
 
     const applicant = await createSingleApplicant({
       cohortId,
-      name: sanitize(name)!,
-      phone: sanitize(phone)!,
-      gender: sanitize(body.gender),
-      birthDate: sanitize(body.birthDate),
-      school: sanitize(body.school),
-      department: sanitize(body.department),
-      email: sanitize(body.email),
-      applyRoute: sanitize(body.applyRoute),
-      otherActivities: sanitize(body.otherActivities),
-      expectedFrequency: sanitize(body.expectedFrequency),
-      wishTeam1: sanitize(body.wishTeam1),
-      wishTeam2: sanitize(body.wishTeam2),
-      nearStation: sanitize(body.nearStation),
-      otAttend: sanitize(body.otAttend),
-      remoteInterviewWish: sanitize(body.remoteInterviewWish),
-      essayIntro: sanitize(body.essayIntro),
-      essayValues: sanitize(body.essayValues),
+      ...fields,
+      name: fields.name,
+      phone: fields.phone,
     });
 
     if (!applicant) {
@@ -82,7 +106,10 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     return NextResponse.json({ ok: true, applicantId: applicant.id });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    if (e instanceof InputTooLongError) {
+      return NextResponse.json({ error: 'too_long', message: e.message }, { status: 400 });
+    }
+    return internalError('recruit/apply POST', e);
   }
 }

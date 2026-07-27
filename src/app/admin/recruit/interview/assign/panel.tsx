@@ -339,7 +339,7 @@ export function RecruitInterviewAssignPanel() {
                         <span
                           key={int.userId}
                           onClick={() => handleToggleInterviewer(slot.id, int.userId, true)}
-                          className="inline-flex items-center gap-1 text-xs font-semibold bg-blue-100 text-blue-900 px-2 py-0.5 rounded-md cursor-pointer hover:bg-coral-100 hover:text-coral-800 transition-colors"
+                          className="inline-flex items-center gap-1 text-xs font-semibold bg-blue-100 text-blue-900 px-2 py-0.5 rounded-md cursor-pointer hover:bg-coral-100 hover:text-coral-700 transition-colors"
                           title="클릭 시 면접관 배정 해제"
                         >
                           {int.name} ✕

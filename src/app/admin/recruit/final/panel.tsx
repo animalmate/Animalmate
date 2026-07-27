@@ -373,7 +373,7 @@ export function RecruitFinalPanel() {
       {/* 데이터 파기 모달 */}
       {showPurgeModal && (
         <div className="fixed inset-0 bg-ink-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-6 space-y-4 shadow-modal border-coral-200">
+          <Card className="max-w-md w-full p-6 space-y-4 shadow-modal border-coral-100">
             <h2 className="text-lg font-bold text-coral-700 flex items-center gap-2">
               🚨 모집 종료 데이터 영구 일괄 파기
             </h2>

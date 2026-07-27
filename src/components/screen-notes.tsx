@@ -43,7 +43,7 @@ export function ScreenNotes({ contextKey, title = '운영진 공용 메모지' }
   };
 
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50/80 via-cream-50 to-amber-50/80 p-4 shadow-card">
+    <div className="mb-6 overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50/80 via-cream-50 to-amber-50/80 p-4 shadow-card">
       <div
         className="flex items-center justify-between cursor-pointer select-none"
         onClick={() => setIsOpen(!isOpen)}
@@ -70,7 +70,7 @@ export function ScreenNotes({ contextKey, title = '운영진 공용 메모지' }
       {isOpen && (
         <div className="mt-3 space-y-2.5">
           <textarea
-            className="w-full min-h-[110px] rounded-xl border border-amber-200/80 bg-white p-3 text-sm text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-sans leading-relaxed"
+            className="w-full min-h-[110px] rounded-xl border border-amber-100/80 bg-white p-3 text-sm text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-sans leading-relaxed"
             placeholder="심사 특이사항, 심사위원 간 조율 내용 등을 자유롭게 기록하세요. 운영진 모두에게 공유됩니다..."
             value={content}
             onChange={(e) => setContent(e.target.value)}

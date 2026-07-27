@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { internalError } from '@/http/errors';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { parseCsv, mapRowToApplicant, detectDuplicates, ApplicantImportInput } from '@/recruit/csv';
@@ -51,7 +52,7 @@ export async function POST(req: Request): Promise<Response> {
       importedCount: created.length,
       skippedCount: duplicateIndexes.length,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/upload POST', e);
   }
 }

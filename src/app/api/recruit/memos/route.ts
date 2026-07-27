@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { internalError } from '@/http/errors';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
 import { upsertPersonalMemo, getPersonalMemo } from '@/recruit/memos';
@@ -33,7 +34,7 @@ export async function POST(req: Request): Promise<Response> {
 
     const memo = await upsertPersonalMemo(applicantId, actor.userId, String(content));
     return NextResponse.json({ memo });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/memos POST', e);
   }
 }

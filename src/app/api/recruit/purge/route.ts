@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { internalError } from '@/http/errors';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { purgeCohortApplicants } from '@/recruit/purge';
@@ -21,7 +22,7 @@ export async function POST(req: Request): Promise<Response> {
 
     const archivedStats = await purgeCohortApplicants(cohortId, actor.userId);
     return NextResponse.json({ success: true, archivedStats });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/purge POST', e);
   }
 }

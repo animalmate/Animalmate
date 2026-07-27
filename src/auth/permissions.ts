@@ -123,12 +123,11 @@ export function authorize(actor: Actor, action: Action): Decision {
   }
 }
 
-/** 홍보팀(PR) 소속 또는 회장단/시스템관리자인가? (공고 편집, 모집 중단 스위치, 팀 이관 가능) */
-export function isPRTeamOrPrivileged(actor: Actor): boolean {
-  if (!actor.membershipActive) return false;
-  if (isPrivileged(actor.role)) return true;
-  return actor.teams.some(
-    (t) => t.teamId.toLowerCase().includes('pr') || t.teamId.includes('홍보')
-  );
-}
+// 제거됨: isPRTeamOrPrivileged (2026-07-27 검토).
+// "홍보팀 소속이면 공고 편집·팀 이관 허용"을 의도했지만 `actor.teams[].teamId` 는 teams 테이블의
+// **UUID** 라서 'pr'/'홍보' 부분 문자열이 들어갈 수 없었다(UUID 는 0-9a-f 만). 즉 항상 false 여서
+// 실제로는 회장단 전용과 똑같이 동작했고, 단위 테스트는 teamId 에 'pr_team' 이라는 가짜 문자열을
+// 넣어 통과하고 있었다(테스트가 실제 동작을 검증하지 못함).
+// 호출부는 전부 isPrivileged 로 바꿨다 — 실제 동작은 그대로다.
+// 홍보팀에 권한을 열려면 teamId 문자열이 아니라 teams.name 을 조회하는 검사를 새로 만들어야 한다.
 

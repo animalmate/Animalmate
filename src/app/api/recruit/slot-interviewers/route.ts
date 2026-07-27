@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus } from '@/auth/permissions';
+import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { addSlotInterviewer, removeSlotInterviewer, getSlotInterviewers, getSlotsInterviewersMap } from '@/recruit/slot-interviewers';
+import { internalError } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // 면접관 배정표도 모집 내부 정보 — 일반 부원에게 열지 않는다.
+  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const slotId = searchParams.get('slotId');
@@ -30,7 +33,9 @@ export async function GET(req: Request): Promise<Response> {
 export async function POST(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!isPrivileged(actor.role)) {
+    return NextResponse.json({ error: 'forbidden', message: '면접관 배정은 회장단만 할 수 있습니다.' }, { status: 403 });
+  }
 
   try {
     const body = await req.json();
@@ -40,15 +45,17 @@ export async function POST(req: Request): Promise<Response> {
 
     const created = await addSlotInterviewer(slotId, userId);
     return NextResponse.json({ ok: true, interviewer: created });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/slot-interviewers', e);
   }
 }
 
 export async function DELETE(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!isPrivileged(actor.role)) {
+    return NextResponse.json({ error: 'forbidden', message: '면접관 배정은 회장단만 할 수 있습니다.' }, { status: 403 });
+  }
 
   try {
     const { searchParams } = new URL(req.url);
@@ -59,7 +66,7 @@ export async function DELETE(req: Request): Promise<Response> {
 
     await removeSlotInterviewer(slotId, userId);
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/slot-interviewers', e);
   }
 }

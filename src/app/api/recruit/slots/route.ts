@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus } from '@/auth/permissions';
+import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { createSlot, listSlotsByCohort, deleteSlot } from '@/recruit/slots';
+import { internalError } from '@/http/errors';
+import { parseDate } from '@/http/input';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,10 +21,13 @@ export async function GET(req: Request): Promise<Response> {
   return NextResponse.json({ slots });
 }
 
+// 면접 슬롯 생성·삭제 = 면접 배정 = recruit.manage → 회장단 전용(09-RECRUIT-DESIGN §4).
 export async function POST(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!isPrivileged(actor.role)) {
+    return NextResponse.json({ error: 'forbidden', message: '면접 슬롯 관리는 회장단만 할 수 있습니다.' }, { status: 403 });
+  }
 
   try {
     const body = await req.json();
@@ -31,10 +36,19 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
     }
 
+    // 잘못된 날짜 문자열이 Invalid Date 로 DB 에 들어가지 않게 막는다.
+    const parsedStartsAt = parseDate(startsAt);
+    if (!parsedStartsAt) return NextResponse.json({ error: 'invalid_startsAt' }, { status: 400 });
+
+    const parsedDuration = durationMin ? parseInt(String(durationMin), 10) : 20;
+    if (!Number.isFinite(parsedDuration) || parsedDuration <= 0 || parsedDuration > 24 * 60) {
+      return NextResponse.json({ error: 'invalid_durationMin' }, { status: 400 });
+    }
+
     const slot = await createSlot({
       cohortId,
-      startsAt: new Date(startsAt),
-      durationMin: durationMin ? parseInt(durationMin, 10) : 20,
+      startsAt: parsedStartsAt,
+      durationMin: parsedDuration,
       link: link ? String(link) : null,
       venue: venue ? String(venue) : null,
       isRemote: !!isRemote,
@@ -42,15 +56,17 @@ export async function POST(req: Request): Promise<Response> {
     });
 
     return NextResponse.json({ slot });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/slots POST', e);
   }
 }
 
 export async function DELETE(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!isPrivileged(actor.role)) {
+    return NextResponse.json({ error: 'forbidden', message: '면접 슬롯 관리는 회장단만 할 수 있습니다.' }, { status: 403 });
+  }
 
   const url = new URL(req.url);
   const id = url.searchParams.get('id');
@@ -59,7 +75,7 @@ export async function DELETE(req: Request): Promise<Response> {
   try {
     await deleteSlot(id);
     return NextResponse.json({ success: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/slots DELETE', e);
   }
 }

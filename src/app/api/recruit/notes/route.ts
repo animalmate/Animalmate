@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { internalError } from '@/http/errors';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
 import { upsertScreenNote, getScreenNote } from '@/recruit/notes';
@@ -33,7 +34,7 @@ export async function POST(req: Request): Promise<Response> {
 
     const note = await upsertScreenNote(contextKey, String(content), actor.userId);
     return NextResponse.json({ note });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'internal', message: e?.message }, { status: 500 });
+  } catch (e) {
+    return internalError('recruit/notes POST', e);
   }
 }

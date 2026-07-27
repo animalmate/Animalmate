@@ -85,18 +85,21 @@ export function RecruitNoticeEditPanel() {
     setSaving(true);
     try {
       const selectedLabel = cohorts.find((c) => c.id === selectedCohortId)?.label;
-      const res = await fetch(`/api/recruit/cohorts/${selectedCohortId}`, {
-        method: 'DELETE',
-      });
+      // 서버가 기수 명칭 재입력을 2단계 확인으로 요구한다(09-RECRUIT-DESIGN §8).
+      // 지원자가 남아 있으면 서버가 409 로 거절하고 폐기 절차로 유도한다.
+      const res = await fetch(
+        `/api/recruit/cohorts/${selectedCohortId}?confirmLabel=${encodeURIComponent(selectedLabel ?? '')}`,
+        { method: 'DELETE' }
+      );
       if (res.ok) {
-        setMessage(`✅ 기수 [${selectedLabel}] 및 관련 공고/지원자 데이터가 모두 삭제되었습니다.`);
+        setMessage(`기수 [${selectedLabel}]가 삭제되었습니다.`);
         setShowDeleteModal(false);
         const remaining = cohorts.filter((c) => c.id !== selectedCohortId);
         setCohorts(remaining);
-        setSelectedCohortId(remaining.length > 0 ? remaining[0].id : '');
+        setSelectedCohortId(remaining.length > 0 ? remaining[0]!.id : '');
       } else {
         const data = await res.json();
-        setMessage(`❌ 삭제 실패: ${data.error}`);
+        setMessage(`삭제 실패: ${data.message || data.error}`);
       }
     } finally {
       setSaving(false);
@@ -435,7 +438,7 @@ export function RecruitNoticeEditPanel() {
       {/* 기수 삭제 경고 모달 */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-ink-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-6 space-y-4 shadow-modal rounded-3xl border-coral-200 bg-white">
+          <Card className="max-w-md w-full p-6 space-y-4 shadow-modal rounded-3xl border-coral-100 bg-white">
             <div className="flex items-center gap-3 text-coral-700">
               <span className="text-2xl">⚠️</span>
               <h2 className="text-lg font-bold text-ink-900">정말 이 기수를 삭제하시겠습니까?</h2>

@@ -6,9 +6,12 @@ import { db } from '../db/client';
 import { recruitApplicants, recruitCohorts, recruitSlots } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { consumeRateLimit, resetRateLimit, RULES } from '../http/rate-limit';
+import { visibleLookupResult, type PublicStage } from './lookup-visibility';
+import type { RecruitStatus } from './status';
 
 export interface PublicLookupResult {
-  status: string;
+  /** 내부 status 가 아니라 공개용 단계(lookup-visibility 가 스위치를 반영해 결정). */
+  stage: PublicStage;
   schedulePublic: boolean;
   resultPublic: boolean;
   assignedTeam?: string | null;
@@ -72,8 +75,18 @@ export async function lookupApplicantResult(
     .from(recruitCohorts)
     .where(eq(recruitCohorts.id, applicant.cohortId));
 
+  const schedulePublic = cohort?.schedulePublic ?? false;
+  const resultPublic = cohort?.resultPublic ?? false;
+
+  // 무엇까지 보여줄지는 순수 규칙이 정한다(단위 테스트로 고정, lookup-visibility.ts).
+  const visible = visibleLookupResult(
+    applicant.status as RecruitStatus,
+    schedulePublic,
+    resultPublic
+  );
+
   let slotInfo: PublicLookupResult['interviewSlot'] = null;
-  if (applicant.slotId && cohort?.schedulePublic) {
+  if (applicant.slotId && visible.showInterview) {
     const [slot] = await db
       .select({
         startsAt: recruitSlots.startsAt,
@@ -90,13 +103,15 @@ export async function lookupApplicantResult(
   }
 
   return {
-    status: applicant.status,
-    schedulePublic: cohort?.schedulePublic ?? false,
-    resultPublic: cohort?.resultPublic ?? false,
-    assignedTeam: applicant.assignedTeam || applicant.wishTeam1,
-    congratsMessage: cohort?.congratsMessage,
-    postPassNotice: cohort?.postPassNotice,
+    stage: visible.stage,
+    schedulePublic,
+    resultPublic,
+    // 배정 팀·축하 멘트·합격 후 안내는 최종 합격이 공개된 뒤에만 내보낸다.
+    // (전엔 스위치와 무관하게 나가서 발표 전에 당락이 새어 나갔다.)
+    assignedTeam: visible.showPassContent ? (applicant.assignedTeam || applicant.wishTeam1) : null,
+    congratsMessage: visible.showPassContent ? cohort?.congratsMessage : null,
+    postPassNotice: visible.showPassContent ? cohort?.postPassNotice : null,
     interviewSlot: slotInfo,
-    interviewLink: cohort?.schedulePublic ? applicant.interviewLink : null,
+    interviewLink: visible.showInterview ? applicant.interviewLink : null,
   };
 }
