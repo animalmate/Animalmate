@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { CursorDog } from '@/components/cursor-dog';
+import type { ApplyFormConfig } from '@/recruit/apply-form';
 
 interface CohortSummary {
   id: string;
@@ -20,6 +21,9 @@ const EMPTY_FORM = {
   school: '',
   department: '',
   email: '',
+  applyRoute: '',
+  otherActivities: '',
+  expectedFrequency: '',
   nearStation: '',
   wishTeam1: '',
   wishTeam2: '',
@@ -77,10 +81,13 @@ const linkQuiet =
 export function PublicRecruitApplyPanel({
   cohort,
   teams,
+  form: config,
 }: {
   cohort: CohortSummary | null;
   // 실제 teams 테이블에서 온 목록(서버가 넘겨준다) — 코드에 박아 두지 않는다.
   teams: string[];
+  // 선택지·문항도 기수 설정에서 온다(회장단이 "0. 공고·마감 설정"에서 편집).
+  form: ApplyFormConfig;
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -242,9 +249,11 @@ export function PublicRecruitApplyPanel({
                 <Field label="성별">
                   <Select value={form.gender} onChange={(e) => set('gender', e.target.value)}>
                     <option value="">선택 안 함</option>
-                    <option value="여성">여성</option>
-                    <option value="남성">남성</option>
-                    <option value="기타">기타</option>
+                    {config.genderOptions.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
                   </Select>
                 </Field>
 
@@ -334,8 +343,11 @@ export function PublicRecruitApplyPanel({
                 <Field label="신입 OT 참석 여부">
                   <Select value={form.otAttend} onChange={(e) => set('otAttend', e.target.value)}>
                     <option value="">선택해 주세요</option>
-                    <option value="참석 가능">참석 가능</option>
-                    <option value="불참">불참</option>
+                    {config.otAttendOptions.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
                   </Select>
                 </Field>
 
@@ -345,34 +357,77 @@ export function PublicRecruitApplyPanel({
                     onChange={(e) => set('remoteInterviewWish', e.target.value)}
                   >
                     <option value="">선택해 주세요</option>
-                    <option value="대면 면접 희망">대면 면접 희망</option>
-                    <option value="비대면 면접 희망">비대면 면접 희망</option>
+                    {config.remoteInterviewOptions.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
                   </Select>
                 </Field>
               </div>
-            </section>
 
-            <section className="space-y-4">
-              <SectionHeading step={3}>자기소개서</SectionHeading>
+              {/* 아래 3개는 DB 에는 원래 있던 항목인데 화면에서 빠져 있었다(지원 경로·대외활동·참여 주기).
+                  심사에 쓰이는 정보라 되살린다. 지원 경로 선택지도 기수 설정에서 온다. */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="지원 경로" hint="어떻게 알고 오셨나요?">
+                  <Select value={form.applyRoute} onChange={(e) => set('applyRoute', e.target.value)}>
+                    <option value="">선택해 주세요</option>
+                    {config.applyRouteOptions.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
 
-              <Field label="자기소개와 동물에 대한 생각">
-                <Textarea
-                  rows={6}
-                  placeholder="자유롭게 작성해 주세요."
-                  value={form.essayIntro}
-                  onChange={(e) => set('essayIntro', e.target.value)}
+                <Field label="예상 활동 참여 주기">
+                  <Input
+                    type="text"
+                    placeholder="매주 / 격주 / 월 1회"
+                    value={form.expectedFrequency}
+                    onChange={(e) => set('expectedFrequency', e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              <Field label="다른 대외활동·아르바이트" hint="없으면 비워 두셔도 됩니다.">
+                <Input
+                  type="text"
+                  placeholder="예: 교내 학회, 주말 아르바이트"
+                  value={form.otherActivities}
+                  onChange={(e) => set('otherActivities', e.target.value)}
                 />
               </Field>
-
-              <Field label="지원 동기와 가치관">
-                <Textarea
-                  rows={6}
-                  placeholder="동아리 활동을 통해 이루고 싶은 점을 적어 주세요."
-                  value={form.essayValues}
-                  onChange={(e) => set('essayValues', e.target.value)}
-                />
-              </Field>
             </section>
+
+            {/* 문항 문구는 기수 설정에서 온다. 문구를 비워 두면 그 문항은 아예 받지 않는다. */}
+            {(config.essayIntroLabel || config.essayValuesLabel) && (
+              <section className="space-y-4">
+                <SectionHeading step={3}>자기소개서</SectionHeading>
+
+                {config.essayIntroLabel && (
+                  <Field label={config.essayIntroLabel}>
+                    <Textarea
+                      rows={6}
+                      placeholder="자유롭게 작성해 주세요."
+                      value={form.essayIntro}
+                      onChange={(e) => set('essayIntro', e.target.value)}
+                    />
+                  </Field>
+                )}
+
+                {config.essayValuesLabel && (
+                  <Field label={config.essayValuesLabel}>
+                    <Textarea
+                      rows={6}
+                      placeholder="자유롭게 작성해 주세요."
+                      value={form.essayValues}
+                      onChange={(e) => set('essayValues', e.target.value)}
+                    />
+                  </Field>
+                )}
+              </section>
+            )}
 
             <div aria-live="polite">
               {errorMsg && (

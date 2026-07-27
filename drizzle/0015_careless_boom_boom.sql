@@ -1,0 +1,1 @@
+ALTER TABLE "recruit_cohorts" ADD COLUMN "apply_form" jsonb;

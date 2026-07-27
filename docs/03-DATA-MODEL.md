@@ -120,6 +120,9 @@
     congrats_message?, post_pass_notice?, is_closed, venues? jsonb, closed_at?, archived_stats? jsonb,
     created_by, created_at) — 공개 스위치 2개(면접 일정/최종 결과)가 여기. `notice_*`/`congrats_message`/
     `post_pass_notice`/`is_closed`/`venues` 는 공개 공고·마감 스위치·면접 장소 프리셋용(0014).
+    `apply_form` jsonb(0015) = 공개 지원서의 선택지·자기소개서 문항(성별·지원경로·OT·면접방식 선택지,
+    문항 2개). 미설정이면 `src/recruit/apply-form.ts` 의 기본값을 쓴다. 지망 팀 목록은 여기 두지 않고
+    `teams` 테이블을 그대로 쓴다(회장단이 회원 관리에서 바꾸면 지원서도 따라간다).
     폐기 시 익명 집계만 archived_stats 로 잔존.
   - `recruit_slots` (id, cohort_id, starts_at, duration_min=20, link?, venue?, is_remote, created_by, created_at)
     — 면접 슬롯. cohort_id 인덱스(0014).

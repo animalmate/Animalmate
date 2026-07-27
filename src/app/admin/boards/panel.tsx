@@ -18,9 +18,17 @@ export function BoardsPanel() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // 불러오는 중과 "정말로 없음"을 구분한다 — 예전엔 응답 전에도 "아직 없습니다"가 떠서
+  // 등록된 게시판이 있는데도 없다고 오해할 수 있었다.
+  const [loading, setLoading] = useState(true);
+
   async function load() {
-    const r = await apiGet<{ boards: Board[] }>('/api/boards');
-    if (r.ok) setBoards(r.data.boards ?? []);
+    try {
+      const r = await apiGet<{ boards: Board[] }>('/api/boards');
+      if (r.ok) setBoards(r.data.boards ?? []);
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => {
     void load();
@@ -75,7 +83,9 @@ export function BoardsPanel() {
 
       <Card>
         <div className="mb-2 font-medium">등록된 게시판</div>
-        {boards.length === 0 ? (
+        {loading ? (
+          <p className="text-sm text-ink-500">불러오는 중…</p>
+        ) : boards.length === 0 ? (
           <p className="text-sm text-ink-500">아직 없습니다.</p>
         ) : (
           <ul className="divide-y divide-ink-100 text-sm">

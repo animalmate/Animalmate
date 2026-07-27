@@ -3,6 +3,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { updateCohortNoticeAndSettings } from '@/recruit/notice';
+import { resolveApplyForm } from '@/recruit/apply-form';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
@@ -47,6 +48,8 @@ export async function GET(req: Request): Promise<Response> {
       congratsMessage: cohort.congratsMessage,
       postPassNotice: cohort.postPassNotice,
       venues: cohort.venues ?? DEFAULT_VENUES,
+      // 지원서 양식 설정은 편집 화면에서만 필요하다(공개 지원서 화면은 서버 컴포넌트가 DB 에서 직접 읽는다).
+      applyForm: resolveApplyForm(cohort.applyForm),
       schedulePublic: cohort.schedulePublic,
       resultPublic: cohort.resultPublic,
     },
@@ -64,7 +67,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { cohortId, noticeContent, noticeImages, congratsMessage, postPassNotice, isClosed, venues } = body;
+    const { cohortId, noticeContent, noticeImages, congratsMessage, postPassNotice, isClosed, venues, applyForm } = body;
 
     if (!cohortId) return NextResponse.json({ error: 'missing_cohortId' }, { status: 400 });
 
@@ -82,6 +85,8 @@ export async function POST(req: Request): Promise<Response> {
       postPassNotice,
       isClosed,
       venues,
+      // 저장 전에 정규화한다 — 빈 선택지 배열이 DB 에 들어가 지원서가 빈 셀렉트로 뜨는 일을 막는다.
+      applyForm: applyForm === undefined ? undefined : resolveApplyForm(applyForm),
     });
 
     // 모집 마감 전환은 지원 접수를 막는 대외 효과가 있어 기록에 남긴다(규칙 #4).

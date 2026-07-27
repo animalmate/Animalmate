@@ -48,13 +48,20 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // 불러오는 중과 "정말로 없음"을 구분한다.
+  const [loading, setLoading] = useState(true);
+
   async function load() {
-    const [t, tm] = await Promise.all([
-      apiGet<{ templates: Template[] }>('/api/templates'),
-      apiGet<{ teams: Team[] }>('/api/teams'),
-    ]);
-    if (t.ok) setTemplates(t.data.templates ?? []);
-    if (tm.ok) setTeams(tm.data.teams ?? []);
+    try {
+      const [t, tm] = await Promise.all([
+        apiGet<{ templates: Template[] }>('/api/templates'),
+        apiGet<{ teams: Team[] }>('/api/teams'),
+      ]);
+      if (t.ok) setTemplates(t.data.templates ?? []);
+      if (tm.ok) setTeams(tm.data.teams ?? []);
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => {
     void load();
@@ -233,7 +240,9 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
 
       <Card>
         <div className="mb-2 font-medium">양식 목록</div>
-        {templates.length === 0 ? (
+        {loading ? (
+          <p className="text-sm text-ink-500">불러오는 중…</p>
+        ) : templates.length === 0 ? (
           <p className="text-sm text-ink-500">아직 없습니다.</p>
         ) : (
           <ul className="divide-y divide-ink-100 text-sm">

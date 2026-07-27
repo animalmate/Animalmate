@@ -46,9 +46,16 @@ export function DocumentsPanel() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // 불러오는 중과 "정말로 없음"을 구분한다.
+  const [loading, setLoading] = useState(true);
+
   async function load() {
-    const r = await apiGet<{ documents: DocRow[] }>('/api/documents');
-    if (r.ok) setDocs(r.data.documents ?? []);
+    try {
+      const r = await apiGet<{ documents: DocRow[] }>('/api/documents');
+      if (r.ok) setDocs(r.data.documents ?? []);
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => {
     void load();
@@ -202,7 +209,11 @@ export function DocumentsPanel() {
         ))}
       </div>
 
-      {docs.length === 0 ? (
+      {loading ? (
+        <Card>
+          <p className="text-[14px] text-ink-500">불러오는 중…</p>
+        </Card>
+      ) : docs.length === 0 ? (
         <Card>
           <p className="text-[14px] text-ink-500">아직 문서가 없어요. 위에서 공개 범위를 골라 첫 문서를 만들어 보세요.</p>
         </Card>

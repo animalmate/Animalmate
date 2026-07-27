@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { teams } from '@/db/schema';
 import { listCohorts } from '@/recruit/cohorts';
+import { resolveApplyForm } from '@/recruit/apply-form';
 import { PublicRecruitApplyPanel } from './panel';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,8 @@ export default async function PublicRecruitApplyPage() {
     <PublicRecruitApplyPanel
       cohort={cohort ? { id: cohort.id, label: cohort.label, isClosed: cohort.isClosed } : null}
       teams={teamRows.map((t) => t.name)}
+      // 선택지·자기소개서 문항은 기수 설정에서 온다("0. 공고·마감 설정" 화면에서 회장단이 편집).
+      form={resolveApplyForm(cohort?.applyForm)}
     />
   );
 }

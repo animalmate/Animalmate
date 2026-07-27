@@ -409,6 +409,9 @@ export const recruitCohorts = pgTable('recruit_cohorts', {
   postPassNotice: text('post_pass_notice'), // 최종 합격자 합격 후 안내 사항
   isClosed: boolean('is_closed').notNull().default(false), // 모집 중단/마감 스위치
   venues: jsonb('venues').$type<string[]>(), // 기수별 사전 등록 대면 면접 장소 프리셋 리스트
+  // 공개 지원서의 선택지·자기소개서 문항(기수마다 다르다). 미설정이면 코드의 기본값을 쓴다.
+  // 형태는 src/recruit/apply-form.ts 의 ApplyFormConfig.
+  applyForm: jsonb('apply_form'),
   // 폐기(hard delete) 시각 + 그때 남기는 익명 집계(지원자 수·합격자 수·평균 점수). 폐기 전엔 null.
   closedAt: timestamp('closed_at', { withTimezone: true }),
   archivedStats: jsonb('archived_stats'),

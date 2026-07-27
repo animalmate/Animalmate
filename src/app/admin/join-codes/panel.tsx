@@ -15,9 +15,17 @@ export function JoinCodesPanel() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // 가입코드는 "없음"이 곧 "가입이 막혀 있음"을 뜻해서 오해가 특히 위험하다.
+  // 불러오는 중과 실제 미발급을 구분한다.
+  const [loading, setLoading] = useState(true);
+
   async function load() {
-    const r = await apiGet<{ active: Active | null }>('/api/admin/join-codes');
-    if (r.ok) setActive(r.data.active ?? null);
+    try {
+      const r = await apiGet<{ active: Active | null }>('/api/admin/join-codes');
+      if (r.ok) setActive(r.data.active ?? null);
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => {
     void load();
@@ -39,7 +47,9 @@ export function JoinCodesPanel() {
       <h1 className="text-[22px] font-bold text-ink-900">가입코드</h1>
       <Card>
         <div className="text-sm text-ink-500">현재 활성 코드</div>
-        {active ? (
+        {loading ? (
+          <InfoText>불러오는 중…</InfoText>
+        ) : active ? (
           <div className="mt-1">
             <span className="font-mono text-lg font-bold">{active.code}</span>
             <span className="ml-2 text-sm text-ink-500">({active.semesterLabel})</span>
