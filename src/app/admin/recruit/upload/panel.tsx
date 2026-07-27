@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
+import { autoMapHeaders, parseCsv } from '@/recruit/csv';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, Field, Select, StatusMessage } from '@/components/ui';
 
@@ -81,36 +82,13 @@ export function RecruitUploadPanel() {
 
   const handleCsvInput = (text: string) => {
     setCsvText(text);
-    const lines = text.trim().split('\n');
-    if (lines.length > 0 && lines[0]) {
-      const firstLine = lines[0].replace(/^\uFEFF/, '');
-      const parsedHeaders = firstLine.split(',').map((h) => h.replace(/^"|"$/g, '').trim());
+    // 헤더도 본 파서로 읽는다 — 예전에는 split(',') 였는데, 구글 시트에서 복사한 탭 구분
+    // 데이터나 따옴표 안에 쉼표가 든 헤더에서 잘못 잘렸다.
+    const { headers: parsedHeaders } = parseCsv(text);
+    if (parsedHeaders.length > 0) {
       setHeaders(parsedHeaders);
-
-      const autoMapping = { ...mapping };
-      parsedHeaders.forEach((h) => {
-        if (h.includes('이름')) autoMapping.name = h;
-        if (h.includes('전화') || h.includes('연락처')) autoMapping.phone = h;
-        if (h.includes('성별')) autoMapping.gender = h;
-        if (h.includes('생년월일')) autoMapping.birthDate = h;
-        if (h.includes('학교')) autoMapping.school = h;
-        if (h.includes('학과')) autoMapping.department = h;
-        if (h.includes('메일')) autoMapping.email = h;
-        if (h.includes('경로')) autoMapping.applyRoute = h;
-        if (h.includes('역') || h.includes('주소')) autoMapping.nearStation = h;
-        if (h.includes('소개')) autoMapping.essayIntro = h;
-        // '가치관 주제'가 '가치관'도 포함하므로 주제를 먼저 판별한다.
-        if (h.includes('가치관') && h.includes('주제')) autoMapping.essayValuesTopic = h;
-        else if (h.includes('가치관')) autoMapping.essayValues = h;
-        if (h.includes('영문')) autoMapping.englishName = h;
-        if (h.includes('비대면')) autoMapping.remoteInterviewWish = h;
-        if (h.includes('OT') || h.includes('참가')) autoMapping.otAttend = h;
-        if (h.includes('1순위') || h.includes('1지망')) autoMapping.wishTeam1 = h;
-        if (h.includes('2순위') || h.includes('2지망')) autoMapping.wishTeam2 = h;
-        if (h.includes('주기')) autoMapping.expectedFrequency = h;
-        if (h.includes('대외') || h.includes('아르바이트')) autoMapping.otherActivities = h;
-      });
-      setMapping(autoMapping);
+      // 자동 연결 규칙은 csv.ts 의 공용 함수를 쓴다(화면과 테스트가 같은 코드를 본다).
+      setMapping({ ...mapping, ...autoMapHeaders(parsedHeaders) });
     }
   };
 

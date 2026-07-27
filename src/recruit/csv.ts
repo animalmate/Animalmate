@@ -199,3 +199,49 @@ export function detectDuplicates(
 
   return { duplicateIndexes, uniqueApplicants };
 }
+
+/**
+ * 헤더 이름을 보고 지원 항목을 자동 연결한다.
+ *
+ * 이 함수를 화면과 테스트가 **같이** 쓴다. 예전에는 업로드 화면 안에 규칙이 인라인으로 있었고
+ * 테스트는 그 규칙을 따로 베껴 적었는데, 베낀 쪽만 고쳐 놓는 바람에 실제 화면의 버그
+ * ("영문 이름"이 '이름'을 포함해 name 을 덮어써 전원이 걸러지던 문제)를 놓쳤다.
+ *
+ * 규칙은 **구체적인 것부터** 확인하고, 이미 연결된 헤더는 다시 쓰지 않는다.
+ */
+export function autoMapHeaders(headers: string[]): Record<string, string> {
+  // [항목키, 헤더 판별]. 순서 = 우선순위(구체적인 것 먼저).
+  const RULES: [string, (h: string) => boolean][] = [
+    ['englishName', (h) => h.includes('영문')],
+    ['essayValuesTopic', (h) => h.includes('가치관') && h.includes('주제')],
+    ['essayValues', (h) => h.includes('가치관')],
+    ['essayIntro', (h) => h.includes('소개')],
+    ['phone', (h) => h.includes('전화') || h.includes('연락처')],
+    // '이름'은 '영문 이름'과 겹치므로 englishName 을 먼저 소비시킨 뒤에 본다.
+    ['name', (h) => h.includes('이름') || h.includes('성함')],
+    ['birthDate', (h) => h.includes('생년월일') || h.includes('생일')],
+    ['gender', (h) => h.includes('성별')],
+    ['school', (h) => h.includes('학교')],
+    ['department', (h) => h.includes('학과') || h.includes('전공')],
+    ['email', (h) => h.includes('메일')],
+    ['applyRoute', (h) => h.includes('경로')],
+    ['nearStation', (h) => h.includes('역') || h.includes('주소')],
+    ['otAttend', (h) => h.includes('OT') || h.includes('참가')],
+    ['remoteInterviewWish', (h) => h.includes('비대면')],
+    ['wishTeam1', (h) => h.includes('1순위') || h.includes('1지망')],
+    ['wishTeam2', (h) => h.includes('2순위') || h.includes('2지망')],
+    ['expectedFrequency', (h) => h.includes('주기')],
+    ['otherActivities', (h) => h.includes('대외') || h.includes('아르바이트')],
+  ];
+
+  const mapping: Record<string, string> = {};
+  const used = new Set<string>();
+  for (const [field, match] of RULES) {
+    const hit = headers.find((h) => !used.has(h) && match(h));
+    if (hit) {
+      mapping[field] = hit;
+      used.add(hit);
+    }
+  }
+  return mapping;
+}

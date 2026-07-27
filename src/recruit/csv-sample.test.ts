@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseCsv, mapRowToApplicant, detectDuplicates, detectDelimiter } from './csv';
+import { parseCsv, mapRowToApplicant, detectDuplicates, detectDelimiter, autoMapHeaders } from './csv';
 
 // 지원서에 항목을 추가하고 CSV 경로(csv.ts·업로드 화면·bulkCreateApplicants)를 빠뜨리면
 // 업로드가 그 값을 조용히 버린다 — 실제로 가치관 주제·영문 이름이 그렇게 누락돼 있었다.
@@ -10,29 +10,10 @@ describe('샘플 CSV 검증', () => {
     const { headers, rows } = parseCsv(readFileSync('samples/recruit-applicants-sample.csv', 'utf8'));
     expect(rows).toHaveLength(51);
 
-    // 업로드 패널의 자동 매핑 규칙을 그대로 재현한다.
-    const m: Record<string, string> = {};
-    for (const h of headers) {
-      if (h.includes('이름') && !h.includes('영문')) m.name = h;
-      if (h.includes('전화') || h.includes('연락처')) m.phone = h;
-      if (h.includes('성별')) m.gender = h;
-      if (h.includes('생년월일')) m.birthDate = h;
-      if (h.includes('학교')) m.school = h;
-      if (h.includes('학과')) m.department = h;
-      if (h.includes('메일')) m.email = h;
-      if (h.includes('경로')) m.applyRoute = h;
-      if (h.includes('역') || h.includes('주소')) m.nearStation = h;
-      if (h.includes('소개')) m.essayIntro = h;
-      if (h.includes('가치관') && h.includes('주제')) m.essayValuesTopic = h;
-      else if (h.includes('가치관')) m.essayValues = h;
-      if (h.includes('영문')) m.englishName = h;
-      if (h.includes('비대면')) m.remoteInterviewWish = h;
-      if (h.includes('OT') || h.includes('참가')) m.otAttend = h;
-      if (h.includes('1순위') || h.includes('1지망')) m.wishTeam1 = h;
-      if (h.includes('2순위') || h.includes('2지망')) m.wishTeam2 = h;
-      if (h.includes('주기')) m.expectedFrequency = h;
-      if (h.includes('대외') || h.includes('아르바이트')) m.otherActivities = h;
-    }
+    // ⚠ 규칙을 베껴 적지 않는다 — 화면이 실제로 쓰는 함수를 그대로 호출한다.
+    //   예전엔 여기서 재현하다가 화면 쪽 버그('영문 이름'이 name 을 덮어씀)를 놓쳤다.
+    const m = autoMapHeaders(headers);
+
     // 19개 열이 모두 어딘가에 매핑돼야 한다(빠지면 업로드에서 조용히 버려진다).
     expect(Object.keys(m).sort()).toEqual([
       'applyRoute','birthDate','department','email','englishName','essayIntro','essayValues',
@@ -41,7 +22,15 @@ describe('샘플 CSV 검증', () => {
     ]);
 
     const mapped = rows.map((r) => mapRowToApplicant(headers, r, m)).filter(Boolean) as any[];
+    // 51행이 전부 살아남아야 한다. name/phone 이 비면 mapRowToApplicant 가 null 을 돌려주는데,
+    // 실제로 '영문 이름'이 name 을 덮어써 전원이 여기서 탈락하고 화면에 0명이 떴다.
+    expect(mapped).toHaveLength(51);
+    expect(mapped.every((x) => x.name && x.phone)).toBe(true);
+
     const a = mapped[0]!;
+    // 이름 칸이 영문 이름으로 덮이지 않았는지 값으로 확인한다.
+    expect(a.name).toBe('김서준');
+    expect(a.englishName).not.toBe(a.name);
     expect(a.phone).toMatch(/^\d{11}$/);
     expect(a.wishTeam1).toContain('1팀 - 파주/일산');
     expect(a.essayIntro).toContain('\n');          // 줄바꿈 보존
@@ -79,5 +68,32 @@ describe('붙여넣기 구분자 자동 판별', () => {
     const tsv = '이름\t자기소개\n홍길동\t"안녕하세요, 저는, 동물을, 좋아합니다"';
     expect(detectDelimiter(tsv)).toBe('\t');
     expect(parseCsv(tsv).rows[0]).toEqual(['홍길동', '안녕하세요, 저는, 동물을, 좋아합니다']);
+  });
+});
+
+describe('자동 항목 연결 규칙', () => {
+  it("'영문 이름'이 '이름'을 덮어쓰지 않는다", () => {
+    // 실제로 이 버그 때문에 전원의 name 이 비어 업로드 결과가 0명이었다.
+    const m = autoMapHeaders(['이름', '전화번호', '영문 이름']);
+    expect(m.name).toBe('이름');
+    expect(m.englishName).toBe('영문 이름');
+  });
+
+  it("'가치관 주제'와 '가치관 답변'을 구분한다", () => {
+    const m = autoMapHeaders(['가치관 주제', '가치관 답변']);
+    expect(m.essayValuesTopic).toBe('가치관 주제');
+    expect(m.essayValues).toBe('가치관 답변');
+  });
+
+  it('헤더 순서가 바뀌어도 같은 결과를 낸다', () => {
+    const a = autoMapHeaders(['이름', '영문 이름', '가치관 주제', '가치관 답변']);
+    const b = autoMapHeaders(['영문 이름', '가치관 답변', '가치관 주제', '이름']);
+    expect(a).toEqual(b);
+  });
+
+  it('하나의 헤더가 두 항목에 중복 연결되지 않는다', () => {
+    const m = autoMapHeaders(['이름', '성별', '학교', '학과', '영문 이름']);
+    const used = Object.values(m);
+    expect(new Set(used).size).toBe(used.length);
   });
 });
