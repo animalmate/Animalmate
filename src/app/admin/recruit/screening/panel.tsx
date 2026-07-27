@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
+import { EssayBlock } from '@/components/essay-block';
+import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitScreeningPanel() {
@@ -15,17 +17,30 @@ export function RecruitScreeningPanel() {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
   const [aggregations, setAggregations] = useState<Record<string, any>>({});
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
 
-  const [myScore, setMyScore] = useState<string>('7.0');
+  const DEFAULT_SCORE = '7.0';
+  const [myScore, setMyScore] = useState<string>(DEFAULT_SCORE);
   const [myComment, setMyComment] = useState<string>('');
   const [savingScore, setSavingScore] = useState(false);
   const [message, setMessage] = useState('');
 
   const QUICK_SCORES = ['5.0', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'];
 
+  const [staffNames, setStaffNames] = useState<Record<string, string>>({});
+
   useEffect(() => {
     fetchCohorts();
+    // 점수 기록에 이름을 붙이기 위한 운영진 명단.
+    fetch('/api/recruit/staff')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data.staff)) {
+          setStaffNames(Object.fromEntries(data.staff.map((s: any) => [s.id, s.name])));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -33,6 +48,21 @@ export function RecruitScreeningPanel() {
       fetchApplicantsAndScores();
     }
   }, [selectedCohortId]);
+
+  // 지원자를 바꾸면 내 입력칸을 새로 맞춘다. 초기화가 없으면 앞 지원자에게 쓴 점수·코멘트가
+  // 그대로 남아 다음 지원자의 기록으로 저장된다. 이미 채점한 사람은 그 값을 되살린다.
+  useEffect(() => {
+    if (!selectedApplicantId) return;
+    setMessage('');
+    const mine = scores.find(
+      (s) =>
+        s.applicantId === selectedApplicantId &&
+        s.stage === 'document' &&
+        s.scorerUserId === viewerUserId
+    );
+    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : DEFAULT_SCORE);
+    setMyComment(mine?.comment ?? '');
+  }, [selectedApplicantId, viewerUserId, scores]);
 
   const fetchCohorts = async () => {
     try {
@@ -63,6 +93,7 @@ export function RecruitScreeningPanel() {
       setScores(scoreData.scores);
       setAggregations(scoreData.aggregations || {});
     }
+    if (scoreData.viewerUserId) setViewerUserId(scoreData.viewerUserId);
   };
 
   const handleSaveScore = async () => {
@@ -165,7 +196,12 @@ export function RecruitScreeningPanel() {
 
       <RecruitNav />
 
-      <ScreenNotes contextKey="recruit:doc" title="서류 심사 운영진 공용 메모지" />
+      <ScreenNotes
+        screen="doc"
+        cohortId={selectedCohortId}
+        team={selectedTeam}
+        title="서류 심사 운영진 공용 메모지"
+      />
 
       {/* 2열 스플릿 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -257,19 +293,9 @@ export function RecruitScreeningPanel() {
 
               {/* 자기소개서 내용 */}
               <div className="space-y-4">
-                <div className="rounded-xl border border-cream-200 bg-cream-25 p-4 space-y-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-700">1. 자기소개</h3>
-                  <p className="text-sm text-ink-900 whitespace-pre-wrap leading-relaxed">
-                    {selectedApp.essayIntro || '내용 없음'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-cream-200 bg-cream-25 p-4 space-y-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-700">2. 가치관 및 동아리 지원 동기</h3>
-                  <p className="text-sm text-ink-900 whitespace-pre-wrap leading-relaxed">
-                    {selectedApp.essayValues || '내용 없음'}
-                  </p>
-                </div>
+                {/* 서류 심사는 전문을 읽는 화면이라 접지 않는다. */}
+                <EssayBlock label="1. 자기소개" text={selectedApp.essayIntro} />
+                <EssayBlock label="2. 가치관 및 동아리 지원 동기" text={selectedApp.essayValues} />
 
                 {selectedApp.otherActivities && (
                   <div className="rounded-xl border border-cream-200 bg-cream-50 p-3 text-xs text-ink-700">
@@ -285,31 +311,46 @@ export function RecruitScreeningPanel() {
                   <span className="text-xs text-blue-700 font-semibold">0.0 ~ 10.0점 (0.5 단위)</span>
                 </div>
 
-                {/* 퀵 점수 선택 버튼 */}
-                <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-ink-500">빠른 점수 선택:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {QUICK_SCORES.map((scoreVal) => (
-                      <button
-                        key={scoreVal}
-                        type="button"
-                        onClick={() => setMyScore(scoreVal)}
-                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                          myScore === scoreVal
-                            ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
-                            : 'bg-white text-ink-700 border border-ink-200 hover:bg-cream-100'
-                        }`}
-                      >
-                        {scoreVal}점
-                      </button>
-                    ))}
+                {/* 퀵 버튼은 5.0 부터라 낮은 점수를 아예 줄 수 없었다 — 직접 입력칸을 둔다. */}
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="w-32">
+                    <Field label="점수 직접 입력">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={myScore}
+                        onChange={(e) => setMyScore(e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-semibold text-ink-500">자주 쓰는 점수:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_SCORES.map((scoreVal) => (
+                        <button
+                          key={scoreVal}
+                          type="button"
+                          onClick={() => setMyScore(scoreVal)}
+                          aria-pressed={myScore === scoreVal}
+                          className={`min-h-tap rounded-lg px-2.5 text-xs font-bold transition-colors ${
+                            myScore === scoreVal
+                              ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
+                              : 'bg-white text-ink-700 border border-ink-200 hover:bg-cream-100'
+                          }`}
+                        >
+                          {scoreVal}점
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Field label="평가 코멘트 (선택 사항)">
-                    <Input
-                      type="text"
+                    <AutoGrowTextarea
+                      minRows={3}
                       placeholder="지원서의 강점, 우려 사항 또는 질문할 항목을 기록하세요..."
                       value={myComment}
                       onChange={(e) => setMyComment(e.target.value)}
@@ -333,14 +374,22 @@ export function RecruitScreeningPanel() {
                 {currentDocScores.length > 0 ? (
                   <div className="space-y-2">
                     {currentDocScores.map((s) => (
-                      <div key={s.id} className="rounded-xl border border-cream-200 bg-white p-3 text-xs flex justify-between items-center shadow-card">
-                        <div>
-                          <span className="font-bold text-blue-700 text-sm">{s.score}점</span>
-                          {s.comment && <span className="ml-3 text-ink-700 font-medium">"{s.comment}"</span>}
+                      <div key={s.id} className="rounded-xl border border-cream-200 bg-white p-3 text-xs shadow-card">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="flex items-baseline gap-2">
+                            <span className="font-bold text-blue-700 text-sm">{parseFloat(s.score).toFixed(1)}점</span>
+                            {/* 누가 준 점수인지 없으면 조율도 정정도 못 한다. */}
+                            <span className="font-semibold text-ink-700">
+                              {s.scorerUserId === viewerUserId ? '나' : staffNames[s.scorerUserId] || '이름 미상'}
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-ink-400 font-mono">
+                            {new Date(s.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
                         </div>
-                        <span className="text-[11px] text-ink-400 font-mono">
-                          {new Date(s.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        {s.comment && (
+                          <p className="mt-1.5 whitespace-pre-wrap leading-relaxed text-ink-700">{s.comment}</p>
+                        )}
                       </div>
                     ))}
                   </div>

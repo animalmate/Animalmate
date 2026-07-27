@@ -4,13 +4,17 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
-import { Button, Card, Field, Input, Select, StatusMessage, ToolbarSelect } from '@/components/ui';
+import { useTeams } from '@/components/use-teams';
+import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitInterviewAssignPanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
+  // 배정도 팀 단위로 한다 — 팀별 메모지도 이 필터를 따라간다.
+  const { teams, loading: teamsLoading } = useTeams(selectedCohortId);
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
   const [slots, setSlots] = useState<any[]>([]);
   const [applicants, setApplicants] = useState<any[]>([]);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
@@ -175,6 +179,17 @@ export function RecruitInterviewAssignPanel() {
     await fetchSlotsAndApplicants();
   };
 
+  // 다른 모집 화면과 같은 규칙(배정팀이 있으면 그것, 없으면 희망 팀으로 본다).
+  const filteredApplicants = applicants.filter((app) => {
+    if (selectedTeam === 'ALL') return true;
+    const effectiveTeam = app.assignedTeam || app.wishTeam1;
+    return (
+      effectiveTeam === selectedTeam ||
+      app.wishTeam1 === selectedTeam ||
+      app.wishTeam2 === selectedTeam
+    );
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -184,6 +199,16 @@ export function RecruitInterviewAssignPanel() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <ToolbarSelect
+            label="팀"
+            loading={teamsLoading}
+            value={selectedTeam}
+            onChange={(e) => setSelectedTeam(e.target.value)}
+          >
+            <option value="ALL">전체</option>
+            <TeamOptions teams={teams} loading={teamsLoading} />
+          </ToolbarSelect>
+
           <ToolbarSelect
             label="기수"
             loading={cohortsLoading}
@@ -201,7 +226,12 @@ export function RecruitInterviewAssignPanel() {
 
       <RecruitNav />
 
-      <ScreenNotes contextKey="recruit:interview-assign" title="면접 배정 운영진 공용 메모지" />
+      <ScreenNotes
+        screen="interview-assign"
+        cohortId={selectedCohortId}
+        team={selectedTeam}
+        title="면접 배정 운영진 공용 메모지"
+      />
 
       {/* 1. 슬롯 생성 카드 (10분 단위 & 대면 장소 프리셋 + 비대면 링크) */}
       <Card className="space-y-5">
@@ -413,7 +443,8 @@ export function RecruitInterviewAssignPanel() {
       <Card className="space-y-4">
         <div className="flex items-center justify-between border-b border-cream-200 pb-3">
           <span className="text-sm font-bold text-ink-900">
-            서류 합격 지원자 개별 면접 시간 배정 ({applicants.length}명)
+            서류 합격 지원자 개별 면접 시간 배정 ({filteredApplicants.length}명
+            {selectedTeam !== 'ALL' && <span className="text-ink-500"> / 전체 {applicants.length}명</span>})
           </span>
         </div>
 
@@ -428,7 +459,7 @@ export function RecruitInterviewAssignPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-100">
-              {applicants.map((app) => (
+              {filteredApplicants.map((app) => (
                 <tr key={app.id} className="hover:bg-cream-25 transition-colors">
                   <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
                   <td className="p-3.5 font-medium text-ink-700">{app.assignedTeam || app.wishTeam1 || '-'}</td>

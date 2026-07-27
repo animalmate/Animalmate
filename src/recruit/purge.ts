@@ -3,10 +3,11 @@
 // 2단계 확인 후 지원자 인적사항, 점수, 메모 전량 Hard Delete. 익명 집계 통계만 둔다.
 
 import { db } from '../db/client';
-import { recruitCohorts, recruitApplicants, recruitScores } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { recruitCohorts, recruitApplicants, recruitScores, screenNotes } from '../db/schema';
+import { eq, like } from 'drizzle-orm';
 import { recordAudit, buildAuditEntry } from '../auth/audit';
 import { purgeBlockReason } from './purge-rules';
+import { cohortNoteKeyPrefix } from './note-keys';
 
 /** 폐기를 실행하면 안 되는 상황(없는 기수·이미 폐기됨). 라우트에서 4xx 로 돌려준다. */
 export class PurgeNotAllowedError extends Error {}
@@ -72,7 +73,13 @@ export async function purgeCohortApplicants(cohortId: string, actorUserId: strin
     // 3. 지원자 테이블 Hard Delete (cascade로 slots, scores, memos 자동 삭제)
     await tx.delete(recruitApplicants).where(eq(recruitApplicants.cohortId, cohortId));
 
-    // 4. Audit log 기록 [high]
+    // 4. 이 기수의 공용 메모지도 지운다.
+    //    운영진은 메모지에 지원자 실명을 적는다("홍길동 지각"). 지원서만 지우고 메모지를 남기면
+    //    "모집 절차가 끝나는 즉시 모두 폐기합니다"라는 공개 고지를 지키지 못한다.
+    //    메모지 화면 자체는 재사용 자산이지만 그 내용은 기수 것이다(09-RECRUIT-DESIGN §8).
+    await tx.delete(screenNotes).where(like(screenNotes.contextKey, cohortNoteKeyPrefix(cohortId)));
+
+    // 5. Audit log 기록 [high]
     await recordAudit(
       tx,
       buildAuditEntry({

@@ -5,6 +5,7 @@ import { useTeams } from '@/components/use-teams';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
+import { EssayBlock } from '@/components/essay-block';
 import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 const DEFAULT_SCORE = '8.0';
@@ -262,7 +263,12 @@ export function RecruitInterviewConsolePanel() {
 
       <RecruitNav />
 
-      <ScreenNotes contextKey="recruit:interview-console" title="면접 당일 운영진 공용 실시간 메모지" />
+      <ScreenNotes
+        screen="interview-console"
+        cohortId={selectedCohortId}
+        team={selectedTeam}
+        title="면접 당일 운영진 공용 실시간 메모지"
+      />
 
       {/* 2열 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -365,20 +371,10 @@ export function RecruitInterviewConsolePanel() {
               </div>
 
               {/* 지원서 핵심 보기 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-cream-200 bg-cream-25 p-3.5 space-y-1.5">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-blue-700">자기소개</h4>
-                  <p className="text-xs text-ink-900 whitespace-pre-wrap leading-relaxed">
-                    {selectedApp.essayIntro || '-'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-cream-200 bg-cream-25 p-3.5 space-y-1.5">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-blue-700">가치관 및 계기</h4>
-                  <p className="text-xs text-ink-900 whitespace-pre-wrap leading-relaxed">
-                    {selectedApp.essayValues || '-'}
-                  </p>
-                </div>
+              {/* 면접 중에는 점수 입력칸이 화면 밖으로 밀리면 안 된다 — 길면 접어 두고 펼쳐 본다. */}
+              <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                <EssayBlock label="자기소개" text={selectedApp.essayIntro} collapsible collapsedHeight={180} />
+                <EssayBlock label="가치관 및 계기" text={selectedApp.essayValues} collapsible collapsedHeight={180} />
               </div>
 
               {/* 내 개인 실시간 메모 카드 */}
