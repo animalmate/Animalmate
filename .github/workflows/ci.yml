@@ -28,3 +28,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          # 모집(recruit) 서비스는 db 를 인자로 받지 않고 db/client 싱글턴을 import 한다.
+          # 그 싱글턴은 DATABASE_URL 을 읽고 없으면 **import 시점에** throw 하므로, 이 변수가 없으면
+          # 테스트가 한 건도 못 돌고 파일 수집 단계에서 실패한다(로컬은 .env 가 채워 줘서 안 보인다).
+          # 별도 시크릿을 두지 않고 같은 DB 를 가리키는 DIRECT_URL 을 그대로 쓴다.
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
