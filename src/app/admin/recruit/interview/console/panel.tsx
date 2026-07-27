@@ -1,5 +1,6 @@
 'use client';
 
+import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useRef } from 'react';
 import { useTeams } from '@/components/use-teams';
@@ -220,7 +221,10 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-ink-900">4. 면접 당일 콘솔 (슬롯별 & 팀별 다중 채점)</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[24px] font-bold text-ink-900">4. 면접 당일 콘솔 (슬롯별 &amp; 팀별 다중 채점)</h1>
+            <HelpButton screen="recruit-console" />
+          </div>
           <p className="mt-1 text-sm text-ink-500">동일 면접 슬롯에 입장한 지원자그룹을 선택하여 실시간 질문 메모 및 평가 점수를 부여합니다.</p>
         </div>
 

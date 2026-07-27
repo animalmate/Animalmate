@@ -1,4 +1,5 @@
 'use client';
+import { HelpButton } from '@/components/help-button';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
@@ -274,7 +275,10 @@ export function NewReservationForm() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-[22px] font-bold text-ink-900">새 예약</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-[22px] font-bold text-ink-900">새 예약</h1>
+        <HelpButton screen="reservations-new" />
+      </div>
       <PlaceholderGuide />
       <Card className="space-y-3">
         <Field label="종류">

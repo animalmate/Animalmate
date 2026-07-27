@@ -121,20 +121,6 @@ export default async function HomePage() {
           </Card>
         </a>
 
-        {/* 사용 가이드 — 전원. 부원에게는 챗봇 말고 유일한 '할 일'이라 바로가기 위에 둔다. */}
-        <a href="/guides" className="group block no-underline">
-          <Card className="flex items-center gap-3.5 transition-colors hover:border-blue-300">
-            <span className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-cream-200 text-ink-700">
-              <Icon name="doc" size={22} />
-            </span>
-            <span className="min-w-0">
-              <strong className="block text-base font-semibold text-ink-900">사용 가이드</strong>
-              <span className="text-[13px] text-ink-500">이 사이트를 어떻게 쓰는지 알려드려요</span>
-            </span>
-            <Icon name="chevronRight" size={18} className="ml-auto text-ink-300" />
-          </Card>
-        </a>
-
         {shortcuts.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {shortcuts.map((s) => (

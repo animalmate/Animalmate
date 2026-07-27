@@ -8,10 +8,13 @@ export function Modal({
   title,
   onClose,
   children,
+  // 도움말처럼 읽을거리가 들어가는 팝업은 넓어야 줄이 짧게 끊기지 않는다.
+  size = 'md',
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  size?: 'md' | 'lg';
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -37,7 +40,11 @@ export function Modal({
         if (e.target === e.currentTarget) onClose(); // 배경을 눌렀을 때만 닫는다.
       }}
     >
-      <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-modal">
+      <div
+        className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-modal ${
+          size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
+        }`}
+      >
         <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-5 py-3.5">
           <h2 className="text-base font-semibold text-ink-900">{title}</h2>
           <button

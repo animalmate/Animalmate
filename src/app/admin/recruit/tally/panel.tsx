@@ -1,5 +1,6 @@
 'use client';
 
+import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
@@ -162,7 +163,10 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-ink-900">2. 서류 집계 및 서류 합격 확정 (회장단)</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[24px] font-bold text-ink-900">2. 서류 집계 및 서류 합격 확정 (회장단)</h1>
+            <HelpButton screen="recruit-tally" />
+          </div>
           <p className="mt-1 text-sm text-ink-500">운영진 심사 결과를 팀별 종합 집계하여 면접 대상자(서류 합격자)를 일괄 결정합니다.</p>
         </div>
 

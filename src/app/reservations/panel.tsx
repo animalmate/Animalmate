@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, InfoText, SecondaryButton, StatusBadge } from '@/components/ui';
+import { HelpButton } from '@/components/help-button';
 import { shortenValue } from '@/publishing/placeholder-catalog';
 
 interface Reservation {
@@ -59,14 +60,17 @@ export function ReservationsPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-[22px] font-bold text-ink-900">예약 큐</h1>
-        <a href="/reservations/new">
-          <Button>새 예약</Button>
-        </a>
+        <div className="flex items-center gap-2">
+          <HelpButton screen="reservations" />
+          <a href="/reservations/new">
+            <Button>새 예약</Button>
+          </a>
+        </div>
       </div>
       <p className="rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5 text-[13px] leading-relaxed text-ink-700">
-        예약한 시각이 되면 네이버 카페에 글이 자동으로 올라갑니다. 여러 회차를 한 번에 예약할 수 있습니다.
+        예약한 시각이 되면 네이버 카페에 글이 자동으로 올라갑니다. 상태 딱지 보는 법은 위 <strong>도움말</strong>에 있어요.
       </p>
       <ErrorText>{error}</ErrorText>
       {loading ? (

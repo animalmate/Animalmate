@@ -1,5 +1,6 @@
 'use client';
 
+import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
@@ -273,7 +274,10 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-ink-900">3. 면접 배정 (10분 단위 & 면접관 배정)</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[24px] font-bold text-ink-900">3. 면접 배정 (10분 단위 &amp; 면접관 배정)</h1>
+            <HelpButton screen="recruit-assign" />
+          </div>
           <p className="mt-1 text-sm text-ink-500">면접 슬롯을 10분 단위로 세분화하여 생성하고, 지원자 및 운영진 면접관을 배정합니다.</p>
         </div>
 

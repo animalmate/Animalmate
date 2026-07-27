@@ -1,4 +1,5 @@
 'use client';
+import { HelpButton } from '@/components/help-button';
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, Input, SecondaryButton, Select } from '@/components/ui';
@@ -138,7 +139,10 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-[22px] font-bold text-ink-900">템플릿</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-[22px] font-bold text-ink-900">템플릿</h1>
+        <HelpButton screen="templates" />
+      </div>
       <Card className="space-y-3">
         <div className="font-medium">{editingId ? '양식 수정' : '새 양식'}</div>
         <div className="rounded-md bg-cream-100 p-3">

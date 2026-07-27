@@ -1,5 +1,6 @@
 'use client';
 
+import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { useTeams } from '@/components/use-teams';
@@ -176,7 +177,10 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-ink-900">1. 서류 심사 (운영진)</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[24px] font-bold text-ink-900">1. 서류 심사 (운영진)</h1>
+            <HelpButton screen="recruit-screening" />
+          </div>
           <p className="mt-1 text-sm text-ink-500">각 팀장단 및 운영진이 지원서와 자기소개서를 검토하고 점수를 부여합니다.</p>
         </div>
 

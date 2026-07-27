@@ -1,5 +1,6 @@
 'use client';
 
+import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
@@ -296,7 +297,10 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
+            <HelpButton screen="recruit-notice" />
+          </div>
           <p className="mt-1 text-sm text-ink-500">
             {canManage
               ? '신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.'

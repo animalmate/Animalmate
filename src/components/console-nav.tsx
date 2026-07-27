@@ -11,11 +11,10 @@ interface NavItem {
   icon: string;
 }
 
-// 챗봇·사용 가이드는 로그인 사용자 전원(부원 포함).
-const COMMON_MENU: NavItem[] = [
-  { href: '/chatbot', label: '챗봇', icon: 'chat' },
-  { href: '/guides', label: '가이드', icon: 'doc' },
-];
+// 챗봇은 로그인 사용자 전원(부원 포함).
+// 화면 사용법은 각 화면의 "도움말" 버튼(팝업)에 있다 — 메뉴에 통합 가이드를 두지 않는다.
+// "체크리스트"는 시기별로 할 일을 적은 회장단 전용 페이지다.
+const COMMON_MENU: NavItem[] = [{ href: '/chatbot', label: '챗봇', icon: 'chat' }];
 const STAFF_MENU: NavItem[] = [
   ...COMMON_MENU,
   { href: '/reservations', label: '예약', icon: 'megaphone' },
@@ -25,6 +24,7 @@ const STAFF_MENU: NavItem[] = [
 // 문서(챗봇 지식베이스)는 회장단·시스템관리자만. 팀 배정은 회원 관리 화면으로 통합(별도 팀 메뉴 없음).
 const BOARD_MENU: NavItem[] = [
   ...COMMON_MENU,
+  { href: '/guides', label: '체크리스트', icon: 'doc' },
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/documents', label: '문서', icon: 'layers' },
