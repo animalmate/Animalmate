@@ -10,6 +10,7 @@ import {
   fetchDuePosts,
   applyPublishResult,
 } from '@/publishing/scheduled-posts';
+import { autoDetermineStatus } from '@/publishing/reservations';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
 
@@ -69,11 +70,27 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
     expect(draft.status).toBe('draft');
   });
 
+  // 상태 자동 판정은 createDraft(저수준 생성)가 아니라 autoDetermineStatus 가 담당한다
+  // (커밋 64250a7 에서 '완성 처리' 수동 버튼을 없애며 예약 저장·수정 경로로 옮겼다).
+  // createDraft 는 항상 draft 로 만들고, 저장 직후 이 함수가 미비 항목 유무로 상태를 정한다.
   it('필수값 완성 시 자동 scheduled 상태 적용', async () => {
     const past = new Date(Date.now() - 60_000);
     const post = await createDraft(db, staff, baseInput(past));
     postIds.push(post.id);
-    expect(post.status).toBe('scheduled');
+    expect(post.status).toBe('draft');
+
+    const decided = await autoDetermineStatus(db, post.id);
+    expect(decided.missing).toEqual([]);
+    expect(decided.status).toBe('scheduled');
+  });
+
+  it('필수값이 비면 자동 판정이 draft 로 되돌린다', async () => {
+    const draft = await createDraft(db, staff, baseInput(null));
+    postIds.push(draft.id);
+
+    const decided = await autoDetermineStatus(db, draft.id);
+    expect(decided.status).toBe('draft');
+    expect(decided.missing).toContain('업로드 시각');
   });
 
   it('fetchDuePosts 는 due(scheduled+publish_at<=now) 를 최대 5건 반환', async () => {
