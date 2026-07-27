@@ -11,8 +11,11 @@ interface NavItem {
   icon: string;
 }
 
-// 챗봇은 로그인 사용자 전원(부원 포함).
-const COMMON_MENU: NavItem[] = [{ href: '/chatbot', label: '챗봇', icon: 'chat' }];
+// 챗봇·사용 가이드는 로그인 사용자 전원(부원 포함).
+const COMMON_MENU: NavItem[] = [
+  { href: '/chatbot', label: '챗봇', icon: 'chat' },
+  { href: '/guides', label: '가이드', icon: 'doc' },
+];
 const STAFF_MENU: NavItem[] = [
   ...COMMON_MENU,
   { href: '/reservations', label: '예약', icon: 'megaphone' },
@@ -41,6 +44,7 @@ function menuFor(role: string): NavItem[] {
 // 현재 경로 → 활성 메뉴 키(가장 구체적인 접두사 우선).
 function activeKey(pathname: string): string {
   if (pathname.startsWith('/chatbot')) return '/chatbot';
+  if (pathname.startsWith('/guides')) return '/guides';
   if (pathname.startsWith('/documents')) return '/documents';
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';
