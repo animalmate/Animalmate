@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, formatContentForCafe } from '../src/naver/cafe-write';
+import { escapeHtml, formatContentForCafe } from './cafe-write';
 
 describe('Naver Cafe Content Formatting & HTML Escaping', () => {
   it('escapes HTML special characters correctly', () => {

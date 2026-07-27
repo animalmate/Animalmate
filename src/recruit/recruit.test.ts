@@ -3,10 +3,12 @@ import {
   nextStatusOnScoreChange,
   canConfirmDoc,
   canConfirmFinal,
-} from '../src/recruit/status';
-import { parseCsv, mapRowToApplicant, detectDuplicates } from '../src/recruit/csv';
-import { validateScore } from '../src/recruit/scores';
-import { aggregateScoresByApplicant } from '../src/recruit/aggregate';
+} from './status';
+import { parseCsv, mapRowToApplicant, detectDuplicates } from './csv';
+// scores.ts 가 아니라 score-rules.ts 에서 가져온다 — scores.ts 는 db/client 를 import 하므로
+// DB 연결 없는 순수 단위 테스트에서 로드하면 DATABASE_URL 에러가 난다.
+import { validateScore } from './score-rules';
+import { aggregateScoresByApplicant } from './aggregate';
 
 describe('Recruit Status Transitions', () => {
   it('automatically transitions doc_pass to interview_done when interview scores exist', () => {

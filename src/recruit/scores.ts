@@ -5,15 +5,9 @@ import { db } from '../db/client';
 import { recruitScores, recruitApplicants } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { nextStatusOnScoreChange, RecruitStatus } from './status';
+import { validateScore } from './score-rules';
 
-/**
- * 점수 유효성 검증: 0.0 ~ 10.0 범위, 0.5 단위
- */
-export function validateScore(score: number): boolean {
-  if (isNaN(score) || score < 0 || score > 10) return false;
-  const doubled = score * 2;
-  return Math.abs(doubled - Math.round(doubled)) < 1e-6;
-}
+export { validateScore };
 
 export async function recordScore(
   applicantId: string,
