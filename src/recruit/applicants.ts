@@ -48,6 +48,32 @@ export async function listApplicantsByCohort(cohortId: string) {
     .orderBy(asc(recruitApplicants.name));
 }
 
+/**
+ * 목록·배정·집계 화면용 축약 조회. 자기소개서 본문을 빼면 50명 기준 60.9KB → 8.9KB 다.
+ * 지원서 전문을 읽는 화면(서류 심사·면접 콘솔)만 위 전체 조회를 쓴다.
+ */
+export async function listApplicantsByCohortSlim(cohortId: string) {
+  return db
+    .select({
+      id: recruitApplicants.id,
+      name: recruitApplicants.name,
+      phone: recruitApplicants.phone,
+      school: recruitApplicants.school,
+      department: recruitApplicants.department,
+      assignedTeam: recruitApplicants.assignedTeam,
+      wishTeam1: recruitApplicants.wishTeam1,
+      wishTeam2: recruitApplicants.wishTeam2,
+      status: recruitApplicants.status,
+      slotId: recruitApplicants.slotId,
+      interviewLink: recruitApplicants.interviewLink,
+      nearStation: recruitApplicants.nearStation,
+      remoteInterviewWish: recruitApplicants.remoteInterviewWish,
+    })
+    .from(recruitApplicants)
+    .where(eq(recruitApplicants.cohortId, cohortId))
+    .orderBy(asc(recruitApplicants.name));
+}
+
 export async function getApplicantById(id: string) {
   const [found] = await db
     .select()

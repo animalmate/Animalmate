@@ -3,6 +3,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import {
   listApplicantsByCohort,
+  listApplicantsByCohortSlim,
   listApplicantsByCohortIds,
   getApplicantById,
   updateApplicantStatus,
@@ -37,7 +38,11 @@ export async function GET(req: Request): Promise<Response> {
 
   if (!cohortId) return NextResponse.json({ error: 'missing_cohortId' }, { status: 400 });
 
-  const applicants = await listApplicantsByCohort(cohortId);
+  // slim=1 이면 자기소개서 본문을 뺀다(50명 기준 60.9KB → 8.9KB).
+  const applicants =
+    url.searchParams.get('slim') === '1'
+      ? await listApplicantsByCohortSlim(cohortId)
+      : await listApplicantsByCohort(cohortId);
   return NextResponse.json({ applicants });
 }
 

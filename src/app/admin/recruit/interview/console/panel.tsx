@@ -95,12 +95,16 @@ export function RecruitInterviewConsolePanel() {
   };
 
   const fetchData = async () => {
-    const slotRes = await fetch(`/api/recruit/slots?cohortId=${selectedCohortId}`);
-    const slotData = await slotRes.json();
-    if (slotData.slots) setSlots(slotData.slots);
+    // 세 요청을 차례로 기다리면 점수를 저장할 때마다 화면이 1.5초씩 멈춘다.
+    // 지원서 전문을 보여주는 화면이라 지원자는 slim 으로 받지 않는다.
+    const [slotRes, appRes, scoreRes] = await Promise.all([
+      fetch(`/api/recruit/slots?cohortId=${selectedCohortId}`),
+      fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`),
+      fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`),
+    ]);
+    const [slotData, appData, scoreData] = await Promise.all([slotRes.json(), appRes.json(), scoreRes.json()]);
 
-    const appRes = await fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`);
-    const appData = await appRes.json();
+    if (slotData.slots) setSlots(slotData.slots);
     if (appData.applicants) {
       const interviewees = appData.applicants.filter((a: any) =>
         ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass'].includes(a.status)
@@ -111,8 +115,6 @@ export function RecruitInterviewConsolePanel() {
       }
     }
 
-    const scoreRes = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
-    const scoreData = await scoreRes.json();
     if (scoreData.scores) setScores(scoreData.scores);
     if (scoreData.viewerUserId) setViewerUserId(scoreData.viewerUserId);
   };

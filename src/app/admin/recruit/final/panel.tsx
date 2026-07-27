@@ -58,19 +58,19 @@ export function RecruitFinalPanel() {
   };
 
   const fetchCohortAndApplicants = async () => {
-    const cRes = await fetch(`/api/recruit/cohorts/${selectedCohortId}`);
-    const cData = await cRes.json();
+    // 서로 독립인 세 요청을 차례로 기다리면 배포 환경에서 1.5초가 그냥 지나간다.
+    const [cRes, appRes, scoreRes] = await Promise.all([
+      fetch(`/api/recruit/cohorts/${selectedCohortId}`),
+      fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}&slim=1`),
+      fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`),
+    ]);
+    const [cData, appData, scoreData] = await Promise.all([cRes.json(), appRes.json(), scoreRes.json()]);
+
     if (cData.cohort) {
       setSchedulePublic(cData.cohort.schedulePublic);
       setResultPublic(cData.cohort.resultPublic);
     }
-
-    const appRes = await fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`);
-    const appData = await appRes.json();
     if (appData.applicants) setApplicants(appData.applicants);
-
-    const scoreRes = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
-    const scoreData = await scoreRes.json();
     if (scoreData.aggregations) setAggregations(scoreData.aggregations);
   };
 
@@ -170,7 +170,9 @@ export function RecruitFinalPanel() {
   };
 
   const handleReassignTeam = async (id: string, newTeam: string) => {
-    setLoading(true);
+    // 행마다 드롭다운이 있는 표다. 매번 전체를 다시 불러오면 한 명 바꿀 때마다 화면이 멈춘다.
+    const previous = applicants;
+    setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, assignedTeam: newTeam } : a)));
     try {
       const res = await fetch('/api/recruit/applicants', {
         method: 'POST',
@@ -185,12 +187,13 @@ export function RecruitFinalPanel() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setMessage(`✅ 최종 배정 팀이 [${newTeam}](으)로 변경되었습니다.`);
-        await fetchCohortAndApplicants();
       } else {
+        setApplicants(previous);
         setMessage(`❌ ${data.message || data.error || '팀 변경에 실패했습니다.'}`);
       }
-    } finally {
-      setLoading(false);
+    } catch {
+      setApplicants(previous);
+      setMessage('❌ 팀을 변경하지 못했습니다. 연결을 확인해 주세요.');
     }
   };
 

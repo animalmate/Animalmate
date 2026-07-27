@@ -20,14 +20,17 @@ export function RecruitInterviewAssignPanel() {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
   const [slotInterviewersMap, setSlotInterviewersMap] = useState<Record<string, any[]>>({});
-  const [venuePresets, setVenuePresets] = useState<string[]>(['학생회관 301호', '학생회관 302호']);
+  // 기수마다 다른 값이라 코드에 기본값을 두지 않는다. 예전엔 '학생회관 301호'가 박혀 있어서
+  // 불러오기 전까지 어느 기수를 열든 남의 장소가 진짜 설정처럼 보였다.
+  const [venuePresets, setVenuePresets] = useState<string[]>([]);
+  const [venuesLoading, setVenuesLoading] = useState(true);
 
   // 슬롯 추가 입력 폼 (10분 단위 시각 선택)
   const [slotDate, setSlotDate] = useState('2026-08-01');
   const [slotTime, setSlotTime] = useState('14:00');
   const [slotDuration, setSlotDuration] = useState('20');
   const [isRemote, setIsRemote] = useState(false);
-  const [selectedVenue, setSelectedVenue] = useState('학생회관 301호');
+  const [selectedVenue, setSelectedVenue] = useState('');
   const [slotLink, setSlotLink] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -79,33 +82,36 @@ export function RecruitInterviewAssignPanel() {
   };
 
   const fetchCohortNoticeSettings = async () => {
+    setVenuesLoading(true);
+    // 기수를 바꾸는 동안 앞 기수의 장소가 남아 있으면 그대로 슬롯을 만들 수 있다.
+    setVenuePresets([]);
+    setSelectedVenue('');
     try {
       const res = await fetch(`/api/recruit/notice?cohortId=${selectedCohortId}`);
       const data = await res.json();
-      if (data.cohort?.venues && data.cohort.venues.length > 0) {
-        setVenuePresets(data.cohort.venues);
-        setSelectedVenue(data.cohort.venues[0]);
-      }
+      const venues: string[] = Array.isArray(data.cohort?.venues) ? data.cohort.venues : [];
+      setVenuePresets(venues);
+      setSelectedVenue(venues[0] ?? '');
     } catch {
-      // ignore
+      // 실패해도 빈 목록으로 둔다 — 없는 장소를 있는 것처럼 보여주지 않는다.
+    } finally {
+      setVenuesLoading(false);
     }
   };
 
   const fetchSlotsAndApplicants = async () => {
-    const slotRes = await fetch(`/api/recruit/slots?cohortId=${selectedCohortId}`);
-    const slotData = await slotRes.json();
+    // 예전엔 슬롯 → 면접관 → 지원자를 차례로 기다렸다(왕복 3번). 슬롯 응답이 면접관까지 담아 오고
+    // 지원자는 동시에 받으므로 왕복 1번이면 된다. 자기소개서는 이 화면에서 안 쓰니 slim 으로 받는다.
+    const [slotRes, appRes] = await Promise.all([
+      fetch(`/api/recruit/slots?cohortId=${selectedCohortId}`),
+      fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}&slim=1`),
+    ]);
+    const [slotData, appData] = await Promise.all([slotRes.json(), appRes.json()]);
+
     if (slotData.slots) {
       setSlots(slotData.slots);
-      if (slotData.slots.length > 0) {
-        const slotIds = slotData.slots.map((s: any) => s.id).join(',');
-        const intRes = await fetch(`/api/recruit/slot-interviewers?slotIds=${slotIds}`);
-        const intData = await intRes.json();
-        if (intData.map) setSlotInterviewersMap(intData.map);
-      }
+      setSlotInterviewersMap(slotData.interviewersMap ?? {});
     }
-
-    const appRes = await fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`);
-    const appData = await appRes.json();
     if (appData.applicants) {
       const passed = appData.applicants.filter((a: any) =>
         ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass'].includes(a.status)
@@ -116,6 +122,11 @@ export function RecruitInterviewAssignPanel() {
 
   const handleCreateSlot = async () => {
     if (!slotDate || !slotTime) return;
+    // 대면인데 장소가 비면 장소 없는 슬롯이 만들어진다 — 지원자에게 어디로 오라고 안내할 수 없다.
+    if (!isRemote && !selectedVenue) {
+      setMessage('❌ 면접 장소를 먼저 0. 공고 설정에서 등록해 주세요.');
+      return;
+    }
     setLoading(true);
     setMessage('');
     try {
@@ -135,13 +146,18 @@ export function RecruitInterviewAssignPanel() {
         }),
       });
 
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.slot) {
+        // 만든 슬롯을 응답에서 바로 받아 끼워 넣는다 — 전체를 다시 불러올 이유가 없다.
+        setSlots((prev) =>
+          [...prev, data.slot].sort(
+            (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+          )
+        );
         setMessage('✅ 면접 시간 슬롯이 생성되었습니다.');
         setSlotLink('');
-        await fetchSlotsAndApplicants();
       } else {
-        const data = await res.json();
-        setMessage(`❌ 슬롯 생성 실패: ${data.error}`);
+        setMessage(`❌ 슬롯 생성 실패: ${data.message || data.error || res.status}`);
       }
     } finally {
       setLoading(false);
@@ -171,46 +187,83 @@ export function RecruitInterviewAssignPanel() {
       setMessage(`❌ 슬롯 삭제 실패: ${data.message || data.error || res.status}`);
       return;
     }
+    // 서버에서 지워졌으니 화면에서도 바로 뺀다. 배정됐던 지원자는 slot_id 가 null 이 된다(set null).
+    setSlots((prev) => prev.filter((s) => s.id !== id));
+    setSlotInterviewersMap((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setApplicants((prev) => prev.map((a) => (a.slotId === id ? { ...a, slotId: null } : a)));
     setMessage(
       assigned.length > 0
         ? `✅ 슬롯을 삭제했습니다. 지원자 ${assigned.length}명의 배정이 해제되었습니다.`
         : '✅ 슬롯을 삭제했습니다.'
     );
-    await fetchSlotsAndApplicants();
   };
 
   const handleAssignSlot = async (applicantId: string, slotId: string | null) => {
-    const res = await fetch('/api/recruit/applicants', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'assign_slot',
-        id: applicantId,
-        slotId: slotId || null,
-      }),
-    });
-    // 실패를 삼키면 드롭다운만 바뀌고 저장은 안 된 상태로 넘어간다.
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setMessage(`❌ 면접 시간 배정 실패: ${data.message || data.error || res.status}`);
+    // 드롭다운을 즉시 반영하고 저장은 뒤에서 한다(전체 새로고침을 기다리지 않는다).
+    const previous = applicants;
+    setApplicants((prev) =>
+      prev.map((a) => (a.id === applicantId ? { ...a, slotId: slotId || null } : a))
+    );
+
+    try {
+      const res = await fetch('/api/recruit/applicants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'assign_slot',
+          id: applicantId,
+          slotId: slotId || null,
+        }),
+      });
+      // 실패를 삼키면 드롭다운만 바뀌고 저장은 안 된 상태로 넘어간다.
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setApplicants(previous);
+        setMessage(`❌ 면접 시간 배정 실패: ${data.message || data.error || res.status}`);
+      }
+    } catch {
+      setApplicants(previous);
+      setMessage('❌ 면접 시간을 저장하지 못했습니다. 연결을 확인해 주세요.');
     }
-    await fetchSlotsAndApplicants();
   };
 
   const handleToggleInterviewer = async (slotId: string, userId: string, isAssigned: boolean) => {
-    const res = isAssigned
-      ? await fetch(`/api/recruit/slot-interviewers?slotId=${slotId}&userId=${userId}`, { method: 'DELETE' })
-      : await fetch('/api/recruit/slot-interviewers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slotId, userId }),
-        });
-    // 실패해도 표시가 없으면 면접관이 배정된 줄 알고 당일에야 빈 것을 안다.
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setMessage(`❌ 면접관 ${isAssigned ? '해제' : '배정'} 실패: ${data.message || data.error || res.status}`);
+    // 화면을 먼저 바꾸고 요청을 보낸다. 예전엔 요청 4번(추가 1 + 전체 새로고침 3)을 다 기다려서
+    // 체크 한 번에 2초씩 걸렸다. 실패하면 되돌리고 이유를 띄운다.
+    const previous = slotInterviewersMap;
+    const staff = staffMembers.find((s) => s.id === userId);
+    setSlotInterviewersMap((prev) => {
+      const current = prev[slotId] ?? [];
+      return {
+        ...prev,
+        [slotId]: isAssigned
+          ? current.filter((i: any) => i.userId !== userId)
+          : [...current, { slotId, userId, name: staff?.name ?? '', role: staff?.role }],
+      };
+    });
+
+    try {
+      const res = isAssigned
+        ? await fetch(`/api/recruit/slot-interviewers?slotId=${slotId}&userId=${userId}`, { method: 'DELETE' })
+        : await fetch('/api/recruit/slot-interviewers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slotId, userId }),
+          });
+      // 실패해도 표시가 없으면 면접관이 배정된 줄 알고 당일에야 빈 것을 안다.
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSlotInterviewersMap(previous);
+        setMessage(`❌ 면접관 ${isAssigned ? '해제' : '배정'} 실패: ${data.message || data.error || res.status}`);
+      }
+    } catch {
+      setSlotInterviewersMap(previous);
+      setMessage('❌ 면접관 배정을 저장하지 못했습니다. 연결을 확인해 주세요.');
     }
-    await fetchSlotsAndApplicants();
   };
 
   const filteredApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
@@ -319,13 +372,28 @@ export function RecruitInterviewAssignPanel() {
           </Field>
 
           {!isRemote ? (
-            <Field label="면접 장소">
-              <Select value={selectedVenue} onChange={(e) => setSelectedVenue(e.target.value)}>
-                {venuePresets.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
+            <Field
+              label="면접 장소"
+              hint={
+                !venuesLoading && venuePresets.length === 0
+                  ? '이 기수에 등록된 장소가 없습니다. 0. 공고 설정에서 먼저 등록해 주세요.'
+                  : undefined
+              }
+            >
+              <Select
+                loading={venuesLoading}
+                value={selectedVenue}
+                onChange={(e) => setSelectedVenue(e.target.value)}
+              >
+                {venuePresets.length > 0 ? (
+                  venuePresets.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">등록된 면접 장소가 없습니다</option>
+                )}
               </Select>
             </Field>
           ) : (

@@ -51,17 +51,14 @@ export function RecruitTallyPanel() {
   };
 
   const fetchApplicantsAndScores = async () => {
-    const appRes = await fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`);
-    const appData = await appRes.json();
-    if (appData.applicants) {
-      setApplicants(appData.applicants);
-    }
-
-    const scoreRes = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
-    const scoreData = await scoreRes.json();
-    if (scoreData.aggregations) {
-      setAggregations(scoreData.aggregations);
-    }
+    // 두 요청은 서로를 기다릴 이유가 없다. 집계 화면은 자기소개서를 쓰지 않으므로 slim 으로 받는다.
+    const [appRes, scoreRes] = await Promise.all([
+      fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}&slim=1`),
+      fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`),
+    ]);
+    const [appData, scoreData] = await Promise.all([appRes.json(), scoreRes.json()]);
+    if (appData.applicants) setApplicants(appData.applicants);
+    if (scoreData.aggregations) setAggregations(scoreData.aggregations);
   };
 
   // 서류 평균 내림차순 정렬

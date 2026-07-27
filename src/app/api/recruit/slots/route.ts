@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { createSlot, listSlotsByCohort, deleteSlot } from '@/recruit/slots';
+import { getSlotsInterviewersMap } from '@/recruit/slot-interviewers';
 import { internalError } from '@/http/errors';
 import { parseDate } from '@/http/input';
 
@@ -17,8 +18,11 @@ export async function GET(req: Request): Promise<Response> {
   const cohortId = url.searchParams.get('cohortId');
   if (!cohortId) return NextResponse.json({ error: 'missing_cohortId' }, { status: 400 });
 
+  // 면접관 배정까지 함께 돌려준다. 예전엔 슬롯을 받은 뒤 그 id 로 다시 요청해야 해서
+  // 화면 진입·갱신 때마다 왕복이 한 번씩 더 늘었다(배포 환경 왕복이 500ms 대라 체감이 크다).
   const slots = await listSlotsByCohort(cohortId);
-  return NextResponse.json({ slots });
+  const interviewersMap = await getSlotsInterviewersMap(slots.map((s) => s.id));
+  return NextResponse.json({ slots, interviewersMap });
 }
 
 // 면접 슬롯 생성·삭제 = 면접 배정 = recruit.manage → 회장단 전용(09-RECRUIT-DESIGN §4).

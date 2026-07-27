@@ -79,17 +79,19 @@ export function RecruitScreeningPanel() {
   };
 
   const fetchApplicantsAndScores = async () => {
-    const appRes = await fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`);
-    const appData = await appRes.json();
+    // 이 화면은 자기소개서 전문을 읽으므로 slim 을 쓰지 않는다. 대신 두 요청을 동시에 보낸다.
+    const [appRes, scoreRes] = await Promise.all([
+      fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`),
+      fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`),
+    ]);
+    const [appData, scoreData] = await Promise.all([appRes.json(), scoreRes.json()]);
+
     if (appData.applicants) {
       setApplicants(appData.applicants);
       if (appData.applicants.length > 0 && !selectedApplicantId) {
         setSelectedApplicantId(appData.applicants[0].id);
       }
     }
-
-    const scoreRes = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
-    const scoreData = await scoreRes.json();
     if (scoreData.scores) {
       setScores(scoreData.scores);
       setAggregations(scoreData.aggregations || {});
@@ -130,6 +132,11 @@ export function RecruitScreeningPanel() {
 
   const handleReassignTeam = async (newTeam: string) => {
     if (!selectedApplicantId) return;
+    // 화면을 먼저 바꾸고 저장한다. 전체를 다시 불러오면 배포 환경에서 왕복이 두 번 더 붙어
+    // 팀 하나 바꾸는 데 1.5초씩 걸렸다. 실패하면 되돌린다.
+    const previous = applicants;
+    const id = selectedApplicantId;
+    setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, assignedTeam: newTeam } : a)));
     setReassigning(true);
     try {
       const res = await fetch('/api/recruit/applicants', {
@@ -137,18 +144,21 @@ export function RecruitScreeningPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'change_team',
-          id: selectedApplicantId,
+          id,
           assignedTeam: newTeam,
         }),
       });
 
       if (res.ok) {
         setMessage(`✅ 지원자 소속 팀이 '${newTeam}'(으)로 이관되었습니다.`);
-        await fetchApplicantsAndScores();
       } else {
-        const data = await res.json();
-        setMessage(`❌ 팀 이관 실패: ${data.error}`);
+        const data = await res.json().catch(() => ({}));
+        setApplicants(previous);
+        setMessage(`❌ 팀 이관 실패: ${data.message || data.error}`);
       }
+    } catch {
+      setApplicants(previous);
+      setMessage('❌ 팀을 변경하지 못했습니다. 연결을 확인해 주세요.');
     } finally {
       setReassigning(false);
     }
