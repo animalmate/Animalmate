@@ -34,6 +34,7 @@ export function RecruitNoticeEditPanel() {
   const [message, setMessage] = useState('');
 
   const [noticeImages, setNoticeImages] = useState<string[]>([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     fetchCohorts();
@@ -146,42 +147,79 @@ export function RecruitNoticeEditPanel() {
     }
   };
 
-  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    Array.from(files).forEach((file) => {
+  /** 브라우저에서 긴 변 1200px 로 줄이고 JPEG 로 다시 인코딩한다(업로드·전송량 절약). */
+  function downscale(file: File): Promise<Blob> {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
+      reader.onerror = () => reject(new Error('read_failed'));
       reader.onload = (event) => {
         const img = new Image();
+        img.onerror = () => reject(new Error('decode_failed'));
         img.onload = () => {
-          const canvas = document.createElement('canvas');
           const MAX_WIDTH = 1200;
-          let width = img.width;
-          let height = img.height;
-
+          let { width, height } = img;
           if (width > MAX_WIDTH) {
             height = Math.round((height * MAX_WIDTH) / width);
             width = MAX_WIDTH;
           }
-
+          const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
-          setNoticeImages((prev) => [...prev, compressedBase64]);
+          canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode_failed'))), 'image/jpeg', 0.85);
         };
         img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     });
-    e.target.value = '';
+  }
+
+  // 이미지는 Supabase Storage 에 올리고 DB 에는 URL 만 저장한다.
+  // 예전에는 base64 문자열을 통째로 jsonb 에 넣어서, 포스터 몇 장이면 기수 행 하나가 수 MB 가 됐다
+  // (그 행은 공고를 볼 때마다 오간다).
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (!selectedCohortId) {
+      setMessage('❌ 먼저 모집 기수를 선택해 주세요.');
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingImage(true);
+    setMessage('');
+    try {
+      for (const file of Array.from(files)) {
+        const blob = await downscale(file);
+        const fd = new FormData();
+        fd.set('cohortId', selectedCohortId);
+        fd.set('file', new File([blob], 'poster.jpg', { type: 'image/jpeg' }));
+
+        const res = await fetch('/api/recruit/notice/images', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (res.ok && data.url) {
+          setNoticeImages((prev) => [...prev, data.url]);
+        } else {
+          setMessage(`❌ 이미지 업로드 실패: ${data.message || data.error}`);
+          break;
+        }
+      }
+    } catch {
+      setMessage('❌ 이미지를 처리하지 못했습니다. 다른 파일로 시도해 주세요.');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
   };
 
+  // 목록에서 빼는 것과 별개로 스토리지 파일도 지운다 — 안 지우면 안 쓰는 이미지가 계속 쌓인다.
+  // 삭제가 실패해도 화면에서는 빼 준다(저장을 막을 이유가 없다).
   const handleRemoveImage = (indexToRemove: number) => {
+    const url = noticeImages[indexToRemove];
     setNoticeImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    if (url && url.startsWith('http')) {
+      void fetch(`/api/recruit/notice/images?url=${encodeURIComponent(url)}`, { method: 'DELETE' });
+    }
   };
 
   const handleSaveSettings = async () => {
@@ -393,9 +431,20 @@ export function RecruitNoticeEditPanel() {
               <p className="text-[11px] text-ink-500">컴퓨터에서 포스터 이미지 파일(PNG, JPG, WEBP)을 선택하여 바로 첨부할 수 있습니다.</p>
             </div>
 
-            <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all">
-              <span>이미지 파일 추가</span>
-              <input type="file" accept="image/*" multiple onChange={handleImageFileUpload} className="hidden" />
+            <label
+              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors ${
+                uploadingImage ? 'cursor-not-allowed bg-ink-300' : 'cursor-pointer bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              <span>{uploadingImage ? '올리는 중…' : '이미지 파일 추가'}</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={uploadingImage}
+                onChange={handleImageFileUpload}
+                className="hidden"
+              />
             </label>
           </div>
 

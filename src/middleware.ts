@@ -16,6 +16,16 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const FONT_CDN = 'https://cdn.jsdelivr.net'; // Pretendard 폰트(globals.css @import)
 
+// 공고 포스터가 올라가는 Supabase Storage 오리진. 프로젝트 URL 에서 오리진만 뽑아 쓴다
+// (경로까지는 CSP 가 보지 않는다). 값이 없으면 img-src 를 넓히지 않는다.
+const SUPABASE_ORIGIN = (() => {
+  try {
+    return process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).origin : '';
+  } catch {
+    return '';
+  }
+})();
+
 export function middleware(request: NextRequest): NextResponse {
   // Web Crypto(btoa)만 쓴다 — 미들웨어는 edge 런타임이라 Node Buffer 를 가정하지 않는다.
   const nonce = btoa(crypto.randomUUID());
@@ -29,7 +39,10 @@ export function middleware(request: NextRequest): NextResponse {
     `script-src ${scriptSrc}`,
     `style-src 'self' 'unsafe-inline' ${FONT_CDN}`,
     `font-src 'self' data: ${FONT_CDN}`,
-    `img-src 'self' data: blob:`,
+    // 모집 공고 포스터는 Supabase Storage 공개 버킷에서 온다(전에는 base64 로 DB 에 넣었다).
+    // 이미지 출처를 우리 프로젝트 도메인 하나로만 넓힌다 — 임의 외부 이미지는 계속 막는다.
+    // data: 는 남겨 둔다(예전 base64 공고가 남아 있어도 깨지지 않게).
+    `img-src 'self' data: blob:${SUPABASE_ORIGIN ? ` ${SUPABASE_ORIGIN}` : ''}`,
     `connect-src 'self'`,
     `object-src 'none'`,
     `base-uri 'self'`,

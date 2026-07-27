@@ -120,6 +120,8 @@
     congrats_message?, post_pass_notice?, is_closed, venues? jsonb, closed_at?, archived_stats? jsonb,
     created_by, created_at) — 공개 스위치 2개(면접 일정/최종 결과)가 여기. `notice_*`/`congrats_message`/
     `post_pass_notice`/`is_closed`/`venues` 는 공개 공고·마감 스위치·면접 장소 프리셋용(0014).
+    `notice_images` 는 **Supabase Storage 공개 버킷 `recruit-notice` 의 URL 목록**이다(파일 본체는 DB 에 두지 않는다).
+    예전에는 base64 문자열을 그대로 넣어 포스터 몇 장이면 행 하나가 수 MB 였고, 공고를 볼 때마다 그 행이 통째로 오갔다.
     `apply_form` jsonb(0015) = 공개 지원서의 선택지·자기소개서 문항(성별·지원경로·OT·면접방식 선택지,
     문항 2개). 미설정이면 `src/recruit/apply-form.ts` 의 기본값을 쓴다. 지망 팀 목록은 여기 두지 않고
     `teams` 테이블을 그대로 쓴다(회장단이 회원 관리에서 바꾸면 지원서도 따라간다).
