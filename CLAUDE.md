@@ -51,7 +51,11 @@
 - 환경 변수는 `02-TECH-STACK.md`의 목록에만 정의하고 `env.example` 동기화.
 - 핵심 로직은 반드시 단위 테스트 작성: 권한 검사, 반복 규칙 날짜 계산(매월 N번째 X요일),
   발행 상태머신 전이, visibility 필터.
-- DB 변경은 마이그레이션 파일로만. 스키마를 바꾸면 `03-DATA-MODEL.md`를 같은 커밋에서 갱신.
+- DB 변경은 마이그레이션 파일로만: `npm run db:generate` → `npm run db:migrate`.
+  스키마를 바꾸면 `03-DATA-MODEL.md`를 같은 커밋에서 갱신.
+  **`drizzle-kit push` 절대 금지** — push 는 schema.ts 에 RLS 선언이 없는 것을 보고 public 전 테이블의
+  RLS 를 해제한다(규칙 #8 붕괴). 2026-07-27 실제로 28개 테이블 RLS 가 꺼져 anon key 로 회원 정보가
+  조회되는 사고가 났다(마이그레이션 0014 로 복구). schema.ts 만 고치고 push 로 밀어넣지 말 것.
 - 커밋은 작은 단위, 메시지는 한국어 명령형("반복 규칙 날짜 계산 추가").
 
 ## 작업 방식

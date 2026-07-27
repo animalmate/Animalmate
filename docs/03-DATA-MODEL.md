@@ -116,13 +116,19 @@
   구글폼 전 필드를 **원문 저장**한다(마이그레이션 0013, 전 테이블 RLS ON). 대신 주소는 역명으로 축소,
   열람 staff+/export board-only, cohort hard delete 로 보관을 제한한다. 조회는 이름+전화 정확 일치(해시 폐기),
   실패 시도값은 저장하지 않고 IP 레이트리밋으로만 막는다.
-  - `recruit_cohorts` (id, label uq, schedule_public, result_public, closed_at?, archived_stats? jsonb,
-    created_by, created_at) — 공개 스위치 2개(면접 일정/최종 결과)가 여기. 폐기 시 익명 집계만 archived_stats 로 잔존.
-  - `recruit_slots` (id, cohort_id, starts_at, duration_min=20, link?, created_by, created_at) — 면접 슬롯.
+  - `recruit_cohorts` (id, label uq, schedule_public, result_public, notice_content?, notice_images? jsonb,
+    congrats_message?, post_pass_notice?, is_closed, venues? jsonb, closed_at?, archived_stats? jsonb,
+    created_by, created_at) — 공개 스위치 2개(면접 일정/최종 결과)가 여기. `notice_*`/`congrats_message`/
+    `post_pass_notice`/`is_closed`/`venues` 는 공개 공고·마감 스위치·면접 장소 프리셋용(0014).
+    폐기 시 익명 집계만 archived_stats 로 잔존.
+  - `recruit_slots` (id, cohort_id, starts_at, duration_min=20, link?, venue?, is_remote, created_by, created_at)
+    — 면접 슬롯. cohort_id 인덱스(0014).
+  - `recruit_slot_interviewers` (id, slot_id, user_id, created_at) UNIQUE(slot_id, user_id) — 슬롯별 면접관 배정(0014).
   - `recruit_applicants` (id, cohort_id, name, gender?, birth_date?(text), phone, school?, department?, email?,
-    apply_route?, other_activities?, expected_frequency?, wish_team1?, wish_team2?, **near_station?**(주소 대신 역명),
-    ot_attend?(text), remote_interview_wish?(text), essay_intro?, essay_values?, status, slot_id?, interview_link?,
-    uploaded_by, created_at) — CSV 업로드. status = received→doc_fail|doc_pass→interview_done|interview_noshow
+    apply_route?, other_activities?, expected_frequency?, wish_team1?, wish_team2?, assigned_team?,
+    **near_station?**(주소 대신 역명), ot_attend?(text), remote_interview_wish?(text), essay_intro?, essay_values?,
+    status, slot_id?, interview_link?, uploaded_by?(set null), created_at) — CSV 업로드 또는 온라인 접수.
+    status = received→doc_fail|doc_pass→interview_done|interview_noshow
     →final_pass|final_fail. **phone·자기소개서 = PII, RAG 반입 금지(규칙 #5)·커밋/시드 금지(규칙 #4).**
   - `recruit_scores` (id, applicant_id, scorer_user_id, stage[document|interview], score numeric(3,1) 0~10 0.5단위,
     comment?, created_at, updated_at) UNIQUE(applicant_id, scorer_user_id, stage). 본인 점수만 수정. DB CHECK 로 범위 강제.
@@ -134,7 +140,11 @@
   - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 5회 + 실패 10회 시 1시간 차단
     (`rate_limits` 재사용, 버킷 `recruit_lookup`/`recruit_lookup_fail`). **시도 입력값(이름·전화)은 저장하지 않는다**
     — 비지원자 PII 수집 금지(규칙 #4/#5). 결정 #8의 "시도 로그"는 카운터로 대체(07-DECISIONS 25).
-  - RLS: 신규 7테이블 생성과 동시에 RLS 활성화(규칙 #8, RLS 테스트가 누락을 자동 감지).
+  - RLS: 신규 8테이블 생성과 동시에 RLS 활성화(규칙 #8, RLS 테스트가 누락을 자동 감지).
+  - ⚠ **`drizzle-kit push` 사용 금지**(0014 사고): push 는 schema.ts 에 RLS 선언이 없는 것을 보고
+    **public 전 테이블의 RLS 를 꺼버린다**. 실제로 2026-07-27 전 28개 테이블 RLS 가 해제되어
+    anon key 로 `users`·`memberships` 가 조회되는 상태였다. 스키마 변경은 반드시
+    `npm run db:generate` → `npm run db:migrate`. 0014 가 RLS 를 일괄 복구했다.
 
 ## 접근 규칙 (서버에서 강제)
 1. 쓰기 요청마다: 인증 → membership active? → 역할 충족? → 소유권(personal=본인,
