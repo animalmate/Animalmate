@@ -94,7 +94,7 @@ suite('F1 — 템플릿 / 다건 예약 생성 / 미완성 점검', () => {
 
   it('새 예약(다건): 회차마다 날짜·집합시간이 렌더되고 event+post 가 연결된다', async () => {
     const tpl = (await db.select().from(postTemplates).where(eq(postTemplates.id, templateId)))[0]!;
-    const ids = await createReservationsMulti(
+    const { ids } = await createReservationsMulti(
       db,
       leader,
       { kind: 'volunteer', teamId, boardMenuid: MENUID, title: tpl.titleTemplate, contentMd: tpl.bodyTemplate },
@@ -127,7 +127,7 @@ suite('F1 — 템플릿 / 다건 예약 생성 / 미완성 점검', () => {
       defaultPlace: '양주 쉼터',
       defaultCapacity: 20,
     });
-    const ids = await createReservationsMulti(
+    const { ids } = await createReservationsMulti(
       db,
       leader,
       { kind: 'volunteer', teamId, boardMenuid: MENUID, title: tpl.titleTemplate, contentMd: tpl.bodyTemplate, templateId: tpl.id },

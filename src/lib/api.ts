@@ -45,6 +45,7 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     otp_not_found: '유효한 인증 코드가 없습니다. 재발급해 주세요.',
     cooldown: '잠시 후 다시 시도해 주세요.',
     forbidden: '권한이 없습니다.',
+    slot_taken: '이미 같은 시각에 예약된 글이 있습니다. 다른 시각으로 잡아 주세요.',
     unauthorized: '로그인이 필요합니다.',
     server_misconfigured: '서버 설정 오류입니다. 운영진에게 문의해 주세요.',
     team_not_found: '팀을 찾을 수 없습니다.',

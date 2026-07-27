@@ -5,6 +5,7 @@ import { isStaffPlus } from '@/auth/permissions';
 import {
   listReservations,
   createReservationsMulti,
+  SlotTakenError,
   BoardNotWritableError,
   MAX_OCCURRENCES,
   type Occurrence,
@@ -57,9 +58,13 @@ export async function POST(req: Request): Promise<Response> {
     if (occurrences.length > MAX_OCCURRENCES) {
       return NextResponse.json({ error: 'too_many_occurrences', max: MAX_OCCURRENCES }, { status: 400 });
     }
-    const ids = await createReservationsMulti(db, actor, shared, occurrences);
-    return NextResponse.json({ ids });
+    const { ids, skipped } = await createReservationsMulti(db, actor, shared, occurrences);
+    return NextResponse.json({ ids, skipped });
   } catch (e) {
+    // 같은 시각에 이미 예약이 있다 — 사용자가 시각만 바꾸면 되는 상황이라 사유를 그대로 돌려준다.
+    if (e instanceof SlotTakenError) {
+      return NextResponse.json({ error: 'slot_taken', message: e.message }, { status: 409 });
+    }
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof BoardNotWritableError) return NextResponse.json({ error: 'board_not_writable' }, { status: 400 });
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });

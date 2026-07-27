@@ -241,7 +241,7 @@ export function NewReservationForm() {
       }));
     if (occurrences.length === 0) return setError('업로드 시각(또는 봉사 일자)을 최소 1개 입력하세요.');
     setBusy(true);
-    const r = await apiPost<{ ids: string[] }>('/api/reservations', {
+    const r = await apiPost<{ ids: string[]; skipped?: { publishAt: string; conflictTitle: string }[] }>('/api/reservations', {
       kind,
       teamId: kind === 'volunteer' ? teamId : undefined,
       boardMenuid: Number(boardMenuid),
@@ -252,6 +252,20 @@ export function NewReservationForm() {
     });
     setBusy(false);
     if (!r.ok) return setError(errorMessage(r.data.error, r.data.message as string));
+
+    // 같은 시각에 이미 예약이 있어 빠진 회차가 있으면 알리고 이 화면에 머문다.
+    // 바로 큐로 넘어가면 몇 건이 왜 빠졌는지 볼 기회가 사라진다.
+    const skipped = r.data.skipped ?? [];
+    if (skipped.length > 0) {
+      const lines = skipped
+        .map((s) => `• ${new Date(s.publishAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })} — 이미 "${s.conflictTitle}" 예약이 있습니다`)
+        .join('\n');
+      setError(
+        `${r.data.ids.length}건을 만들었고, ${skipped.length}건은 시각이 겹쳐 만들지 않았습니다.\n${lines}\n\n겹친 회차는 시각을 바꿔 다시 추가해 주세요.`
+      );
+      return;
+    }
+
     router.push('/reservations');
     router.refresh();
   }

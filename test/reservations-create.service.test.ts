@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { teams, users, boards, scheduledPosts, events, postTemplates, auditLogs } from '@/db/schema';
-import { createReservation, createReservationsMulti } from '@/publishing/reservations';
+import { createReservation, createReservationsMulti, SlotTakenError } from '@/publishing/reservations';
 import { cancelPost } from '@/publishing/scheduled-posts';
 import { createTemplate } from '@/publishing/post-templates';
 import { PermissionError } from '@/auth/guard';
@@ -93,7 +93,7 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
       defaultPlace: '양주 쉼터',
       defaultCapacity: 20,
     });
-    const ids = await createReservationsMulti(
+    const { ids } = await createReservationsMulti(
       db,
       leaderOfA(),
       { kind: 'volunteer', teamId: teamAId, boardMenuid: MENUID, title: '{{간결_날짜}} 봉사', contentMd: '정원 {{정원}}', templateId: tpl.id },
@@ -135,5 +135,54 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
     expect(gonePost).toBeUndefined();
     const [ev] = await db.select({ status: events.status }).from(events).where(eq(events.id, eventId));
     expect(ev!.status).toBe('canceled');
+  });
+  // 팀별 발행 시각이 30분 간격으로 정해져 있어, 같은 분에 두 건이 잡히면 슬롯 중복 예약이다.
+  // (이 검사는 발행 워커의 점유를 대신하지 않는다 — 발행 시점 겹침은 점유가 막는다.)
+  describe('같은 시각 중복 예약', () => {
+    const at = (iso: string) => ({ ...vol(teamAId), publishAt: new Date(iso) });
+
+    it('같은 분에 두 번째 예약을 만들 수 없다', async () => {
+      const first = await createReservation(db, board(), at('2027-03-01T05:00:00Z'));
+      createdPosts.push(first.id);
+
+      await expect(createReservation(db, board(), at('2027-03-01T05:00:30Z'))).rejects.toBeInstanceOf(SlotTakenError);
+    });
+
+    it('1분만 떨어져 있으면 만들 수 있다 — 번개·일반 공지가 사이에 들어갈 수 있어야 한다', async () => {
+      const second = await createReservation(db, board(), at('2027-03-01T05:01:00Z'));
+      createdPosts.push(second.id);
+      expect(second.id).toBeTruthy();
+    });
+
+    it('반복 예약은 겹친 회차만 빼고 나머지를 만든다', async () => {
+      const res = await createReservationsMulti(
+        db,
+        board(),
+        { kind: 'volunteer', teamId: teamAId, boardMenuid: MENUID, title: '봉사', contentMd: '내용' },
+        [
+          { publishAt: new Date('2027-03-01T05:00:00Z'), eventDate: '2027-03-08' }, // 위에서 이미 잡힌 시각
+          { publishAt: new Date('2027-03-08T05:00:00Z'), eventDate: '2027-03-15' },
+        ]
+      );
+      createdPosts.push(...res.ids);
+      expect(res.ids).toHaveLength(1);
+      expect(res.skipped).toHaveLength(1);
+      expect(res.skipped[0]!.conflictTitle).toBeTruthy();
+    });
+
+    it('한 요청 안에서 같은 시각이 두 번 나와도 하나만 만든다', async () => {
+      const res = await createReservationsMulti(
+        db,
+        board(),
+        { kind: 'volunteer', teamId: teamAId, boardMenuid: MENUID, title: '봉사', contentMd: '내용' },
+        [
+          { publishAt: new Date('2027-04-05T05:00:00Z'), eventDate: '2027-04-12' },
+          { publishAt: new Date('2027-04-05T05:00:00Z'), eventDate: '2027-04-19' },
+        ]
+      );
+      createdPosts.push(...res.ids);
+      expect(res.ids).toHaveLength(1);
+      expect(res.skipped).toHaveLength(1);
+    });
   });
 });

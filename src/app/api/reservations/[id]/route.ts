@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus, isPrivileged, ownsResource } from '@/auth/permissions';
-import { getReservation, updateReservation } from '@/publishing/reservations';
+import { getReservation, updateReservation, SlotTakenError } from '@/publishing/reservations';
 import { loadPublishVars } from '@/publishing/final-render';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
@@ -49,6 +49,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     });
     return NextResponse.json({ ok: true });
   } catch (e) {
+    // 같은 시각에 이미 예약이 있다 — 시각만 바꾸면 되는 상황이라 사유를 그대로 돌려준다.
+    if (e instanceof SlotTakenError) return NextResponse.json({ error: 'slot_taken', message: e.message }, { status: 409 });
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
     return internalError('PATCH /api/reservations/[id]', e);
