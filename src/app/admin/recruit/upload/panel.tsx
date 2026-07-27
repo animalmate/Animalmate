@@ -213,7 +213,30 @@ export function RecruitUploadPanel() {
             <h2 className="text-base font-bold text-ink-900">지원서 데이터 붙여넣기 및 항목 연결</h2>
           </div>
 
-          <Field label="지원서 내용 텍스트" hint="구글 폼 응답 스프레드시트에서 전체 데이터 영역을 복사(Ctrl+A, Ctrl+C)하여 아래 칸에 붙여넣으세요.">
+          {/* 붙여넣기(구글 시트에서 Ctrl+A·Ctrl+C)와 파일 열기 두 가지를 모두 받는다.
+              구분자는 파서가 쉼표/탭을 자동으로 판별하므로 어느 쪽이든 그대로 동작한다. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-200 bg-cream-25 p-3">
+            <p className="text-[13px] leading-relaxed text-ink-700">
+              구글 폼 <strong>응답 스프레드시트</strong>에서 전체 선택(Ctrl+A) 후 복사(Ctrl+C)해
+              아래 칸에 붙여넣으세요. 저장해 둔 CSV 파일이 있다면 오른쪽 버튼으로 열어도 됩니다.
+            </p>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border-[1.5px] border-ink-200 bg-white px-3.5 py-2 text-xs font-bold text-ink-900 transition-colors hover:bg-cream-50">
+              파일 열기 (.csv / .tsv)
+              <input
+                type="file"
+                accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  handleCsvInput(await file.text());
+                }}
+              />
+            </label>
+          </div>
+
+          <Field label="지원서 내용 텍스트" hint="붙여넣거나 파일을 열면 아래 항목 연결이 자동으로 채워집니다.">
             <textarea
               className="w-full h-44 rounded-xl border-[1.5px] border-ink-200 bg-white p-3.5 text-xs font-mono text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 leading-relaxed"
               placeholder="타임스탬프,이름,전화번호,성별,학교,학과..."

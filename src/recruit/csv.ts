@@ -8,11 +8,39 @@ export interface ParsedCsv {
 }
 
 /**
- * 상태 기반 CSV 파서 (정규식 split 금지 - 자기소개서 등 개행/따옴표 안전 파싱)
+ * 구분자 자동 판별(쉼표 / 탭).
+ *
+ * 왜 필요한가: 업로드 화면은 "구글 폼 응답 스프레드시트에서 복사해 붙여넣기"를 안내하는데,
+ * 스프레드시트에서 Ctrl+C 하면 클립보드에 담기는 것은 **탭 구분(TSV)**이다. 쉼표만 보면
+ * 전체가 한 열로 들어와 매핑이 통째로 실패한다. 첫 줄에서 따옴표 밖의 구분자 수를 세어 고른다.
+ */
+export function detectDelimiter(text: string): ',' | '\t' {
+  let commas = 0;
+  let tabs = 0;
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      // 이스케이프된 따옴표("")는 건너뛴다.
+      if (inQuotes && text[i + 1] === '"') i++;
+      else inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (ch === ',') commas++;
+      else if (ch === '\t') tabs++;
+      else if (ch === '\n' || ch === '\r') break; // 첫 줄만 본다
+    }
+  }
+  return tabs > commas ? '\t' : ',';
+}
+
+/**
+ * 상태 기반 CSV 파서 (정규식 split 금지 — 자기소개서의 개행·따옴표를 안전하게 다룬다).
+ * 구분자는 쉼표/탭을 자동 판별한다.
  */
 export function parseCsv(text: string): ParsedCsv {
   // BOM 제거
   const cleanText = text.replace(/^\uFEFF/, '');
+  const delimiter = detectDelimiter(cleanText);
   const records: string[][] = [];
   let currentRecord: string[] = [];
   let currentField = '';
@@ -36,7 +64,7 @@ export function parseCsv(text: string): ParsedCsv {
     } else {
       if (char === '"') {
         inQuotes = true;
-      } else if (char === ',') {
+      } else if (char === delimiter) {
         currentRecord.push(currentField.trim());
         currentField = '';
       } else if (char === '\r') {

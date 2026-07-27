@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseCsv, mapRowToApplicant, detectDuplicates } from './csv';
+import { parseCsv, mapRowToApplicant, detectDuplicates, detectDelimiter } from './csv';
 
 // 지원서에 항목을 추가하고 CSV 경로(csv.ts·업로드 화면·bulkCreateApplicants)를 빠뜨리면
 // 업로드가 그 값을 조용히 버린다 — 실제로 가치관 주제·영문 이름이 그렇게 누락돼 있었다.
@@ -54,5 +54,30 @@ describe('샘플 CSV 검증', () => {
     expect(remote.length).toBeLessThan(mapped.length);
 
     expect(detectDuplicates(mapped, []).duplicateIndexes).toEqual([50]);
+  });
+});
+
+// 업로드 화면은 "구글 폼 응답 스프레드시트에서 복사해 붙여넣기"를 안내한다.
+// 스프레드시트 Ctrl+C 는 탭 구분(TSV)이라, 쉼표만 보면 전체가 한 열로 들어와 매핑이 통째로 실패한다.
+describe('붙여넣기 구분자 자동 판별', () => {
+  it('구글 시트에서 복사한 탭 구분 데이터를 열로 나눈다', () => {
+    const pasted = '이름\t전화번호\t학교\n홍길동\t01012345678\t가온대학교';
+    const { headers, rows } = parseCsv(pasted);
+    expect(headers).toEqual(['이름', '전화번호', '학교']);
+    expect(rows[0]).toEqual(['홍길동', '01012345678', '가온대학교']);
+    expect(detectDelimiter(pasted)).toBe('\t');
+  });
+
+  it('쉼표 구분(CSV)도 그대로 동작한다', () => {
+    const csv = '이름,전화번호\n홍길동,01012345678';
+    expect(parseCsv(csv).headers).toEqual(['이름', '전화번호']);
+    expect(detectDelimiter(csv)).toBe(',');
+  });
+
+  it('본문에 쉼표가 많은 TSV 도 탭으로 판별한다', () => {
+    // 자기소개에 쉼표가 잔뜩 있어도 열 구분은 탭이어야 한다.
+    const tsv = '이름\t자기소개\n홍길동\t"안녕하세요, 저는, 동물을, 좋아합니다"';
+    expect(detectDelimiter(tsv)).toBe('\t');
+    expect(parseCsv(tsv).rows[0]).toEqual(['홍길동', '안녕하세요, 저는, 동물을, 좋아합니다']);
   });
 });
