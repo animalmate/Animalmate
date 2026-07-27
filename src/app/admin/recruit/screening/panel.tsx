@@ -26,8 +26,9 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
 
-  const DEFAULT_SCORE = '7.0';
-  const [myScore, setMyScore] = useState<string>(DEFAULT_SCORE);
+  // 기본값을 넣어 두면 자기소개서를 안 읽고 저장만 눌러도 그 점수가 기록된다(면접 콘솔의 8.0 과 같은 문제).
+  const NO_SCORE = '';
+  const [myScore, setMyScore] = useState<string>(NO_SCORE);
   const [myComment, setMyComment] = useState<string>('');
   const [savingScore, setSavingScore] = useState(false);
   const [message, setMessage] = useState('');
@@ -66,7 +67,7 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
         s.stage === 'document' &&
         s.scorerUserId === viewerUserId
     );
-    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : DEFAULT_SCORE);
+    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : NO_SCORE);
     setMyComment(mine?.comment ?? '');
   }, [selectedApplicantId, viewerUserId, scores]);
 
@@ -104,8 +105,12 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
     if (scoreData.viewerUserId) setViewerUserId(scoreData.viewerUserId);
   };
 
+  // 점수를 고르지 않았으면 저장할 것이 없다. 서버도 빈 값을 400 으로 막지만(규칙 #6),
+  // 버튼을 눌러 놓고 오류를 보는 것보다 애초에 못 누르게 하는 편이 덜 헷갈린다.
+  const hasScore = myScore.trim() !== '';
+
   const handleSaveScore = async () => {
-    if (!selectedApplicantId) return;
+    if (!selectedApplicantId || !hasScore) return;
     setSavingScore(true);
     setMessage('');
     try {
@@ -415,8 +420,14 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  {message ? <StatusMessage text={message} /> : <span />}
-                  <Button type="button" disabled={savingScore} onClick={handleSaveScore}>
+                  {message ? (
+                    <StatusMessage text={message} />
+                  ) : !hasScore ? (
+                    <span className="text-xs text-ink-500">점수를 입력하거나 &lsquo;자주 쓰는 점수&rsquo;에서 골라 주세요.</span>
+                  ) : (
+                    <span />
+                  )}
+                  <Button type="button" disabled={savingScore || !hasScore} onClick={handleSaveScore}>
                     {savingScore ? '저장 중…' : '서류 점수 저장'}
                   </Button>
                 </div>
