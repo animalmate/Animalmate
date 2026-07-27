@@ -162,3 +162,95 @@ describe('수동 상태 전이 가드', () => {
     expect(canTransition('final_fail', 'doc_pass')).toBe(false);
   });
 });
+
+// 기존 집계 테스트는 2명짜리라, 실제 모집 규모에서 한 명이라도 결과에서 빠지거나 표본 부족
+// 표시가 틀리는 것을 잡지 못한다. 표본 부족(3명 미만)은 "이 사람은 더 봐야 한다"는 신호라
+// 틀리면 채점이 덜 된 지원자가 충분히 검토된 것처럼 보인 채 최종 결정에 들어간다.
+describe('실전 규모 집계(50명) — 누락·표본 부족 판정', () => {
+  const TOTAL = 50;
+  const ids = Array.from({ length: TOTAL }, (_, i) => `app${String(i + 1).padStart(2, '0')}`);
+
+  // 채점자 수를 일부러 층으로 나눈다: 충분(3명) / 부족(2명·1명) / 미채점(0명).
+  const SUFFICIENT_END = 40; // 0~39: 3명 채점
+  const TWO_END = 45; // 40~44: 2명
+  const ONE_END = 48; // 45~47: 1명, 48~49: 0명
+
+  const scores = ids.flatMap((id, idx) => {
+    const scorerCount =
+      idx < SUFFICIENT_END ? 3 : idx < TWO_END ? 2 : idx < ONE_END ? 1 : 0;
+    // 7.0 / 8.0 / 9.0 순으로 배정 — 3명이면 평균 8.0, 최저 7.0, 최고 9.0 이 된다.
+    const values = ['7.0', '8.0', '9.0'];
+    return Array.from({ length: scorerCount }, (_, s) => ({
+      applicantId: id,
+      scorerUserId: `u${s + 1}`,
+      stage: 'interview' as const,
+      score: values[s]!,
+    }));
+  });
+
+  const agg = aggregateScoresByApplicant(ids, scores);
+
+  it('50명 전원이 결과에 남는다 — 한 명도 조용히 빠지지 않는다', () => {
+    expect(Object.keys(agg)).toHaveLength(TOTAL);
+    ids.forEach((id) => expect(agg[id]).toBeDefined());
+  });
+
+  it('3명이 채점한 지원자는 표본 충분으로 잡히고 평균·최저·최고가 맞는다', () => {
+    const full = agg['app01']!;
+    expect(full.interviewScorerCount).toBe(3);
+    expect(full.isInterviewSampleDeficient).toBe(false);
+    expect(full.interviewScoreAvg).toBe(8.0);
+    expect(full.interviewScoreMin).toBe(7.0);
+    expect(full.interviewScoreMax).toBe(9.0);
+  });
+
+  it('2명·1명 채점은 표본 부족으로 잡힌다(경계값 3명 미만)', () => {
+    const two = agg['app41']!; // 40번째 인덱스 = 2명 채점
+    expect(two.interviewScorerCount).toBe(2);
+    expect(two.isInterviewSampleDeficient).toBe(true);
+    expect(two.interviewScoreAvg).toBe(7.5);
+
+    const one = agg['app46']!; // 45번째 인덱스 = 1명 채점
+    expect(one.interviewScorerCount).toBe(1);
+    expect(one.isInterviewSampleDeficient).toBe(true);
+    expect(one.interviewScoreAvg).toBe(7.0);
+  });
+
+  it('아무도 채점하지 않은 지원자는 평균이 null 이고 표본 부족이다', () => {
+    const none = agg['app50']!;
+    expect(none.interviewScorerCount).toBe(0);
+    expect(none.isInterviewSampleDeficient).toBe(true);
+    expect(none.interviewScoreAvg).toBeNull();
+    expect(none.interviewScoreMin).toBeNull();
+    expect(none.interviewScoreMax).toBeNull();
+  });
+
+  it('표본 부족 인원수가 정확하다 — 충분 40명, 부족 10명', () => {
+    const deficient = ids.filter((id) => agg[id]!.isInterviewSampleDeficient);
+    expect(deficient).toHaveLength(10); // 2명×5 + 1명×3 + 0명×2
+    const sufficient = ids.filter((id) => !agg[id]!.isInterviewSampleDeficient);
+    expect(sufficient).toHaveLength(40);
+  });
+
+  it('면접 점수만 넣었으므로 서류 집계는 건드려지지 않는다(단계 혼선 방지)', () => {
+    ids.forEach((id) => {
+      expect(agg[id]!.docScoreAvg).toBeNull();
+      expect(agg[id]!.docScorerCount).toBe(0);
+      expect(agg[id]!.isDocSampleDeficient).toBe(true);
+    });
+  });
+
+  it('나누어떨어지지 않는 평균은 소수 첫째 자리로 반올림한다', () => {
+    // 7.0 + 8.0 + 8.0 = 23 / 3 = 7.666… → 7.7
+    const rounded = aggregateScoresByApplicant(
+      ['solo'],
+      ['7.0', '8.0', '8.0'].map((score, s) => ({
+        applicantId: 'solo',
+        scorerUserId: `u${s + 1}`,
+        stage: 'interview' as const,
+        score,
+      }))
+    );
+    expect(rounded['solo']!.interviewScoreAvg).toBe(7.7);
+  });
+});
