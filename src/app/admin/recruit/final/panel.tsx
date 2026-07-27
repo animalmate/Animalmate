@@ -130,6 +130,12 @@ export function RecruitFinalPanel() {
     }
   };
 
+  // 확인 문구가 남아 있으면 모달을 다시 열자마자 파기 버튼이 활성 상태다 — 매번 다시 입력하게 비운다.
+  const closePurgeModal = () => {
+    setShowPurgeModal(false);
+    setPurgeConfirmInput('');
+  };
+
   const handlePurgeData = async () => {
     if (purgeConfirmInput !== '데이터 삭제 확정') return;
     setLoading(true);
@@ -145,10 +151,10 @@ export function RecruitFinalPanel() {
       const data = await res.json();
       if (res.ok) {
         setMessage(`✅ 모집 종료 데이터(지원서, 채점기록, 개인메모)가 일괄 파기 완료되었습니다.`);
-        setShowPurgeModal(false);
+        closePurgeModal();
         await fetchCohortAndApplicants();
       } else {
-        setMessage(`❌ 파기 실패: ${data.error}`);
+        setMessage(`❌ 파기 실패: ${data.message || data.error}`);
       }
     } finally {
       setLoading(false);
@@ -391,19 +397,27 @@ export function RecruitFinalPanel() {
               모집 프로세스가 완료된 후 지원자의 이름, 연락처, 자기소개서, 개별 채점 기록 및 개인 메모를 안전하게 영구 파기합니다. 익명 통계(총 수치)만 보존됩니다.
             </p>
 
+            {/* 되돌릴 수 없는 작업인데 어느 기수를 몇 명 지우는지 모달에 없었다 — 기수를 착각하면 끝이다. */}
+            <div className="rounded-xl border border-coral-200 bg-coral-50/60 px-4 py-3">
+              <p className="text-xs font-semibold text-ink-500">지금 파기하는 대상</p>
+              <p className="mt-1 text-base font-bold text-coral-700">
+                {cohorts.find((c) => c.id === selectedCohortId)?.label || '기수 미선택'} · 지원자 {applicants.length}명
+              </p>
+            </div>
+
             <div className="space-y-2">
-              <Field label="확인 문구 입력">
+              <Field label="확인 문구로 «데이터 삭제 확정» 을 그대로 입력">
                 <Input
                   type="text"
                   value={purgeConfirmInput}
                   onChange={(e) => setPurgeConfirmInput(e.target.value)}
-                  placeholder="데이터 삭제 확정"
+                  autoComplete="off"
                 />
               </Field>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <SecondaryButton type="button" onClick={() => setShowPurgeModal(false)}>
+              <SecondaryButton type="button" onClick={closePurgeModal}>
                 취소
               </SecondaryButton>
               <DangerButton

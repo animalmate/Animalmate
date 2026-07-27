@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
-import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
+import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+
+const DEFAULT_SCORE = '8.0';
 
 export function RecruitInterviewConsolePanel() {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -15,19 +18,30 @@ export function RecruitInterviewConsolePanel() {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [slots, setSlots] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  const [staffNames, setStaffNames] = useState<Record<string, string>>({});
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
 
-  const [myScore, setMyScore] = useState<string>('8.0');
+  const [myScore, setMyScore] = useState<string>(DEFAULT_SCORE);
   const [myComment, setMyComment] = useState<string>('');
   const [personalMemo, setPersonalMemo] = useState<string>('');
-  const [savingMemo, setSavingMemo] = useState(false);
+  const [memoState, setMemoState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [savingScore, setSavingScore] = useState(false);
   const [message, setMessage] = useState('');
+
+  // 메모 자동 저장은 예전에 키를 누를 때마다 POST 를 던졌다. 요청이 뒤섞여 도착하면 옛 내용이
+  // 최신 내용을 덮어써서, 면접 도중 적은 메모가 되돌아갈 수 있었다. 잠깐 멈출 때 한 번만 보낸다.
+  const memoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingMemo = useRef<{ applicantId: string; content: string } | null>(null);
+  const memoSeq = useRef(0);
 
   const QUICK_SCORES = ['5.0', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'];
 
   useEffect(() => {
     fetchCohorts();
+    fetchStaff();
+    // 화면을 떠날 때 아직 안 보낸 메모를 흘리지 않는다.
+    return () => flushMemo();
   }, []);
 
   useEffect(() => {
@@ -36,11 +50,23 @@ export function RecruitInterviewConsolePanel() {
     }
   }, [selectedCohortId]);
 
+  // 지원자를 바꿀 때 내 입력칸을 반드시 새로 맞춘다.
+  // 예전엔 초기화가 없어서, A 에게 쓴 점수·총평이 그대로 남아 B 의 기록으로 저장될 수 있었다.
+  // 이미 내가 채점한 지원자라면 그 값을 되살려, 덮어쓰는 줄 모르고 다시 매기는 일도 막는다.
   useEffect(() => {
-    if (selectedApplicantId) {
-      fetchPersonalMemo(selectedApplicantId);
-    }
-  }, [selectedApplicantId]);
+    if (!selectedApplicantId) return;
+    flushMemo();
+    fetchPersonalMemo(selectedApplicantId);
+    setMessage('');
+    const mine = scores.find(
+      (s) =>
+        s.applicantId === selectedApplicantId &&
+        s.stage === 'interview' &&
+        s.scorerUserId === viewerUserId
+    );
+    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : DEFAULT_SCORE);
+    setMyComment(mine?.comment ?? '');
+  }, [selectedApplicantId, viewerUserId, scores]);
 
   const fetchCohorts = async () => {
     try {
@@ -52,6 +78,17 @@ export function RecruitInterviewConsolePanel() {
       }
     } finally {
       setCohortsLoading(false);
+    }
+  };
+
+  // 점수 기록에 이름을 붙이기 위한 운영진 명단(누가 몇 점을 줬는지 보이지 않으면 조율이 안 된다).
+  const fetchStaff = async () => {
+    const res = await fetch('/api/recruit/staff');
+    const data = await res.json();
+    if (Array.isArray(data.staff)) {
+      setStaffNames(
+        Object.fromEntries(data.staff.map((s: any) => [s.id, s.name as string])) as Record<string, string>
+      );
     }
   };
 
@@ -75,30 +112,51 @@ export function RecruitInterviewConsolePanel() {
     const scoreRes = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
     const scoreData = await scoreRes.json();
     if (scoreData.scores) setScores(scoreData.scores);
+    if (scoreData.viewerUserId) setViewerUserId(scoreData.viewerUserId);
   };
 
   const fetchPersonalMemo = async (applicantId: string) => {
     const res = await fetch(`/api/recruit/memos?applicantId=${applicantId}`);
     const data = await res.json();
-    if (data.memo?.content !== undefined) {
-      setPersonalMemo(data.memo.content);
-    } else {
-      setPersonalMemo('');
+    setPersonalMemo(data.memo?.content ?? '');
+    setMemoState('idle');
+  };
+
+  const saveMemo = async (applicantId: string, content: string) => {
+    const seq = ++memoSeq.current;
+    setMemoState('saving');
+    try {
+      const res = await fetch('/api/recruit/memos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicantId, content }),
+      });
+      // 나중에 보낸 요청이 이미 끝났다면 이 응답은 낡은 것이다 — 표시를 되돌리지 않는다.
+      if (seq !== memoSeq.current) return;
+      setMemoState(res.ok ? 'saved' : 'error');
+    } catch {
+      if (seq === memoSeq.current) setMemoState('error');
     }
   };
 
-  const handleSaveMemo = async (content: string) => {
-    if (!selectedApplicantId) return;
-    setSavingMemo(true);
-    try {
-      await fetch('/api/recruit/memos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applicantId: selectedApplicantId, content }),
-      });
-    } finally {
-      setSavingMemo(false);
+  /** 대기 중인 메모를 지금 보낸다. 지원자를 바꾸거나 화면을 떠나도 마지막 타자가 사라지지 않게. */
+  const flushMemo = () => {
+    if (memoTimer.current) {
+      clearTimeout(memoTimer.current);
+      memoTimer.current = null;
     }
+    const pending = pendingMemo.current;
+    pendingMemo.current = null;
+    if (pending) void saveMemo(pending.applicantId, pending.content);
+  };
+
+  const handleMemoChange = (content: string) => {
+    setPersonalMemo(content);
+    if (!selectedApplicantId) return;
+    // 어느 지원자에게 쓰던 메모인지 여기서 붙잡아 둔다 — 저장 직전에 지원자를 바꿔도 엉뚱한 곳에 안 붙는다.
+    pendingMemo.current = { applicantId: selectedApplicantId, content };
+    if (memoTimer.current) clearTimeout(memoTimer.current);
+    memoTimer.current = setTimeout(flushMemo, 700);
   };
 
   const handleSaveInterviewScore = async () => {
@@ -134,6 +192,9 @@ export function RecruitInterviewConsolePanel() {
   const currentInterviewScores = scores.filter(
     (s) => s.applicantId === selectedApplicantId && s.stage === 'interview'
   );
+  // 내 점수까지 "타 면접관"으로 섞여 있었다. 어느 게 내 기록인지 몰라 수정도 못 했다.
+  const otherInterviewScores = currentInterviewScores.filter((s) => s.scorerUserId !== viewerUserId);
+  const myExistingScore = currentInterviewScores.find((s) => s.scorerUserId === viewerUserId);
 
   const [selectedSlotFilter, setSelectedSlotFilter] = useState('ALL');
   const [selectedTeam, setSelectedTeam] = useState('ALL');
@@ -157,46 +218,45 @@ export function RecruitInterviewConsolePanel() {
           <p className="mt-1 text-sm text-ink-500">동일 면접 슬롯에 입장한 지원자그룹을 선택하여 실시간 질문 메모 및 평가 점수를 부여합니다.</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink-700">면접 슬롯 선택:</span>
-            <Select
-              value={selectedSlotFilter}
-              onChange={(e) => setSelectedSlotFilter(e.target.value)}
-              className="w-48 text-xs font-bold text-blue-800 bg-blue-50/50"
-            >
-              <option value="ALL">전체 면접 슬롯 보기</option>
-              {slots.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}{' '}
-                  | {s.venue || '대면'}
-                </option>
-              ))}
-            </Select>
-          </div>
+        {/* 다른 모집 화면과 같은 툴바 셀렉트로 맞춘다(높이·테두리 제각각이던 파란 상자를 걷어냈다). */}
+        <div className="flex flex-wrap items-center gap-2">
+          <ToolbarSelect
+            label="슬롯"
+            value={selectedSlotFilter}
+            onChange={(e) => setSelectedSlotFilter(e.target.value)}
+          >
+            <option value="ALL">전체</option>
+            {slots.map((s) => (
+              <option key={s.id} value={s.id}>
+                {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                {' | '}
+                {s.venue || '대면'}
+              </option>
+            ))}
+          </ToolbarSelect>
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-ink-700">팀 필터:</span>
-            <Select value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)} className="w-32 text-xs">
-              <option value="ALL">전체 팀</option>
-                <TeamOptions teams={teams} loading={teamsLoading} />
-              </Select>
-          </div>
+          <ToolbarSelect
+            label="팀"
+            loading={teamsLoading}
+            value={selectedTeam}
+            onChange={(e) => setSelectedTeam(e.target.value)}
+          >
+            <option value="ALL">전체</option>
+            <TeamOptions teams={teams} loading={teamsLoading} />
+          </ToolbarSelect>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <ToolbarSelect
-              label="기수"
-              loading={cohortsLoading}
-              value={selectedCohortId}
-              onChange={(e) => setSelectedCohortId(e.target.value)}
-            >
-              {cohorts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </ToolbarSelect>
-          </div>
+          <ToolbarSelect
+            label="기수"
+            loading={cohortsLoading}
+            value={selectedCohortId}
+            onChange={(e) => setSelectedCohortId(e.target.value)}
+          >
+            {cohorts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </ToolbarSelect>
         </div>
       </div>
 
@@ -325,51 +385,80 @@ export function RecruitInterviewConsolePanel() {
               <div className="rounded-xl border border-cream-200 bg-cream-50 p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-ink-900">내 개인 질문/관찰 실시간 메모</h3>
-                  {savingMemo && <span className="text-[11px] font-semibold text-blue-600">자동 저장 중…</span>}
+                  {memoState === 'saving' && <span className="text-[11px] font-semibold text-ink-500">자동 저장 중…</span>}
+                  {memoState === 'saved' && <span className="text-[11px] font-semibold text-ink-500">자동 저장됨</span>}
+                  {/* 저장 실패를 알려주지 않으면 면접이 끝난 뒤에야 메모가 없다는 걸 안다. */}
+                  {memoState === 'error' && (
+                    <span className="text-[11px] font-semibold text-error" role="alert">
+                      저장 실패 — 내용을 복사해 두세요
+                    </span>
+                  )}
                 </div>
-                <textarea
-                  className="w-full h-24 rounded-xl border border-ink-200 bg-white p-3 text-xs text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 font-sans leading-relaxed"
+                <AutoGrowTextarea
+                  minRows={4}
                   placeholder="면접 진행 중 관찰한 답변 태도, 답변 내용, 질문 기록 (입력 시 자동 저장)..."
                   value={personalMemo}
-                  onChange={(e) => {
-                    setPersonalMemo(e.target.value);
-                    handleSaveMemo(e.target.value);
-                  }}
+                  onChange={(e) => handleMemoChange(e.target.value)}
+                  onBlur={flushMemo}
+                  aria-label="내 개인 질문/관찰 실시간 메모"
                 />
               </div>
 
               {/* 면접 점수 입력 카드 */}
               <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/70 via-cream-50 to-blue-50/70 p-5 space-y-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-ink-900">내 면접 점수 심사</h3>
+                  <h3 className="text-sm font-bold text-ink-900">
+                    내 면접 점수 심사
+                    {myExistingScore && (
+                      <span className="ml-2 text-xs font-semibold text-ink-500">
+                        (이미 {parseFloat(myExistingScore.score).toFixed(1)}점 매김 — 저장하면 덮어씁니다)
+                      </span>
+                    )}
+                  </h3>
                   <span className="text-xs text-blue-700 font-semibold">0.0 ~ 10.0점 (0.5 단위)</span>
                 </div>
 
-                {/* 퀵 점수 선택 */}
-                <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-ink-500">빠른 점수 선택:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {QUICK_SCORES.map((scoreVal) => (
-                      <button
-                        key={scoreVal}
-                        type="button"
-                        onClick={() => setMyScore(scoreVal)}
-                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                          myScore === scoreVal
-                            ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
-                            : 'bg-white text-ink-700 border border-ink-200 hover:bg-cream-100'
-                        }`}
-                      >
-                        {scoreVal}점
-                      </button>
-                    ))}
+                {/* 퀵 버튼은 5.0 부터라 낮은 점수를 아예 줄 수 없었다 — 직접 입력칸을 둔다. */}
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="w-32">
+                    <Field label="점수 직접 입력">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={myScore}
+                        onChange={(e) => setMyScore(e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-semibold text-ink-500">자주 쓰는 점수:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_SCORES.map((scoreVal) => (
+                        <button
+                          key={scoreVal}
+                          type="button"
+                          onClick={() => setMyScore(scoreVal)}
+                          aria-pressed={myScore === scoreVal}
+                          className={`min-h-tap rounded-lg px-2.5 text-xs font-bold transition-colors ${
+                            myScore === scoreVal
+                              ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
+                              : 'bg-white text-ink-700 border border-ink-200 hover:bg-cream-100'
+                          }`}
+                        >
+                          {scoreVal}점
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
+                  {/* 총평은 여러 줄로 쓰는 값이다 — 한 줄 입력칸이라 줄바꿈이 안 됐다. */}
                   <Field label="면접 평가 총평 코멘트">
-                    <Input
-                      type="text"
+                    <AutoGrowTextarea
+                      minRows={3}
                       placeholder="면접관 종합 평가 총평 코멘트..."
                       value={myComment}
                       onChange={(e) => setMyComment(e.target.value)}
@@ -388,24 +477,32 @@ export function RecruitInterviewConsolePanel() {
               {/* 다른 면접관 기록 */}
               <div className="space-y-3 pt-2">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400">
-                  타 면접관 점수 기록 ({currentInterviewScores.length}건)
+                  타 면접관 점수 기록 ({otherInterviewScores.length}건)
                 </h3>
-                {currentInterviewScores.length > 0 ? (
+                {otherInterviewScores.length > 0 ? (
                   <div className="space-y-2">
-                    {currentInterviewScores.map((s) => (
-                      <div key={s.id} className="rounded-xl border border-cream-200 bg-white p-3 text-xs flex justify-between items-center shadow-card">
-                        <div>
-                          <span className="font-bold text-blue-700 text-sm">{s.score}점</span>
-                          {s.comment && <span className="ml-3 text-ink-700 font-medium">"{s.comment}"</span>}
+                    {otherInterviewScores.map((s) => (
+                      <div key={s.id} className="rounded-xl border border-cream-200 bg-white p-3 text-xs shadow-card">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="flex items-baseline gap-2">
+                            <span className="font-bold text-blue-700 text-sm">{parseFloat(s.score).toFixed(1)}점</span>
+                            {/* 누가 준 점수인지 없으면 조율도 정정도 못 한다. */}
+                            <span className="font-semibold text-ink-700">
+                              {staffNames[s.scorerUserId] || '이름 미상'}
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-ink-400 font-mono">
+                            {new Date(s.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
                         </div>
-                        <span className="text-[11px] text-ink-400 font-mono">
-                          {new Date(s.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        {s.comment && (
+                          <p className="mt-1.5 whitespace-pre-wrap leading-relaxed text-ink-700">{s.comment}</p>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-ink-400">등록된 면접 점수가 없습니다.</p>
+                  <p className="text-xs text-ink-400">다른 면접관이 등록한 점수가 없습니다.</p>
                 )}
               </div>
             </Card>

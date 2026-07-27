@@ -31,7 +31,8 @@ export async function GET(req: Request): Promise<Response> {
     const applicantIds = applicants.map((a) => a.id);
     const aggregations = aggregateScoresByApplicant(applicantIds, scores);
 
-    return NextResponse.json({ scores, aggregations });
+    // 내가 매긴 점수를 화면에서 골라내려면 내 userId 가 필요하다(면접 콘솔의 '내 점수' 구분).
+    return NextResponse.json({ scores, aggregations, viewerUserId: actor.userId });
   }
 
   return NextResponse.json({ error: 'missing_parameter' }, { status: 400 });

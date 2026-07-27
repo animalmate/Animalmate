@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { internalError } from '@/http/errors';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
-import { purgeCohortApplicants } from '@/recruit/purge';
+import { purgeCohortApplicants, PurgeNotAllowedError } from '@/recruit/purge';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +23,9 @@ export async function POST(req: Request): Promise<Response> {
     const archivedStats = await purgeCohortApplicants(cohortId, actor.userId);
     return NextResponse.json({ success: true, archivedStats });
   } catch (e) {
+    if (e instanceof PurgeNotAllowedError) {
+      return NextResponse.json({ error: 'purge_not_allowed', message: e.message }, { status: 409 });
+    }
     return internalError('recruit/purge POST', e);
   }
 }
