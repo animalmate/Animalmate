@@ -44,6 +44,7 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     otp_too_many_attempts: '실패가 많습니다. 코드를 재발급해 주세요.',
     otp_not_found: '유효한 인증 코드가 없습니다. 재발급해 주세요.',
     cooldown: '잠시 후 다시 시도해 주세요.',
+    consent_required: '개인정보 수집·이용에 동의해야 가입할 수 있습니다.',
     forbidden: '권한이 없습니다.',
     slot_taken: '이미 같은 시각에 예약된 글이 있습니다. 다른 시각으로 잡아 주세요.',
     unauthorized: '로그인이 필요합니다.',

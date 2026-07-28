@@ -5,6 +5,7 @@ import { apiPost, errorMessage } from '@/lib/api';
 import { useCooldown } from '@/lib/use-cooldown';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton } from '@/components/ui';
 import { CursorDog } from '@/components/cursor-dog';
+import { CONSENT_LABEL } from '@/legal/privacy';
 
 export function SignupForm() {
   const router = useRouter();
@@ -16,6 +17,8 @@ export function SignupForm() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // 개인정보 수집·이용 동의. 서버도 이 값을 다시 검사한다(UI 체크는 권한 검증이 아니다 — 규칙 #6).
+  const [consent, setConsent] = useState(false);
   const cooldown = useCooldown();
 
   async function request() {
@@ -36,7 +39,13 @@ export function SignupForm() {
   async function verify() {
     setError('');
     setBusy(true);
-    const r = await apiPost('/api/auth/signup/verify', { email: email.trim(), code: code.trim(), name: name.trim(), phone: phone.trim() });
+    const r = await apiPost('/api/auth/signup/verify', {
+      email: email.trim(),
+      code: code.trim(),
+      name: name.trim(),
+      phone: phone.trim(),
+      privacyConsent: consent,
+    });
     setBusy(false);
     if (!r.ok) return setError(errorMessage(r.data.error));
     router.push('/');
@@ -67,8 +76,22 @@ export function SignupForm() {
             <Field label="가입코드" hint="동아리 카페 공지의 학기 가입코드">
               <Input value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="가입코드" />
             </Field>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-cream-50 p-3">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600"
+              />
+              <span className="text-[12.5px] leading-relaxed text-ink-600">
+                {CONSENT_LABEL.signup}{' '}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                  개인정보처리방침
+                </a>
+              </span>
+            </label>
             <ErrorText>{error}</ErrorText>
-            <Button className="w-full" disabled={busy || !name || !email || !phone || !joinCode} onClick={request}>
+            <Button className="w-full" disabled={busy || !name || !email || !phone || !joinCode || !consent} onClick={request}>
               {busy ? '전송 중…' : '인증 코드 받기'}
             </Button>
             <InfoText>

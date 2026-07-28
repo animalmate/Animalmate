@@ -5,6 +5,7 @@ import { Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { CursorDog } from '@/components/cursor-dog';
 import type { ApplyFormConfig, FieldKey } from '@/recruit/apply-form';
+import { CONSENT_LABEL } from '@/legal/privacy';
 
 interface CohortSummary {
   id: string;
@@ -93,6 +94,9 @@ export function PublicRecruitApplyPanel({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ name: string; phone: string } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  // 개인정보 수집·이용 동의. 지원자는 비부원이라 동의 없이 받아 두면 안 된다.
+  // 서버(/api/recruit/apply)도 같은 값을 다시 검사한다(규칙 #6).
+  const [consent, setConsent] = useState(false);
 
   const set = <K extends keyof typeof EMPTY_FORM>(key: K, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -128,6 +132,10 @@ export function PublicRecruitApplyPanel({
       setErrorMsg('1순위와 2순위는 서로 다른 팀으로 선택해 주세요.');
       return;
     }
+    if (!consent) {
+      setErrorMsg('개인정보 수집·이용에 동의해야 지원서를 제출할 수 있습니다.');
+      return;
+    }
 
     setSubmitting(true);
     setErrorMsg('');
@@ -139,6 +147,7 @@ export function PublicRecruitApplyPanel({
         body: JSON.stringify({
           cohortId: cohort?.id,
           ...form,
+          privacyConsent: consent,
           // 체크했을 때만 설정된 문구를 저장한다. 안 하면 빈 값 = 대면.
           remoteInterviewWish: remoteWish ? config.remoteInterviewCheckboxLabel : '',
         }),
@@ -525,8 +534,22 @@ export function PublicRecruitApplyPanel({
               )}
             </div>
 
-            <div className="border-t border-ink-100 pt-5">
-              <Button type="submit" disabled={submitting} className="w-full">
+            <div className="space-y-4 border-t border-ink-100 pt-5">
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-cream-50 p-3.5">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-coral-600"
+                />
+                <span className="text-[12.5px] leading-relaxed text-ink-600">
+                  {CONSENT_LABEL.apply}{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                    개인정보처리방침
+                  </a>
+                </span>
+              </label>
+              <Button type="submit" disabled={submitting || !consent} className="w-full">
                 {submitting ? '제출 중…' : '지원서 제출하기'}
               </Button>
             </div>

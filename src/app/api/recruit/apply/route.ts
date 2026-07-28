@@ -52,6 +52,16 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
+
+    // 개인정보 수집·이용 동의 없이는 접수하지 않는다. 지원자는 비부원이고 자기소개서까지 받으므로
+    // 동의가 곧 수집 근거다. 화면에서 버튼을 잠그는 것은 검증이 아니다(규칙 #6).
+    if (body.privacyConsent !== true) {
+      return NextResponse.json(
+        { error: 'consent_required', message: '개인정보 수집·이용에 동의해야 지원서를 제출할 수 있습니다.' },
+        { status: 400 }
+      );
+    }
+
     let cohortId = String(body.cohortId ?? '').trim();
 
     if (!cohortId) {
