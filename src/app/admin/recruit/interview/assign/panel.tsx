@@ -5,11 +5,12 @@ import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { matchesTeamFilter } from '@/recruit/team-filter';
-import { slotPlaceLabel } from '@/recruit/display';
+import { slotPlaceLabel, slotPanelNumbers, slotPanelSuffix } from '@/recruit/display';
+import { TimetableModal } from './timetable-modal';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { useTeams } from '@/components/use-teams';
-import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+import { Button, Card, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -38,6 +39,7 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [showTimetable, setShowTimetable] = useState(false);
 
   // 10분 단위 시각 리스트 생성 (09:00 ~ 21:50)
   const timeOptions: string[] = [];
@@ -271,6 +273,23 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
 
   const filteredApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
 
+  // 같은 시각·같은 장소 슬롯(동시 진행 조)에 번호를 매긴다. 드롭다운·카드가 같은 번호를 쓴다.
+  const panelNumbers = slotPanelNumbers(slots);
+
+  // 시간표 팝업에 넘길 모양으로 한 번만 접는다.
+  const applicantsBySlot: Record<string, { name: string; team?: string | null }[]> = {};
+  applicants.forEach((a) => {
+    if (!a.slotId) return;
+    (applicantsBySlot[a.slotId] ??= []).push({
+      name: a.name,
+      team: a.assignedTeam || a.wishTeam1 || null,
+    });
+  });
+  const interviewerNamesBySlot: Record<string, string[]> = {};
+  Object.entries(slotInterviewersMap).forEach(([slotId, list]) => {
+    interviewerNamesBySlot[slotId] = (list ?? []).map((i: any) => i.name);
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -432,10 +451,14 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
 
       {/* 2. 생성된 슬롯별 운영진(면접관) 및 지원자 배정 관리 */}
       <Card className="space-y-4">
-        <div className="flex items-center justify-between border-b border-cream-200 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 pb-3">
           <h2 className="text-base font-bold text-ink-900">
             생성된 면접 슬롯 및 운영진(면접관) 배정 현황 ({slots.length}개 슬롯)
           </h2>
+          {/* 카드가 흩어져 있으면 전체 흐름이 안 보인다. 공지에 붙일 표는 한 장으로 봐야 한다. */}
+          <SecondaryButton type="button" onClick={() => setShowTimetable(true)} disabled={slots.length === 0}>
+            현재 현황 보기
+          </SecondaryButton>
         </div>
 
         {slots.length === 0 ? (
@@ -462,6 +485,13 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                           minute: '2-digit',
                         })}{' '}
                         ({slot.durationMin}분)
+                        {/* 카드도 드롭다운과 같은 조 번호를 쓴다 — 안 그러면 똑같이 생긴 카드 둘 중
+                            어느 것이 드롭다운의 1조인지 알 수 없다. */}
+                        {(panelNumbers[slot.id] ?? 0) > 0 && (
+                          <span className="rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            {panelNumbers[slot.id]}조
+                          </span>
+                        )}
                       </span>
                       {/* 예전엔 venue 가 있으면 링크를 아예 안 보여줬다 — 비대면 슬롯인데
                           어디로 들어가는지 이 카드에서 확인할 수 없었다. 둘 다 보여준다. */}
@@ -597,6 +627,9 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                             minute: '2-digit',
                           })}{' '}
                           | {slotPlaceLabel(s)} ({s.durationMin}분)
+                          {/* 같은 시각·같은 장소를 나눠 쓰는 조는 이 꼬리표가 없으면
+                              드롭다운에 완전히 같은 줄로 뜬다 — 어느 쪽을 고르는지 알 수 없다. */}
+                          {slotPanelSuffix(panelNumbers[s.id] ?? 0, (slotInterviewersMap[s.id] ?? []).map((i: any) => i.name))}
                         </option>
                       ))}
                     </Select>
@@ -607,6 +640,15 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
           </table>
         </div>
       </Card>
+
+      {showTimetable && (
+        <TimetableModal
+          slots={slots}
+          applicantsBySlot={applicantsBySlot}
+          interviewersBySlot={interviewerNamesBySlot}
+          onClose={() => setShowTimetable(false)}
+        />
+      )}
     </div>
   );
 }

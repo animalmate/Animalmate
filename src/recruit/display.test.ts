@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatScore, docSampleState, slotPlaceLabel } from './display';
+import { formatScore, docSampleState, slotPlaceLabel, slotPanelNumbers, slotPanelSuffix } from './display';
 
 describe('점수 표기', () => {
   it('정수 평균도 소수 첫째 자리까지 쓴다', () => {
@@ -50,5 +50,52 @@ describe('면접 슬롯 장소 표기', () => {
     expect(slotPlaceLabel({ isRemote: false, venue: '학생회관 201호' })).toBe('학생회관 201호');
     expect(slotPlaceLabel({ isRemote: false, venue: null })).toBe('대면');
     expect(slotPlaceLabel({})).toBe('대면');
+  });
+});
+
+describe('동시 면접(병렬 조) 구분', () => {
+  const T = '2026-08-15T01:00:00Z';
+  const T2 = '2026-08-15T01:30:00Z';
+
+  it('같은 시각·같은 장소가 여럿이면 조 번호를 매긴다', () => {
+    // 드롭다운에 똑같은 줄이 두 개 떠서 어느 쪽을 고르는지 알 수 없던 문제.
+    const n = slotPanelNumbers([
+      { id: 'a', startsAt: T, venue: '학생회관 201호' },
+      { id: 'b', startsAt: T, venue: '학생회관 201호' },
+      { id: 'c', startsAt: T, venue: '학생회관 201호' },
+    ]);
+    expect(n).toEqual({ a: 1, b: 2, c: 3 });
+  });
+
+  it('겹치지 않는 슬롯에는 번호를 붙이지 않는다(군더더기)', () => {
+    const n = slotPanelNumbers([
+      { id: 'a', startsAt: T, venue: '학생회관 201호' },
+      { id: 'b', startsAt: T, venue: '동아리방' }, // 같은 시각 다른 장소
+      { id: 'c', startsAt: T2, venue: '학생회관 201호' }, // 같은 장소 다른 시각
+    ]);
+    expect(n).toEqual({ a: 0, b: 0, c: 0 });
+  });
+
+  it('비대면끼리도 같은 시각이면 구분한다', () => {
+    const n = slotPanelNumbers([
+      { id: 'a', startsAt: T, venue: null, isRemote: true },
+      { id: 'b', startsAt: T, venue: null, isRemote: true },
+    ]);
+    expect(n).toEqual({ a: 1, b: 2 });
+  });
+
+  it('대면과 비대면은 같은 시각이어도 다른 칸이다', () => {
+    const n = slotPanelNumbers([
+      { id: 'a', startsAt: T, venue: '학생회관 201호' },
+      { id: 'b', startsAt: T, venue: null, isRemote: true },
+    ]);
+    expect(n).toEqual({ a: 0, b: 0 });
+  });
+
+  it('조 번호 꼬리표는 면접관을 알면 함께 적는다', () => {
+    // 번호만 있으면 "1조가 누구지?"를 다시 찾아봐야 한다.
+    expect(slotPanelSuffix(1, ['이운영', '최운영'])).toBe(' · 1조(이운영·최운영)');
+    expect(slotPanelSuffix(2, [])).toBe(' · 2조');
+    expect(slotPanelSuffix(0, ['이운영'])).toBe('');
   });
 });

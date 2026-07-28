@@ -38,6 +38,54 @@ export interface SlotLike {
  * 조합을 그대로 받는다 — 그렇게 만들어진 비대면 슬롯이 **"대면"으로 표시됐다.**
  * 저장된 불리언을 믿고, venue 는 그 위에 덧붙이는 설명으로만 쓴다.
  */
+export interface SlotForLabel extends SlotLike {
+  id: string;
+  startsAt: string | Date;
+}
+
+/**
+ * 같은 시각·같은 장소에 슬롯을 여러 개 두는 것은 **정상 운영**이다 — 한 방에서 면접관 조를
+ * 나눠 동시에 여러 명을 본다. 문제는 그 슬롯들의 이름이 완전히 같아서
+ * "배정할 면접 슬롯" 드롭다운에 똑같은 줄이 두 개 뜨고, 어느 쪽을 고르는지 알 수 없던 것이다.
+ *
+ * → 같은 시각·같은 장소 묶음에 둘 이상이면 만든 순서대로 **1-based 조 번호**를 준다.
+ *   묶음에 하나뿐이면 0(번호를 붙이지 않는다 — 대부분의 경우 군더더기다).
+ */
+export function slotPanelNumbers(slots: SlotForLabel[]): Record<string, number> {
+  const groups = new Map<string, SlotForLabel[]>();
+  for (const s of slots) {
+    const t = new Date(s.startsAt).getTime();
+    const key = `${Number.isNaN(t) ? String(s.startsAt) : t}|${slotPlaceLabel(s)}`;
+    const group = groups.get(key);
+    if (group) group.push(s);
+    else groups.set(key, [s]);
+  }
+
+  const out: Record<string, number> = {};
+  for (const group of groups.values()) {
+    if (group.length < 2) {
+      for (const s of group) out[s.id] = 0;
+      continue;
+    }
+    // 만든 순서 = id 순이 아니라 배열에 들어온 순서(서버가 startsAt 오름차순으로 준다).
+    group.forEach((s, i) => {
+      out[s.id] = i + 1;
+    });
+  }
+  return out;
+}
+
+/**
+ * 드롭다운·카드에 쓸 슬롯 한 줄 설명.
+ * 조 번호가 있으면 붙이고, 면접관을 알면 누가 보는 조인지까지 적는다 —
+ * 조 번호만으로는 "1조가 누구지?"를 다시 찾아봐야 한다.
+ */
+export function slotPanelSuffix(panelNo: number, interviewers: string[] = []): string {
+  if (panelNo <= 0) return '';
+  const who = interviewers.filter(Boolean).join('·');
+  return who ? ` · ${panelNo}조(${who})` : ` · ${panelNo}조`;
+}
+
 export function slotPlaceLabel(slot: SlotLike): string {
   const venue = slot.venue?.trim();
   if (slot.isRemote) {

@@ -9,12 +9,13 @@ export function Modal({
   onClose,
   children,
   // 도움말처럼 읽을거리가 들어가는 팝업은 넓어야 줄이 짧게 끊기지 않는다.
+  // xl 은 표(면접 시간표)처럼 가로로 넓은 내용용.
   size = 'md',
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
-  size?: 'md' | 'lg';
+  size?: 'md' | 'lg' | 'xl';
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -42,7 +43,7 @@ export function Modal({
     >
       <div
         className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-modal ${
-          size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
+          size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
         }`}
       >
         <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-5 py-3.5">

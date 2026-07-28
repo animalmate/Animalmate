@@ -10,7 +10,7 @@ import { ScreenNotes } from '@/components/screen-notes';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { EssayBlock } from '@/components/essay-block';
 import { formatPhone } from '@/lib/phone';
-import { slotPlaceLabel, formatScore } from '@/recruit/display';
+import { slotPlaceLabel, formatScore, slotPanelNumbers, slotPanelSuffix } from '@/recruit/display';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -235,6 +235,9 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   });
   const myScoredCount = filteredApplicants.filter((a) => myInterviewScores[a.id] !== undefined).length;
 
+  // 같은 시각·같은 장소를 나눠 쓰는 조 번호(슬롯 필터가 쓴다).
+  const panelNumbers = slotPanelNumbers(slots);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -259,6 +262,8 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                 {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                 {' | '}
                 {slotPlaceLabel(s)}
+                {/* 동시 진행 조는 시각·장소가 같아 이 꼬리표가 없으면 구분되지 않는다. */}
+                {slotPanelSuffix(panelNumbers[s.id] ?? 0)}
               </option>
             ))}
           </ToolbarSelect>
