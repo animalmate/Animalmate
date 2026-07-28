@@ -22,11 +22,17 @@
 > ⑦ 파비콘(`src/app/icon.png`). ⑧ **테스트가 실메일 보내는 사고 → `defaultMailer` 가 테스트 환경에선 항상 dry.**
 
 ## Phase 0 — 외부 검증 & 계정 셋업 (캠프 직후 ~8월 말) [GO/NO-GO 게이트]
-- [ ] 동아리 공용 Gmail 생성 (복구 이메일 = 회장 개인 메일)
-- [ ] 비밀번호 금고 세팅, 자산 대장 문서 시작 (계정/용도/복구수단/비용/갱신일)
-- [ ] GitHub Organization 생성, 리포 이전, 개발자 개인 계정 멤버 등록
+> 체크 갱신 2026-07-28: **증거가 있는 항목만** 체크했다. 아래 근거를 함께 적어 둔다 —
+> "아마 했을 것"으로 체크하면 인수인계 때 안 된 일을 된 것으로 넘기게 된다.
+- [~] 동아리 공용 Gmail 생성 (복구 이메일 = 회장 개인 메일)
+      → SMTP_USER/PASS 가 설정돼 있어 계정 자체는 있는 것으로 보인다. **복구 이메일 설정 여부는 미확인.**
+- [~] 비밀번호 금고 세팅, 자산 대장 문서 시작 (계정/용도/복구수단/비용/갱신일)
+      → 자산 대장(`05-ASSET-REGISTRY.md`)은 작성·유지 중. **금고 세팅 여부는 문서로 확인 불가.**
+- [x] GitHub Organization 생성, 리포 이전, 개발자 개인 계정 멤버 등록
+      → 리포가 `animalmate/Animalmate`(Org 소유), 백업 리포 `animalmate/animalmate-backups` 도 Org 소유.
 - [ ] 네이버 조직(단체) 계정 확보 시도 → 불가 시 일반 공용 계정 + 인증 전화번호 대장 기록
-- [ ] 네이버 개발자센터 앱 등록(조직 계정 소유), 봇 계정 OAuth 동의, 앱 멤버 등록
+- [x] 네이버 개발자센터 앱 등록(조직 계정 소유), 봇 계정 OAuth 동의, 앱 멤버 등록
+      → 앱 등록·동의 없이는 글쓰기 실호출이 불가능한데 3/3 성공(2026-07-23). 실카페 발행도 가동 중.
       실행: `node scripts/naver-token.mjs` (앱에 Callback URL http://localhost:3000/callback 등록 필요.
       브라우저 동의 → refresh token 1회 출력 → .env NAVER_REFRESH_TOKEN + 금고에 저장)
 - [x] **글쓰기 API 실호출 검증**: 텍스트 / 이미지 multipart / 게시판(menuid) 지정 각 1회 성공
@@ -45,7 +51,8 @@
 - [x] 전체 게시판 menuid 수집 → 초기 boards 데이터 작성
       → 2026-07-23 19개 게시판 수집, 05-ASSET-REGISTRY 게시판 레지스트리에 기록.
       단, menuid 68(테스트) 외 게시판의 봇 쓰기 가능 여부는 실발행 전 게시판별 확인 필요.
-- [ ] GO/NO-GO: API 검증 실패 항목이 있으면 폴백(반자동 복붙 발행) 채택 여부 결정·기록
+- [x] GO/NO-GO: API 검증 실패 항목이 있으면 폴백(반자동 복붙 발행) 채택 여부 결정·기록
+      → **GO**(2026-07-23, 3/3 성공). 폴백 불필요. `05-ASSET-REGISTRY.md` 검증 표에 기록됨.
 
 ## Phase 1 — 파일럿: 1개 팀 핵심 루프 (9월 ~ 10월 중순)
 ### 1A. 기반
@@ -78,8 +85,12 @@
       jobid4 draft-generate 매일(`0 0 * * *`). 프로덕션 헬스 200/db:up. Vercel 배포+환경변수 라이브.
 - [x] /api/health(경량 DB 조회) + UptimeRobot 5분 모니터 등록
       DoD: 무료 티어 7일 일시정지 방지 링크 가동 + 다운 알림. → 2026-07-24 UptimeRobot 등록 완료(사용자).
-- [ ] Supabase Auth 커스텀 SMTP를 **Gmail(공용 계정 앱 비밀번호)**로 연결 (기본 메일 한도로는 운영 불가)
-      + 앱 알림 발송 모듈(nodemailer, Gmail SMTP): 팀장단 초안 알림·발행 실패 알림·핸드오프. 공용 SMTP_* env.
+- [~] ~~Supabase Auth 커스텀 SMTP 연결~~ → **해당 없음.** 이 앱은 Supabase Auth 를 쓰지 않고
+      자체 OTP(`src/auth/otp.ts`)로 인증한다. 메일은 앱이 직접 보낸다.
+      앱 알림 발송 모듈은 **구현 완료**(`src/auth/mailer.ts`, nodemailer + Gmail SMTP):
+      OTP·가입 안내·발행 실패·미완성 점검 알림. `SMTP_HOST+USER+PASS` 가 다 있으면 실발송, 없으면 dry.
+      **테스트 환경에서는 항상 dry**(2026-07-24 실메일 유출 사고 이후).
+      **남음**: Vercel 에 SMTP_* 등록 여부 확인 + 실발송 1회 확인.
 ### 1B. 카페 발행
 - [x] boards 레지스트리 CRUD (회장단 전용)
       → 2026-07-23 완료. `src/boards/service.ts`(list/get/create/update/delete). 쓰기=board.registry
@@ -94,14 +105,16 @@
       부트스트랩 스크립트 완료: `node scripts/bootstrap-token.mjs`(.env NAVER_REFRESH_TOKEN →
       TOKEN_ENCRYPTION_KEY 암호화 → naver_tokens 저장, 성공 시 .env 토큰 제거 안내). 실행은 사용자가
       TOKEN_ENCRYPTION_KEY 생성 후.
-- [~] scheduled_posts 작성 화면(제목/본문/이미지/게시판/발행시각) + 상태머신
+- [x] scheduled_posts 작성 화면(제목/본문/이미지/게시판/발행시각) + 상태머신
+      → 화면도 완료(`/reservations`, `/reservations/new`, `/reservations/[id]/edit`). 아래 "남음: 작성 UI"는 해소됨.
       → 2026-07-23 상태머신·서비스 완료: `src/publishing/state-machine.ts`(draft→ready→scheduled→
       published|failed, **code 999=rate_limited→failed 아님·대기 후 재시도**, 단위테스트로 증명) +
       `src/publishing/scheduled-posts.ts`(createDraft/markReady[필수값 검증]/schedule/fetchDuePosts/
       applyPublishResult) + `src/naver/cafe-write.ts`(**dry-run 게이트: 기본 dryRun=true, false 명시 시만 실카페**).
       단위 12 + 통합 6. 남음: 작성 UI(인증/프론트).
-- [ ] 발행 워커(pg_cron 매분 → API): due 소량(≤5건) 처리, 건별 30초 간격, code 999는 대기 후 재시도,
+- [x] 발행 워커(pg_cron 매분 → API): due 소량(≤5건) 처리, 건별 30초 간격, code 999는 대기 후 재시도,
       그 외 재시도 2회, 실패 알림 메일. DoD: 예약 3건이 지정 시각 ±2분 내 카페에 게시되고 URL 저장됨
+      → 워커·라우트·pg_cron 잡·실카페 전환까지 완료(2026-07-24). `publishing` 점유 상태로 중복 게시 차단(0017).
       → 2026-07-23 라우트+워커 완료: `src/app/api/cron/publish/route.ts`(CRON_SECRET 검증→워커→JSON 요약)
       + `src/publishing/publish-worker.ts`(due≤5, 실게시 건별 30초, code 999 대기재시도, **처리 요약을
       응답+audit(cron.publish)에 기록**) + `src/http/cron-auth.ts`(상수시간 비교). 인증 단위 5+워커 통합 2.
@@ -156,15 +169,21 @@
       Gemini explicit context cache 로 재사용(캐시 키에 PII·가변 검색결과 제외). 사용량은 /admin/chatbot 확인.
 
 ## Phase 2 — 확산 & 고도화 (10월 하순 ~ 11월)
-- [ ] 5개 팀 반복 규칙 등록, 팀장단 온보딩(가이드 1페이지)
-- [ ] 챗봇 상태형 질의: 다가오는 봉사 목록(events) tool 연결 (잔여 인원 없음 — 신청은 카페 댓글)
+- [ ] 5개 팀 온보딩(반복 규칙 등록은 일괄 생성 폐기로 해당 없음 — 팀장단 온보딩만 남음)
+- [x] **챗봇 상태형 질의: 다가오는 봉사 목록(events) tool 연결** — `src/rag/tools.ts` 에 tool 2개
+      (`list_upcoming_volunteer_sessions`, `get_volunteer_session_detail`) 구현·연결 완료.
+      노출 기준은 "취소 아님 + 장소 정해짐"(07-DECISIONS 24). 잔여 인원 없음(신청은 카페 댓글).
+      → 1D 와 함께 이미 만들어졌는데 이 줄만 미체크로 남아 있었다(2026-07-28 대조에서 발견).
 - [ ] **F8 총무 모듈(v1 최소)**: dues(학기별 회비 — 부원 명단 대비 미납/납부/면제, 금액·계좌 미저장)
       + expenses(지출 대장: 일자/분류(운영비·행사비·기타)/내역/금액/영수증 이미지/메모, 승인 없음).
       **총무·회장단만 접근**(일반 운영진 불가, RLS+서버 검증). 영수증=비공개 Storage, 수정이력 audit.
       스키마는 03 "Phase 2 예정"(확정) → 착수 시 마이그레이션. 자동이체/결제/정산 요청 제외(v2)
 - [x] **F9 신입 기수 모집(2026-07-25 착수, 2026-07-26 완료)** — 상세 설계 = `docs/09-RECRUIT-DESIGN.md`.
       v1은 지원자 CSV 업로드 → 서류 채점(운영진) → 서류 확정(회장단) → 면접 배정 → 면접 채점 →
-      최종 확정 → 결과 공개 → **데이터 폐기**까지 전 과정을 사이트에서 처리. 지원서 접수 폼은 v2.
+      최종 확정 → 결과 공개 → **데이터 폐기**까지 전 과정을 사이트에서 처리.
+      ~~지원서 접수 폼은 v2.~~ → **공개 접수 폼도 구현됨**(`/recruit/apply` + `POST /api/recruit/apply`,
+      10분 5회 레이트리밋, 이름+전화 중복 409, 마감·폐기 기수 차단). 2026-07-28 현황 점검에서
+      "문서는 v2 라는데 코드에는 있다"로 발견해 표기를 고쳤다.
       **채점은 운영진, 결정은 회장단**(운영진은 합격 여부 변경 불가). 결정 #7 번복(전량 저장, 07-DECISIONS 24).
   - [x] **1a 데이터 기반**: 마이그레이션 0013(recruit_cohorts/slots/applicants/scores/memos +
         screen_notes + mapping_presets, 전 테이블 RLS ON, 점수 0~10·0.5단위 CHECK) + 권한 Action
@@ -215,15 +234,29 @@
 - [ ] 평가셋 30문항 작성 + 오답률 측정 스크립트 + 주간 기록
 - [ ] 지표 대시보드: 발행 성공/실패, 자동 응답률, 핸드오프율, 팀별 사용 현황
 - [ ] audit log 조회 화면(회장단), 데이터 CSV export
-- [ ] 주 1회 자동 백업: GitHub Actions pg_dump → 암호화(키는 Actions 시크릿+금고) → 비공개 저장
-      DoD: 백업본으로 로컬 복원 리허설 1회 성공 (무료 티어는 자동 백업 없음 — 유일한 안전망)
-- [ ] 개인정보처리방침 페이지 + 가입 동의 체크
+- [~] **주 1회 자동 백업(2026-07-28 구현)**: `.github/workflows/backup.yml` — 매주 일요일 + 매월 1일
+      pg_dump → gzip → GPG(AES256) → **비공개 리포 `animalmate-backups`** 커밋. 보존은 최근 8주 +
+      매월 1일자 6개월(순수 함수 + 단위 테스트). 푸시 전에 복호화 검증, 실패 시 공용 Gmail 알림.
+      공개 리포 아티팩트를 쓰지 않은 이유는 07-DECISIONS 45.
+      복원 스크립트 `scripts/restore-backup.mjs`(기본 dry-run, `--confirm` 없이는 적용 안 함) +
+      절차·리허설 단계는 `05-ASSET-REGISTRY.md` "백업·복원".
+      **남음(DoD)**: 첫 수동 실행 결과 확인 + 로컬 복원 리허설 1회.
+- [x] **개인정보처리방침 페이지 + 가입 동의 체크(2026-07-28)**: `/privacy`(비로그인 공개) 신설.
+      수집 항목을 부원/지원자로 나눠 실제 스키마 기준으로 명시, 이용 목적·보관 기간·파기(모집 종료 시
+      기수 단위 완전 삭제)·처리 위탁(Supabase·Vercel·Google·GitHub) 기재. 원문은 `src/legal/privacy.ts`
+      한 곳. 가입 화면과 지원서에 동의 체크박스 + 링크를 붙이고 **서버에서도 동의를 재검사**한다
+      (규칙 #6). 문의 주소는 `CONTACT_EMAIL` env — 미설정이면 주소를 지어내지 않는다. 07-DECISIONS 48.
 - [ ] 챗봇 인젝션 방어 점검 + 레이트 리밋 + 프롬프트 캐싱 적중률·비용 점검
       + 입력창 '개인정보 입력 금지' 고지/서버 PII 거절 이중 동작 확인
 
 ## Phase 3 — 학기 전환 & 인수인계 (12월 ~ 겨울방학)
 - [ ] 학기 전환 기능: 유임 체크 → 일괄 만료 → 새 학기 가입코드 발급 → audit 묶음 기록
-- [ ] 임기 자동 만료 크론 실전 검증
+- [x] **임기 자동 만료 크론 구현(2026-07-28)** — `src/auth/term-expiry.ts`. 일일 크론이
+      `term_end < 오늘(KST)` 인 active 멤버십을 expired 로 바꾸고 `session_version` 을 올려
+      세션을 끊는다. 사람 단위 audit(`membership.expire [high]`) + 요약 audit.
+      마지막 날은 유효(`term_end === 오늘` 은 만료 아님). 단위 7건 + 실 DB 통합(트랜잭션 롤백).
+      → **문서 3곳이 "크론이 매일 강등한다"고 적고 있었지만 코드는 없었다**(07-DECISIONS 47).
+- [ ] 임기 자동 만료 **실전 검증**(실제 임기 경과 계정이 생겼을 때 크론 로그·audit 확인)
 - [ ] 실제 운영진 교체에 투입 (겨울 교체 시점)
       DoD: 신규 회장단이 개발자 도움 없이 운영진 30명 교체 완료
 - [ ] 인수인계 문서: 자산 대장 최종본 + 장애 대응 가이드(토큰 만료, 발행 실패, 한도 초과)

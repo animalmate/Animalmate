@@ -9,7 +9,9 @@
 > CSV 업로드부터 서류 채점·면접 배정·면접 콘솔·최종 결정·비로그인 결과 조회·데이터 폐기까지 전 과정 동작
 > ([`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md)).
 > 면접 당일 운영에 필요한 **면접 시간표·대기실 업무 배정표**(엑셀 붙여넣기용 복사 포함)까지 붙었다.
-> 남은 것 = 운영 작업(안내 문서 입력), Phase 2 잔여(총무 F8, 평가셋·지표 대시보드·자동 백업).
+> **2026-07-28**: 주 1회 자동 백업, 개인정보처리방침(`/privacy`)과 동의 절차, 임기 자동 만료 크론 추가.
+> 남은 것 = 운영 작업(**챗봇 안내 문서 입력** — 현재 0건이라 챗봇이 답할 재료가 없다),
+> Phase 2 잔여(총무 F8, 평가셋·지표 대시보드). 현재 상태 전체는 [`docs/10-STATUS.md`](docs/10-STATUS.md).
 
 ## 무엇을 / 왜
 
@@ -70,7 +72,8 @@ UptimeRobot ──5분──► /api/health (일시정지 방지 + 감시)
 | [`docs/05-ASSET-REGISTRY.md`](docs/05-ASSET-REGISTRY.md) | 자산 대장(계정·키 위치·갱신, 값은 미기재) |
 | [`design/docs/06-DESIGN.md`](design/docs/06-DESIGN.md) | 디자인 시스템·UI 프리미티브 규칙 |
 | [`docs/07-DECISIONS.md`](docs/07-DECISIONS.md) | 보안·아키텍처 결정 기록(왜 그렇게 했는지) |
-| [`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md) | F9 신입 모집 기술 설계·실행 계획(진행 중) |
+| [`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md) | F9 신입 모집 기술 설계·실행 계획 |
+| [`docs/10-STATUS.md`](docs/10-STATUS.md) | **현황 스냅샷** — 무엇이 되고 무엇이 안 되는지(외부 조언자용) |
 
 ## 로컬 실행
 
@@ -136,9 +139,23 @@ npm run test:rls         # RLS 기본 거부 증명 + 서비스 통합(실 Supab
 - 스케줄러(pg_cron SQL), Vercel 배포 체크리스트, Gmail SMTP/인증 준비 절차는
   이 README 하단 및 [`docs/02-TECH-STACK.md`](docs/02-TECH-STACK.md), [`docs/04-TODO.md`](docs/04-TODO.md) 참고.
 
+## 백업
+
+`.github/workflows/backup.yml`이 매주 일요일 + 매월 1일에 DB 전체를 덤프해 암호화한 뒤 **비공개 리포**
+`animalmate-backups`에 커밋한다(무료 티어에는 자동 백업이 없다 — 이 잡이 유일한 안전망이다).
+
+**복원 절차와 리허설 단계는 [`docs/05-ASSET-REGISTRY.md`](docs/05-ASSET-REGISTRY.md)의 "백업·복원" 절**에 있다.
+복원은 개발자 작업이라 이 README에 절차를 두지 않는다. 확인만 하는 명령은 안전하다(DB를 건드리지 않는다):
+
+```bash
+BACKUP_ENCRYPTION_KEY='금고 값' node scripts/restore-backup.mjs   # 최신 백업 받아 테이블·행 수만 출력
+```
+
+`--confirm` 없이는 어떤 DB에도 적용하지 않는다.
+
 ## CI
 
-`.github/workflows/ci.yml`이 push/PR마다 타입체크 → 단위 테스트 → RLS 테스트를 실행한다.
+`.github/workflows/ci.yml`이 push/PR마다 타입체크 → 린트 → 단위 테스트 → RLS 테스트를 실행한다.
 RLS 테스트는 GitHub 리포 Settings > Secrets and variables > Actions의 `SUPABASE_URL`,
 `SUPABASE_ANON_KEY`, `DIRECT_URL`(**Repository secret**으로 등록 — Environment secret은
 워크플로에 `environment:` 선언이 없어 안 읽힌다)을 쓴다. 2026-07-27 등록 완료.
@@ -172,7 +189,11 @@ select cron.schedule('publish-worker', '* * * * *', $$
   );
 $$);
 
--- 미완성 점검: 발행 D-3에 필수 필드 빈 예약 → 팀장단 알림(회차 자동 생성 아님).
+-- ⚠ 잡 이름 `draft-generate`는 옛 "회차 자동 생성"에서 온 것으로 **지금 하는 일과 다르다.**
+--    잡을 다시 등록하지 않으려고 이름만 유지한다. 실제 동작 = 일일 유지보수 3가지:
+--      ① 발행 D-3/D-1 미완성 점검 + 팀장단 알림
+--      ② 임기(term_end) 지난 멤버십 강등 + 세션 무효화 (CLAUDE.md 필수원칙 #2)
+--      ③ 지난 레이트 리밋 카운터 정리
 select cron.schedule('draft-generate', '0 0 * * *', $$  -- UTC 00:00 = KST 09:00
   select net.http_post(
     url := 'https://<APP_URL>/api/cron/draft-generate',

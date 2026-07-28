@@ -15,6 +15,9 @@
     보고 회수한다. 결과 반영(`applyPublishResult`)도 `status='publishing'` 일 때만 적용해,
     임차가 만료돼 회수된 뒤 뒤늦게 끝난 워커가 남의 결과를 덮어쓰지 못하게 한다.
 - `event_status`: draft → published → done | canceled   ← 공지 발행 회차 상태(신청 제거로 단순화, 마이그레이션 0002 적용)
+  - ⚠ **enum 에는 4개가 있지만 코드가 실제로 쓰는 값은 `draft`(생성)와 `canceled`(예약 취소)뿐이다**
+    (2026-07-28 확인). `published`·`done` 으로 전이시키는 코드가 없다. 챗봇 노출 판정도 status 가 아니라
+    "취소 아님 + 장소 있음"으로 한다(07-DECISIONS 24). 나머지 두 값은 지금은 쓰이지 않는 자리다.
 
 ## 테이블
 ### 조직/계정
@@ -44,7 +47,7 @@
   - 학기별 가입코드. **활성 코드는 항상 1개**(부분 유니크 인덱스 `where is_active`). 카페 공지로 배포, 회장단 재발급.
     재발급 = 기존 is_active=false + 신규 발급(트랜잭션), audit 기록. 이력은 비활성 행으로 남긴다.
     가입 시 유효 가입코드 대조 + 이메일 OTP. 운영진/회장단 임명은 회장단이 직접(memberships).
-  - 기존 `invites`(per-email 토큰)는 이 모델로 대체됨(현재 미사용 — 추후 드롭 여부 확정).
+  - 기존 `invites`(per-email 토큰)는 이 모델로 대체됨 → **삭제됨(마이그레이션 0020, 2026-07-28)**. 0행 확인 후 DROP.
 - `email_codes` (id, email, code_hash, purpose[signup|login], expires_at, consumed_at, attempts, created_at)   ← 이메일 OTP(구현됨, 0003)
   - 6자리 OTP. **평문 미저장(HMAC 해시만)**, 만료 10분, 시도 5회 제한, 성공 시 소비. 가입/로그인 공용.
   - 세션은 커스텀 HS256 JWT(httpOnly 쿠키, SESSION_SECRET) — DB 세션 테이블 없음.
@@ -77,13 +80,11 @@
     치환(`final-render.ts`). events 가 장소·정원의 유일한 저장소이므로 회차별 수정이 본문과 어긋날 수 없다.
     치환 후에도 남은 키가 있으면 **게시하지 않는다**(markReady 차단 + 워커가 failed 확정, audit `post.blocked`).
     발행 성공 시 치환된 최종 제목·본문을 `scheduled_posts` 에 저장한다(발행된 글은 수정 불가 = 이 기록이 원본).
-- `recurring_rules` (id, team_id, label, month_week[1..4|last], weekday, time(봉사 집합시간),
-  board_menuid, template_id?, notice_lead_days default 7, publish_time default 20:00, is_active)   ← 0004/0005
-  - **미사용(2026-07-24)**: 일괄 생성 도우미를 없애면서 이 테이블을 읽고 쓰는 코드(`batch-generate.ts`,
-    `recurring-rules.ts`, `month-weekday.ts`, `/reservations/batch`, `/api/reservations/batch`)를 전부 제거했다.
-    테이블은 데이터 보존을 위해 남겨 두었다 — 다시 쓸 일이 없다고 확정되면 DROP 마이그레이션으로 정리한다.
-    (`events.rule_id` 도 함께 미사용.)
-- `events` (id, team_id, rule_id?, title, event_date, meet_time, place, capacity, status, created_at)
+- ~~`recurring_rules`~~ — **삭제됨(마이그레이션 0020, 2026-07-28)**. 일괄 생성 도우미를 없앤
+  2026-07-24 이후로 읽고 쓰는 코드(`batch-generate.ts`, `recurring-rules.ts`, `month-weekday.ts`,
+  `/reservations/batch`, `/api/reservations/batch`)가 전부 사라졌고, 데이터 보존을 위해 남겨 두었으나
+  **0행이라 보존할 것도 없었다**. `events.rule_id` 컬럼과 `month_week` enum 도 함께 제거.
+- `events` (id, team_id, title, event_date, meet_time, place, capacity, status, created_at)
   - **봉사 회차 = 예약 폼과 통합**: 일시(event_date/meet_time)·장소·정원이 event 에 저장되어
     챗봇 상태 질의("이번 주 봉사 어디야")의 **원천**. 필수 필드(event_date, place, capacity) 미완성 시
     발행 불가(F1 안전장치, markReady 가 검증). scheduled_posts.event_id 로 연결(post→event 다대일).
@@ -115,8 +116,11 @@
     안내 메일이 나가므로, IP 를 바꿔 가며 특정인 메일함을 채우는 경로를 주소 단위로 막는다).
   - 지난 윈도 행은 일일 크론(`/api/cron/draft-generate`)이 `pruneRateLimits` 로 정리.
 
-### Phase 2 예정 모듈 (F8 총무 / F9 신입모집) — 설계 확정(2026-07-23), 마이그레이션은 착수 시점
-> 스키마는 아래로 확정. 실제 테이블 생성은 Phase 2 각 모듈 착수 시 마이그레이션으로 반영한다.
+### Phase 2 모듈 — F9 신입모집(**구현 완료**) / F8 총무(**미착수**)
+> **F9 는 이미 만들어져 돌고 있다**(마이그레이션 0013~0019). 아래 F9 항목은 설계가 아니라 현재 스키마다.
+> **F8 은 테이블·라우트·화면이 전부 0** — 아래 스키마만 확정돼 있고 착수 시점에 마이그레이션한다.
+> ⚠ F8 을 만들 때 함께 필요한 것: 현재 `authorize()` 에는 총무용 Action 이 없고
+> `board_position='treasurer'` 를 권한 판단에 쓰는 코드도 없다. "총무만" 권한은 새로 만들어야 한다.
 - **F8 총무** (접근 = **총무 + 회장단만**. 일반 운영진·부원 불가. 자동이체/결제/정산 접수 금지):
   - `dues` (id, user_id, semester_label, status[unpaid|paid|exempt], checked_at?, memo?, updated_by, updated_at)
     — 학기 단위. semester_label 기준 부원 명단 스냅샷 대비 납부 상태 체크. UNIQUE(user_id, semester_label).
@@ -158,6 +162,7 @@
   - `recruit_applicants` (id, cohort_id, name, gender?, birth_date?(text), phone, school?, department?, email?,
     apply_route?, other_activities?, expected_frequency?, wish_team1?, wish_team2?, assigned_team?,
     **near_station?**(주소 대신 역명), ot_attend?(text), remote_interview_wish?(text), essay_intro?, essay_values?,
+    **essay_values_topic?**(가치관 문항에서 고른 주제), **english_name?**(최종 합격자 로타랙트 가입 안내용),
     status, slot_id?, interview_link?, uploaded_by?(set null), created_at) — CSV 업로드 또는 온라인 접수.
     status = received→doc_fail|doc_pass→interview_done|interview_noshow
     →final_pass|final_fail. **phone·자기소개서 = PII, RAG 반입 금지(규칙 #5)·커밋/시드 금지(규칙 #4).**
@@ -197,9 +202,29 @@
    설계: `app_settings` (key, value_json, updated_by, updated_at) 같은 설정 테이블(챗봇 v1 착수 시 신설).
 
 ## 상태머신 요약
-- scheduled_posts: draft(작성중) → ready(필수값 완성) → scheduled(발행 대기)
-  → published(성공, cafe_article_url 기록) / failed(재시도 2회 후, 알림 발송)
-- events(공지 발행 회차): draft(초안, 필수값 미완성 포함) → published(카페 발행 완료) →
-  done(활동일 경과) | canceled. 신청/확정 상태 없음(신청은 카페 댓글). enum 마이그레이션 0002 적용.
-- 학기 전환: 회장단 실행 → 유임 체크 명단 외 memberships 일괄 expired → 신규 invites 발급
-  → 전 과정 audit 1건으로 묶어 기록
+
+- **scheduled_posts**: `draft`(작성중) → `ready`(필수값 완성) → `scheduled`(발행 대기)
+  → **`publishing`**(워커가 집어 감) → `published`(성공, cafe_article_url 기록) / `failed`(재시도 2회 후, 알림 발송)
+  - `publishing` 은 **워커의 점유 표시**다. 크론이 매분 도는데 한 사이클은 건당 30초라, 이 상태가
+    없으면 다음 워커가 아직 `scheduled` 인 글을 다시 집어 **같은 공지가 카페에 두 번** 올라간다
+    (카페는 삭제 API 가 없어 되돌릴 수 없다). `updated_at` 이 점유 임차 시각이며 오래된 `publishing`
+    은 워커가 죽은 것으로 보고 회수한다.
+  - code 999(연속 등록 불가)는 **실패가 아니다** — `scheduled` 유지, `retry_count` 증가 없이 다음 사이클 재시도.
+  - `failed` → `scheduled|draft` 로 운영진이 재시도 큐에 되돌릴 수 있다.
+
+- **events(봉사 회차)**: enum 은 `draft → published → done | canceled` 4단계(마이그레이션 0002)이지만,
+  **코드가 실제로 쓰는 값은 `draft`(생성 시 기본)와 `canceled`(예약 취소 시)뿐이다.**
+  `published`·`done` 으로 전이시키는 코드가 없다(2026-07-28 확인).
+  - 챗봇 노출 판정도 status 가 아니라 **"취소 아님 + 장소(place) 있음"** 으로 한다(07-DECISIONS 24).
+    발행(카페 업로드)과 챗봇 안내는 별개 관심사라는 판단이었다.
+  - 신청/확정 상태 없음(신청은 카페 댓글).
+
+- **memberships**: `active` → `expired`. 전이 경로 3개 —
+  ① **임기 만료(자동)**: 일일 크론이 `term_end < 오늘(KST)` 인 active 행을 `expired` 로 바꾸고
+     `users.session_version` 을 올려 세션을 끊는다(`src/auth/term-expiry.ts`, 07-DECISIONS 47).
+     마지막 날은 유효 — `term_end === 오늘` 은 만료가 아니다.
+  ② **비활성화(수동)**: 회장단이 회원 관리에서 접근을 회수(복구 가능).
+  ③ **탈퇴**: 되돌릴 수 없음 + 개인정보 삭제(07-DECISIONS 30).
+
+- **학기 전환**: **미구현**(Phase 3). 설계는 "회장단 실행 → 유임 명단 외 일괄 expired → 새 학기
+  가입코드 발급 → audit 묶음 기록". `invites` 는 `join_codes` 로 대체됐다(결정 2, 테이블은 0020 에서 DROP).

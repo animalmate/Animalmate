@@ -21,13 +21,17 @@
 | 네이버 봇 계정 | 카페 글쓰기 실행 | 공용 네이버 | 필수 | 금고 | 무료 | — | 카페 가입·쓰기권한 필요 |
 | LLM 제공사 | 생성+임베딩 | 공용 Gmail | 권장 | 금고 | 선불 크레딧 | 월 | 하드 한도+알림 설정 |
 | Gmail SMTP | 이메일 발송(Auth+알림) | 공용 Gmail | 필수 | 금고(앱 비밀번호) | 무료(~500/일) | — | 2FA+앱 비밀번호, Supabase SMTP 연결 |
+| GitHub 백업 리포 | DB 백업 보관 | GitHub Org(공용 Gmail) | 필수 | 금고 | 무료 | — | `animalmate-backups` **Private**. 메인 리포는 public 이라 아티팩트로 보관 불가(07-DECISIONS 45) |
 | UptimeRobot | keep-alive/감시 | 공용 Gmail | 권장 | 금고 | 무료 | — | 5분 핑 /api/health |
 | Sentry | 에러 모니터링 | 공용 Gmail | 권장 | 금고 | 무료 | — | 알림=공용 메일 |
 | 도메인 | 서비스 주소 | 공용 Gmail | 권장 | 금고 | 연 ~2만원 | 매년 | 자동갱신 확인 |
 
 > **스코프 피벗(2026-07-23) 자산 영향**: 신규 외부 계정 불필요. F8 총무 영수증은 기존 Supabase
-> Storage의 **비공개 버킷**에 저장(공개 금지). F9 신입 지원자 PII(이름+전화번호 전체의 해시, 원문 미저장)는 최소 저장·
-> 모집 종료 시 일괄 삭제(비부원 개인정보 보관 금지). 카톡/오픈채팅 관련 자산 항목 없음(시스템 미관여).
+> Storage의 **비공개 버킷**에 저장(공개 금지). ~~F9 신입 지원자 PII(이름+전화번호 전체의 해시, 원문 미저장)~~
+> → **개정(2026-07-25, 07-DECISIONS 24)**: 서류·면접 심사를 사이트에서 직접 수행하므로 지원서 항목을
+> **원문 저장**한다(주소만 역명으로 축소). 열람=운영진 이상, 결정·내려받기=회장단, 모집 종료 시 기수 단위
+> 완전 삭제로 보관을 제한한다. 모집 공고 포스터는 Storage **공개** 버킷 `recruit-notice` 를 쓴다.
+> 카톡/오픈채팅 관련 자산 항목 없음(시스템 미관여).
 
 ## 시크릿/키 인벤토리 (값 아님 — 위치·로테이션만)
 | 키 이름 | 용도 | 저장 위치 | 로테이션 주기 | 비고 |
@@ -37,7 +41,109 @@
 | NAVER_CLIENT_ID/SECRET | 카페 앱 | Vercel 환경변수 + 금고 | 운영진 교체 시 | |
 | TOKEN_ENCRYPTION_KEY | refresh token 암호화 | Vercel 환경변수 + 금고 | 신중히(재암호화 필요) | |
 | CRON_SECRET | pg_cron→API 인증 | Supabase + Vercel + 금고 | 운영진 교체 시 | 양쪽 일치 |
-| BACKUP_ENCRYPTION_KEY | 백업 암호화 | GitHub Actions 시크릿 + 금고 | 신중히 | 평문 덤프 금지 |
+| BACKUP_ENCRYPTION_KEY | 백업 암호화(GPG 대칭) | GitHub Actions 시크릿 + 금고 | 신중히 | **잃으면 모든 백업이 열리지 않는다.** `.env`·Vercel 에 넣지 말 것(앱 런타임 변수 아님) |
+| BACKUP_REPO_TOKEN | 백업 리포 push | GitHub Actions 시크릿 + 금고 | **만료일 주의** | fine-grained PAT, 대상 `animalmate-backups` 한정, Contents read/write + Metadata read. 만료되면 백업이 조용히 멈추므로 갱신일을 달력에 |
+| DIRECT_URL (Actions) | pg_dump 접속 | GitHub Actions 시크릿 + 금고 | DB 비밀번호 변경 시 | 세션 풀러(5432). 트랜잭션 풀러(6543)로는 pg_dump 불가 |
+| SMTP_* (Actions) | 백업 실패 알림 | GitHub Actions 시크릿 + 금고 | 앱 비밀번호 변경 시 | 앱과 같은 값. 선택 `ALERT_TO` 로 수신자 지정 |
+
+## 백업·복원
+
+> **복원은 개발자 작업이다.** 회장단 가이드에 넣지 않는다.
+> Supabase 무료 티어에는 자동 백업이 없다 — 아래 잡이 **유일한 안전망**이다.
+
+### 백업이 도는 방식
+
+| 항목 | 값 |
+|---|---|
+| 워크플로 | `.github/workflows/backup.yml` (이름: 백업) |
+| 주기 | 매주 일요일 18:00 UTC(= 월 03:00 KST) + **매월 1일** 18:00 UTC |
+| 방식 | `pg_dump` → `gzip` → `gpg` 대칭 암호화(AES256) → 비공개 리포 `animalmate-backups` 의 `dumps/` 에 커밋 |
+| 파일명 | `backup-YYYY-MM-DD.sql.gz.gpg` (UTC 날짜) |
+| 보존 | 최근 8주 전부 + **매월 1일자는 6개월**. 초과분은 잡이 자동 삭제 |
+| 실패 시 | 공용 Gmail 로 알림 메일 |
+
+- 평문 `.sql` 은 **디스크에 닿지 않는다** — 덤프·압축·암호화가 한 파이프라인이다.
+- 암호는 명령행 인자가 아니라 파일 디스크립터로 넘긴다(프로세스 목록에 노출 금지).
+- 푸시 전에 **복호화가 되는지 확인**한다. 열리지 않는 파일을 6개월 쌓지 않기 위해서다.
+- 월간 잡을 따로 둔 이유: 주간 잡만으로는 1일에 걸리는 일이 드물어 월간 보존 규칙이 사실상 죽는다.
+
+### 복원 리허설 (분기 1회 권장 — 백업은 복원해 본 적 있을 때만 백업이다)
+
+준비물: `git`, `gpg`, Node 22+, (5단계까지 갈 때만) 로컬 PostgreSQL 17 + `psql`.
+금고에서 `BACKUP_ENCRYPTION_KEY` 를 꺼내 둔다. **`.env` 에 적지 말고 그 순간만 환경변수로 쓴다.**
+
+**1단계 — 최신 백업을 받아 내용만 확인한다 (DB 불필요, 여기까지가 최소 리허설)**
+
+```bash
+BACKUP_ENCRYPTION_KEY='금고에서 꺼낸 값' node scripts/restore-backup.mjs
+```
+
+이 명령은 백업 리포에서 최신 파일을 받아 복호화하고 **테이블 수와 테이블별 행 수만 출력**한다.
+DB 는 전혀 건드리지 않는다. 확인할 것:
+
+- `✔ 복호화 성공` 이 나오는가 (안 나오면 열쇠가 틀렸거나 파일이 깨졌다 — **즉시 조치 대상**)
+- `테이블 29개` 인가 (스키마를 바꿨다면 그 수에 맞는가)
+- `users`, `recruit_applicants` 등 실제 데이터가 있어야 할 테이블의 행 수가 0 이 아닌가
+
+**2단계 — 덤프 원문을 눈으로 본다 (선택)**
+
+```bash
+BACKUP_ENCRYPTION_KEY='…' node scripts/restore-backup.mjs --keep ./check.sql
+```
+
+`check.sql` 은 **평문 개인정보**다. 확인이 끝나면 반드시 지운다: `rm check.sql`
+
+**3단계 — 빈 로컬 DB 를 만든다**
+
+```bash
+createdb animalmate_restore_test
+```
+
+**4단계 — 로컬 DB 에 복원한다**
+
+```bash
+BACKUP_ENCRYPTION_KEY='…' node scripts/restore-backup.mjs \
+  --to postgresql://postgres@localhost:5432/animalmate_restore_test --confirm
+```
+
+`--confirm` 이 없으면 대상만 확인하고 적용하지 않는다(사고 방지). 대상이 `.env` 의 운영 DB 와
+같으면 경고 후 10초 기다린다 — 그때 Ctrl+C 로 멈출 수 있다.
+
+**5단계 — 복원 결과를 검증한다**
+
+```bash
+psql postgresql://postgres@localhost:5432/animalmate_restore_test -c \
+  "select count(*) as 테이블수 from pg_tables where schemaname='public';"
+psql postgresql://postgres@localhost:5432/animalmate_restore_test -c \
+  "select relname, n_live_tup from pg_stat_user_tables order by n_live_tup desc limit 10;"
+```
+
+테이블 수가 29(현재 스키마 기준)이고 주요 테이블에 행이 있으면 리허설 성공이다.
+**RLS 는 덤프에 포함되지 않을 수 있다** — 복원본을 운영으로 승격할 일이 생기면
+`npm run db:migrate` 로 마이그레이션을 다시 적용해 RLS 를 확인하고, `npm run test:rls` 로 증명한다.
+
+**6단계 — 뒷정리**
+
+```bash
+dropdb animalmate_restore_test
+```
+
+리허설 날짜와 결과를 아래 표에 남긴다.
+
+### 진짜 장애가 나서 운영 DB 를 되돌려야 할 때
+
+1. **먼저 멈춘다.** Supabase 에서 pg_cron 잡 2개를 `cron.unschedule` 하거나 Vercel 배포를 잠근다.
+   발행 워커가 도는 중에 DB 를 되돌리면 같은 공지가 카페에 다시 나갈 수 있고, 카페는 삭제 API 가 없다.
+2. 1단계로 백업 내용을 확인한다(어느 시점 데이터인지).
+3. `--to <운영 DIRECT_URL> --confirm` 으로 적용한다. 운영 DB 경고가 뜨고 10초를 기다린다.
+4. `/api/health` 가 `{ok:true,db:"up"}` 인지 확인하고, 크론을 다시 켠다.
+5. 되돌린 시점 이후의 데이터는 사라진다 — 회장단에게 무엇이 사라졌는지 알린다.
+
+### 리허설 기록
+
+| 날짜 | 대상 백업 | 결과 | 비고 |
+|---|---|---|---|
+| ⬜ | | | 첫 리허설 미실시 |
 
 ## 네이버 카페 API 검증 기록 (Phase 0 GO/NO-GO)
 | 항목 | 결과 | 날짜 | 비고 |
