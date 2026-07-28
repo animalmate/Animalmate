@@ -1,0 +1,61 @@
+name: 스케줄 유지
+
+# GitHub 은 **커밋이 60일간 없는 리포의 schedule 트리거를 자동으로 끈다.**
+# 여기 걸리는 것이 backup.yml 이다 — 무료 티어에 자동 백업이 없어 그 잡이 유일한 안전망인데,
+# 개발이 멈춘 두 달 뒤 조용히 같이 멈춘다. 백업이 "실패"하는 게 아니라 **아예 돌지 않으므로
+# 실패 알림 메일도 오지 않는다.** 파일럿이 끝나고 방학에 들어간 시점이 가장 위험하다.
+#
+# 이 잡은 매월 15일에 main 의 마지막 커밋 나이를 재서 **45일이 넘었을 때만** 빈 커밋 하나를 민다.
+# 개발이 활발한 동안에는 아무 일도 하지 않는다(히스토리를 더럽히지 않는다).
+#
+# 알아둘 것 두 가지:
+#  - GITHUB_TOKEN 으로 민 커밋은 다른 워크플로를 트리거하지 않는다(GitHub 사양). 이 빈 커밋
+#    때문에 ci.yml 이 도는 일은 없다.
+#  - 60일 타이머가 정확히 무엇으로 초기화되는지는 GitHub 이 명문화하지 않았다. "커밋 푸시"가
+#    가장 널리 쓰이는 방법이라 그걸 택했다. 그래도 **비활성화 경고 메일이 오면 무시하지 말 것** —
+#    이 잡이 확실한 보장은 아니다.
+
+on:
+  schedule:
+    # 매월 15일 03:00 UTC. 백업(일요일·1일 18:00 UTC)과 겹치지 않는 날짜·시각으로 잡았다.
+    - cron: '0 3 15 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 마지막 커밋 나이 확인
+        id: age
+        run: |
+          set -euo pipefail
+          LAST="$(git log -1 --format=%ct)"
+          NOW="$(date -u +%s)"
+          DAYS=$(( (NOW - LAST) / 86400 ))
+          echo "main 의 마지막 커밋: ${DAYS}일 전 ($(git log -1 --format='%h %ad' --date=short))"
+          echo "days=${DAYS}" >> "$GITHUB_OUTPUT"
+
+      # 문자열 출력이라 fromJSON 으로 숫자로 바꿔 비교한다. 그냥 비교하면 '9' >= 45 같은
+      # 문자열 비교가 될 여지가 있다.
+      - name: 45일 넘었으면 빈 커밋으로 타이머 되돌리기
+        if: fromJSON(steps.age.outputs.days) >= 45
+        run: |
+          set -euo pipefail
+          git config user.name "animalmate-keepalive-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git commit -q --allow-empty \
+            -m "스케줄 유지 — 백업 워크플로가 60일 비활성으로 꺼지는 것을 막는다"
+          git push -q origin HEAD:main
+          echo "빈 커밋을 밀었다. 60일 타이머가 오늘부터 다시 간다."
+
+      - name: 아직 여유 있음
+        if: fromJSON(steps.age.outputs.days) < 45
+        run: echo "마지막 커밋이 ${{ steps.age.outputs.days }}일 전 — 아무것도 하지 않는다."
