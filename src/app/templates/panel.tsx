@@ -20,6 +20,8 @@ interface Template {
   defaultCapacity: number | null;
   defaultMeetTime: string | null;
   defaultPublishTime: string | null;
+  /** 서버가 판정해 내려준다. 목록에는 불러다 쓸 수 있는 양식이 모두 오지만 고칠 수 있는 것은 일부다. */
+  canEdit: boolean;
 }
 interface Team {
   id: string;
@@ -279,13 +281,17 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
                     })}
                   </ul>
                 </div>
-                {isBoard || t.ownerType !== 'global' ? (
+                {t.canEdit ? (
                   <span className="flex shrink-0 gap-2">
                     <SecondaryButton onClick={() => startEdit(t)}>수정</SecondaryButton>
                     <SecondaryButton onClick={() => remove(t)}>삭제</SecondaryButton>
                   </span>
                 ) : (
-                  <span className="shrink-0 text-xs text-ink-400">공용(읽기)</span>
+                  // 고칠 수 없어도 목록에는 남는다 — 예약 만들 때 불러다 쓸 수 있기 때문이다.
+                  // 왜 못 고치는지를 적어 준다(그냥 버튼만 없으면 고장으로 보인다).
+                  <span className="shrink-0 text-xs text-ink-400">
+                    {t.ownerType === 'global' ? '공용(읽기)' : t.ownerType === 'team' ? '다른 팀(읽기)' : '읽기'}
+                  </span>
                 )}
               </li>
             ))}

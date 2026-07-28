@@ -197,10 +197,11 @@ export interface Occurrence {
 async function loadUsableTemplate(db: Db, actor: Actor, templateId: string) {
   const tpl = await getTemplate(db, templateId);
   if (!tpl) return null;
-  if (isPrivileged(actor.role)) return tpl;
-  if (tpl.ownerType === 'global') return tpl;
+  // 목록(listUsableTemplates)과 **같은 규칙**이어야 한다 — 화면에 보이는데 서버가 거부하면
+  // 기본값만 조용히 비어 나가서 원인을 알기 어렵다.
+  // 개인 소유는 본인 것만, 그 밖(global·팀)은 전부. 소속 팀으로 좁히지 않는다.
   if (tpl.ownerType === 'personal') return tpl.ownerId === actor.userId ? tpl : null;
-  return actor.teams.some((t) => t.teamId === tpl.ownerId) ? tpl : null;
+  return tpl;
 }
 
 export interface MultiCreateResult {

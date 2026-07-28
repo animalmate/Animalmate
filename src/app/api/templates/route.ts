@@ -4,6 +4,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isStaffPlus } from '@/auth/permissions';
 import {
   listUsableTemplates,
+  canEditTemplate,
   createTemplate,
   parseDefaultPlace,
   parseDefaultCapacity,
@@ -38,6 +39,9 @@ export async function GET(): Promise<Response> {
     // time 컬럼은 'HH:MM:SS' 로 오므로 폼 입력(HH:MM)에 맞춰 잘라 준다.
     defaultMeetTime: t.defaultMeetTime ? t.defaultMeetTime.slice(0, 5) : null,
     defaultPublishTime: t.defaultPublishTime ? t.defaultPublishTime.slice(0, 5) : null,
+    // 목록에는 남의 팀 양식도 들어온다(불러다 쓰라고). 고칠 수 있는지는 별개라 서버가 판정해
+    // 내려준다 — 화면이 같은 규칙을 다시 구현하면 반드시 갈라진다.
+    canEdit: canEditTemplate(actor, t.ownerType as TemplateOwnerType, t.ownerId),
   }));
   return NextResponse.json({ templates });
 }
