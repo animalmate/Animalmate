@@ -1,5 +1,10 @@
-/* 애니멀메이트 — Pretendard 웹폰트 + 상태색 변수 + 접근성 기본값(design/handoff/globals.css). */
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+/* 애니멀메이트 — 상태색 변수 + 접근성 기본값(design/handoff/globals.css).
+ *
+ * Pretendard 웹폰트는 **여기서 @import 하지 않는다** — layout.tsx 의 <link> 로 옮겼다.
+ * @import 는 이 파일 맨 앞에 그대로 남아, 브라우저가 "HTML → 이 CSS 다운로드·파싱 → 그제야
+ * jsdelivr 발견 → 새 커넥션(DNS+TCP+TLS) → 53KB CSS → woff2" 를 **한 줄로 세워** 기다리게 했다.
+ * 셋 다 렌더 차단이라 그동안 화면이 비어 있다. <link> 로 옮기면 HTML 파싱 즉시 발견되어
+ * 앱 CSS 와 **동시에** 받고, preconnect 가 커넥션까지 미리 열어 둔다. */
 
 @tailwind base;
 @tailwind components;

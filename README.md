@@ -40,7 +40,7 @@
 | ORM/마이그레이션 | Drizzle |
 | 스케줄러 | Supabase **pg_cron + pg_net** → `/api/cron/*` (Vercel Cron 미사용) |
 | 이메일 | Gmail SMTP (공용 계정) |
-| 호스팅 | Vercel |
+| 호스팅 | Vercel — **함수 리전 `icn1`(서울) 고정**(`vercel.json`), DB 와 같은 리전 |
 | 테스트 | Vitest (순수 로직 단위 + 실 DB 통합) |
 
 **보안 모델(기본 거부)**:
@@ -159,6 +159,22 @@ npm run test:rls:prod    # RLS 기본 거부 증명 — 대상은 운영. 비파
 
 - 스케줄러(pg_cron SQL), Vercel 배포 체크리스트, Gmail SMTP/인증 준비 절차는
   이 README 하단 및 [`docs/02-TECH-STACK.md`](docs/02-TECH-STACK.md), [`docs/04-TODO.md`](docs/04-TODO.md) 참고.
+
+## 성능에서 지켜야 할 것
+
+측정해서 고친 것들이라 되돌리기 쉽다. 각각의 근거는 [`docs/07-DECISIONS.md`](docs/07-DECISIONS.md) 50~53.
+
+- **`vercel.json` 의 `"regions": ["icn1"]` 을 지우지 말 것.** 지우면 함수가 기본 리전(버지니아)으로
+  돌아가고, DB(서울)와의 왕복이 **1회당 ~180ms** 로 뛴다. 화면 하나에 왕복이 여러 번이라 그대로 곱해진다.
+  확인법: `curl -sD - https://animalmate.vercel.app/api/health | grep -i x-vercel-id` →
+  `icn1::icn1::…` 이어야 한다. 뒤쪽이 `iad1` 이면 리전 설정이 안 먹은 것이다.
+  (이 파일에 `crons` 를 추가하는 것은 여전히 금지 — 규칙 #7. 용도는 리전 고정뿐이다.)
+- **웹폰트를 `globals.css` 로 되돌리지 말 것.** CSS `@import` 는 렌더 차단 요청을 한 줄로 세운다.
+  `layout.tsx` 의 `<link rel="preconnect">` + `<link rel="stylesheet">` 조합을 유지한다.
+- **인증 조회는 `Promise.all` 로 묶여 있다**(`loadActor`). 순차 await 로 되돌리면 로그인한
+  모든 요청에 왕복 2회가 다시 붙는다.
+- **이미지는 쓰는 크기로 넣는다.** 로고는 최대 64px 로 보이므로 128×128(10KB)이면 충분하다.
+  예전에 314×314 151KB 원본을 모든 페이지에서 받고 있었다.
 
 ## 백업
 

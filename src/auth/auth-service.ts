@@ -167,27 +167,39 @@ async function currentRole(db: DB, userId: string, _now?: Date): Promise<Role> {
  *   을 돌려준다. 이미 실행하던 users SELECT 에 컬럼 하나를 얹은 것이라 추가 조회가 없다.
  */
 export async function loadActor(db: DB, userId: string, sessionVersion?: number): Promise<Actor | null> {
-  const [u] = await db
-    .select({ id: users.id, sessionVersion: users.sessionVersion, withdrawnAt: users.withdrawnAt })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  // 세 조회는 서로를 필요로 하지 않으므로 한 번에 띄운다. 예전에는 순차로 await 해서 왕복이 3번
+  // 이었고, 이 함수는 **로그인 상태의 모든 페이지·API 요청이 반드시 지나가는 길목**이라 그 비용이
+  // 화면마다 그대로 얹혔다(페이지 HTML + 그 화면이 부르는 API = 요청 하나에 6왕복).
+  // users 가 없거나 거부될 때 나머지 둘이 헛도는 셈이지만, 그건 비정상 경로이고 두 조회 다 인덱스
+  // 한 방이라 값이 싸다 — 정상 경로에서 왕복 2번을 없애는 쪽이 훨씬 크다.
+  const [[u], ms, tms] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        name: users.name,
+        sessionVersion: users.sessionVersion,
+        withdrawnAt: users.withdrawnAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1),
+    db
+      .select({ role: memberships.role })
+      .from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.status, 'active'))),
+    db
+      .select({ teamId: teamMembers.teamId, position: teamMembers.position })
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, userId)),
+  ]);
   if (!u) return null;
   // 탈퇴 계정은 어떤 경로로도 살아나지 않는다. 탈퇴 시 session_version 을 올려 토큰을
   // 무효화하지만, 그건 "지금 발급된 토큰"만 막는다 — 여기서 한 번 더 못 박는다.
   if (u.withdrawnAt) return null;
   // "모든 기기에서 로그아웃" 이후 발급된 토큰만 통과한다.
   if (sessionVersion !== undefined && sessionVersion !== u.sessionVersion) return null;
-  const ms = await db
-    .select({ role: memberships.role })
-    .from(memberships)
-    .where(and(eq(memberships.userId, userId), eq(memberships.status, 'active')));
-  const tms = await db
-    .select({ teamId: teamMembers.teamId, position: teamMembers.position })
-    .from(teamMembers)
-    .where(eq(teamMembers.userId, userId));
   let role: Role = 'member';
   for (const r of ms) if (ROLE_RANK[r.role] > ROLE_RANK[role]) role = r.role;
   const teams: ActorTeam[] = tms.map((t) => ({ teamId: t.teamId, position: t.position }));
-  return { userId, role, membershipActive: ms.length > 0, teams };
+  return { userId, name: u.name, role, membershipActive: ms.length > 0, teams };
 }

@@ -111,6 +111,9 @@ export function ConsoleNav({ role }: { role: string }) {
           <button
             onClick={() => setOpen((v) => !v)}
             aria-label="메뉴"
+            // 아이콘만 있는 토글이라 열림/닫힘이 모양으로만 드러난다 — 보조기기에는 이 속성이 그 정보다.
+            aria-expanded={open}
+            aria-controls="console-mobile-menu"
             className="flex h-11 w-11 items-center justify-center text-ink-900 md:hidden"
           >
             <Icon name={open ? 'x' : 'menu'} size={22} />
@@ -118,7 +121,10 @@ export function ConsoleNav({ role }: { role: string }) {
         ) : null}
       </div>
       {open ? (
-        <div className="absolute inset-x-0 top-full z-50 flex flex-col gap-0.5 border-b border-ink-200 bg-white p-3 shadow-raised md:hidden">
+        <div
+          id="console-mobile-menu"
+          className="absolute inset-x-0 top-full z-50 flex flex-col gap-0.5 border-b border-ink-200 bg-white p-3 shadow-raised md:hidden"
+        >
           {menus.map((m) => link(m, true))}
           <a
             href="/profile"

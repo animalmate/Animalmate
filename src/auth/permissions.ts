@@ -19,6 +19,10 @@ export interface ActorTeam {
 /** 요청자(인증된 사용자)의 권한 판단에 필요한 최소 컨텍스트. */
 export interface Actor {
   userId: string;
+  /** 표시용 이름. loadActor 가 이미 읽는 users 행에서 같이 나오므로 조회 비용이 0 이다.
+   *  **권한 판단에는 절대 쓰지 않는다** — 화면이 이름 하나 때문에 users 를 다시 조회하지 않게
+   *  하려는 값일 뿐이라, 권한만 보는 호출부(테스트 픽스처 등)는 채우지 않아도 되도록 optional 이다. */
+  name?: string;
   role: Role;
   /** memberships.status === 'active'. 임기 만료(expired) 면 false → 쓰기 전면 거부. */
   membershipActive: boolean;

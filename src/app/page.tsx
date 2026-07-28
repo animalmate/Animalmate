@@ -1,7 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { requireActor } from '@/auth/current-user';
-import { db } from '@/db/client';
-import { users } from '@/db/schema';
 import { ConsoleShell } from '@/components/console-shell';
 import { Banner, Card } from '@/components/ui';
 import { Icon } from '@/components/icon';
@@ -81,8 +78,7 @@ export default async function HomePage() {
     ...(board ? BOARD_SHORTCUTS : []),
   ];
   const externals = EXTERNAL_LINKS.filter((l) => !l.staffOnly || staff); // 부원은 드라이브 제외
-  const [me] = await db.select({ name: users.name }).from(users).where(eq(users.id, actor.userId)).limit(1);
-  const name = me?.name?.trim() || '회원';
+  const name = actor.name?.trim() || '회원'; // loadActor 가 이미 읽어 온 값 — users 재조회 없음
 
   return (
     <ConsoleShell actor={actor}>

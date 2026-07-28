@@ -49,7 +49,6 @@ const CTA_BASE =
 // 색은 산호(coral)를 쓴다. 로그인 화면의 "가입하기"가 이미 산호색이라 이 앱에서 산호 = "환영하는 행동"이고,
 // 따뜻한 크림 배경 위에서 파란 버튼보다 훨씬 부드럽게 얹힌다(파란색은 콘솔의 업무용 색).
 export const ctaPrimary = `${CTA_BASE} bg-coral-500 text-white shadow-card hover:bg-coral-600 hover:text-white active:bg-coral-700`;
-export const ctaQuiet = `${CTA_BASE} border-[1.5px] border-ink-200 bg-white text-ink-700 hover:bg-cream-50 hover:text-ink-900 hover:no-underline`;
 export const ctaDisabled = `${CTA_BASE} cursor-not-allowed bg-ink-200 text-ink-500`;
 
 export function Field({

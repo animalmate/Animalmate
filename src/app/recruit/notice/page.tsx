@@ -83,11 +83,16 @@ export default async function PublicRecruitNoticePage() {
           <section className="space-y-5">
             {notice.noticeImages.map((url, idx) => (
               // 외부/데이터 URL 포스터라 next/image 대신 img 를 쓴다.
+              //
+              // 첫 장은 lazy 로 두지 않는다. 이 페이지에서 가장 큰 그림 = 지원자가 보러 온 것이고
+              // 화면 맨 위에 있어 곧 LCP 다. lazy 는 "일단 미루라"는 뜻이라, 정작 제일 먼저
+              // 보여야 할 것을 늦춘다. 둘째 장부터는 스크롤해야 보이므로 lazy 가 맞다.
               <img
                 key={url}
                 src={url}
                 alt={`${notice.label} 모집 공고 이미지 ${idx + 1}`}
-                loading="lazy"
+                loading={idx === 0 ? 'eager' : 'lazy'}
+                fetchPriority={idx === 0 ? 'high' : undefined}
                 className="w-full rounded-3xl border border-cream-200 shadow-card"
               />
             ))}
