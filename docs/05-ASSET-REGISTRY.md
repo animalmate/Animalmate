@@ -139,11 +139,21 @@ dropdb animalmate_restore_test
 4. `/api/health` 가 `{ok:true,db:"up"}` 인지 확인하고, 크론을 다시 켠다.
 5. 되돌린 시점 이후의 데이터는 사라진다 — 회장단에게 무엇이 사라졌는지 알린다.
 
-### 리허설 기록
+### 실행 기록
 
-| 날짜 | 대상 백업 | 결과 | 비고 |
+| 날짜 | 종류 | 결과 | 비고 |
 |---|---|---|---|
-| ⬜ | | | 첫 리허설 미실시 |
+| 2026-07-28 | **첫 백업**(수동 실행) | ✅ 성공 | `backup-2026-07-28.sql.gz.gpg` **601,809 bytes**. 커밋 `c2a7344`. 파일 형식 확인: `PGP symmetric key encrypted data - AES with 256-bit key, salted & iterated, SHA512`. 잡 전체 119초(덤프·암호화 72초) |
+| ⬜ | 복원 리허설 | 미실시 | 위 6단계 절차. **분기 1회 권장** |
+
+> 첫 실행까지 두 번 실패했다. 같은 함정에 다시 빠지지 않도록 남긴다.
+> 1. **빈 백업 리포에서 `actions/checkout` 이 죽는다** — 커밋이 없는 리포에는 `refs/heads/main`
+>    자체가 없다(`couldn't find remote ref`). 지금은 `git ls-remote` 로 main 존재를 확인한 뒤
+>    클론하거나 새로 init 한다.
+> 2. **`/usr/bin/pg_dump` 는 pg_wrapper 라 16 을 골라 준다** — 러너에 postgresql-16 서버
+>    클러스터가 있어서, client-17 을 설치해도 래퍼가 16 을 쓴다(`server version: 17.6;
+>    pg_dump version: 16.14`). 지금은 `/usr/lib/postgresql/17/bin/pg_dump` 절대 경로를 쓰고,
+>    없으면 즉시 실패시킨다.
 
 ## 네이버 카페 API 검증 기록 (Phase 0 GO/NO-GO)
 | 항목 | 결과 | 날짜 | 비고 |
