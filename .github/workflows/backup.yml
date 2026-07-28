@@ -36,8 +36,10 @@ concurrency:
 jobs:
   dump:
     runs-on: ubuntu-latest
-    # 이 잡은 백업 리포에만 쓴다. 기본 GITHUB_TOKEN 권한은 전부 회수한다.
-    permissions: {}
+    # 이 잡이 GITHUB_TOKEN 으로 할 일은 이 리포를 읽는 것뿐이다. 백업 리포 쓰기는
+    # 별도 PAT(BACKUP_REPO_TOKEN)를 쓰므로 여기에 write 를 줄 이유가 없다.
+    permissions:
+      contents: read
     steps:
       - name: 메인 리포 체크아웃(보존 정책 스크립트용)
         uses: actions/checkout@v4
@@ -109,12 +111,17 @@ jobs:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
           set -euo pipefail
-          gpg --batch --quiet --decrypt --passphrase-fd 3 "$BACKUP_FILE" \
-              3< <(printf '%s' "$BACKUP_ENCRYPTION_KEY") \
-            | gunzip \
-            | head -c 200 \
-            | grep -q "PostgreSQL database dump" \
-            && echo "복호화·압축 해제 확인 완료"
+          # head 가 200바이트를 읽고 끝나면 앞 단계가 SIGPIPE 로 죽는다. pipefail 이 켜져 있으면
+          # 정상 동작인데도 스텝이 실패한다 — 그래서 이 파이프라인만 pipefail 을 잠시 끈다.
+          set +o pipefail
+          HEAD200="$(gpg --batch --quiet --decrypt --passphrase-fd 3 "$BACKUP_FILE" \
+                       3< <(printf '%s' "$BACKUP_ENCRYPTION_KEY") 2>/dev/null \
+                     | gunzip 2>/dev/null | head -c 200)"
+          set -o pipefail
+          case "$HEAD200" in
+            *"PostgreSQL database dump"*) echo "복호화·압축 해제 확인 완료" ;;
+            *) echo "::error::복호화했지만 PostgreSQL 덤프 형식이 아니다. 백업을 신뢰할 수 없다."; exit 1 ;;
+          esac
 
       - name: 보존 정책 적용(최근 8주 + 매월 1일자 6개월)
         run: npx tsx src/ops/prune-backups-cli.ts backups/dumps
