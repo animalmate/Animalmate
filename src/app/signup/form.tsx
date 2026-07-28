@@ -85,7 +85,16 @@ export function SignupForm() {
               />
               <span className="text-[12.5px] leading-relaxed text-ink-600">
                 {CONSENT_LABEL.signup}{' '}
-                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                {/* 이 <a> 는 체크박스를 감싼 <label> 안에 있다. 막지 않으면 클릭이 라벨까지
+                    올라가 **방침을 읽으러 누른 것이 동의 체크까지 토글**한다. 동의는 사용자가
+                    의도해서 켜야 하는 값이라(07-DECISIONS 48) 링크 클릭으로 켜지면 안 된다. */}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-semibold underline"
+                >
                   개인정보처리방침
                 </a>
               </span>

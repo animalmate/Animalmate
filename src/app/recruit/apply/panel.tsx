@@ -544,7 +544,15 @@ export function PublicRecruitApplyPanel({
                 />
                 <span className="text-[12.5px] leading-relaxed text-ink-600">
                   {CONSENT_LABEL.apply}{' '}
-                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                  {/* 체크박스를 감싼 <label> 안이라, 막지 않으면 방침을 읽으러 누른 클릭이
+                      동의 체크까지 토글한다(가입 화면과 같은 문제). */}
+                  <a
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-semibold underline"
+                  >
                     개인정보처리방침
                   </a>
                 </span>
