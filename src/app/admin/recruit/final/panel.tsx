@@ -7,6 +7,7 @@ import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
+import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -355,7 +356,19 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
               {filteredApplicants.map((app) => {
                 const agg = aggregations[app.id];
                 const isSelected = selectedIds.has(app.id);
-                const hasNoInterviewScore = app.slotId && (agg?.interviewScorerCount ?? 0) === 0;
+                // 경고가 `app.slotId &&` 로 시작해서, **슬롯을 아예 못 받은 사람은 아무 경고도
+                // 못 받았다.** 배정 단계에서 잊힌 사람이 정확히 그 경우인데 화면이 조용했다.
+                // 두 경우를 나눠서 각각 말해 준다.
+                const warns: string[] = [];
+                if (app.status === 'interview_noshow') {
+                  // 불참이면 점수가 없는 게 당연하다. '채점 미기록'까지 같이 붙이면 문제가
+                  // 두 개인 것처럼 보인다 — 불참이 곧 이유이므로 하나만 말한다.
+                  warns.push('면접 불참');
+                } else if (app.status === 'doc_pass' && !app.slotId) {
+                  warns.push('면접 미배정');
+                } else if (app.slotId && (agg?.interviewScorerCount ?? 0) === 0) {
+                  warns.push('면접 채점 미기록');
+                }
 
                 return (
                   <tr key={app.id} className={`hover:bg-cream-25 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
@@ -393,37 +406,27 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
                       )}
                     </td>
                     <td className="p-3.5">
-                      {hasNoInterviewScore && (
-                        <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                          <Icon name="alert" size={12} className="inline" /> 면접 채점 미기록
-                        </span>
-                      )}
-                      {app.status === 'interview_noshow' && (
-                        <span className="inline-flex items-center rounded-md bg-coral-100 px-2 py-0.5 text-[10px] font-bold text-coral-700">
-                          <Icon name="alert" size={12} className="inline" /> 면접 불참
-                        </span>
-                      )}
+                      <div className="flex flex-wrap gap-1">
+                        {warns.map((w) => (
+                          <span
+                            key={w}
+                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                              w === '면접 불참' ? 'bg-coral-100 text-coral-700' : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            <Icon name="alert" size={12} className="inline" /> {w}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="p-3.5 font-semibold">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] ${
-                        app.status === 'final_pass'
-                          ? 'bg-success-100 text-success-700'
-                          : app.status === 'final_fail'
-                          ? 'bg-coral-100 text-coral-700'
-                          : 'bg-cream-100 text-ink-700'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] ${
+                          BADGE_TONE_CLASS[recruitStatusBadge(app.status).tone]
+                        }`}
+                      >
                         <i className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {app.status === 'final_pass'
-                          ? '최종 합격'
-                          : app.status === 'final_fail'
-                          ? '최종 불합격'
-                          : app.status === 'doc_pass'
-                          ? '서류 합격'
-                          : app.status === 'interview_done'
-                          ? '면접 완료'
-                          : app.status === 'interview_noshow'
-                          ? '면접 불참'
-                          : '진행 중'}
+                        {recruitStatusBadge(app.status).label}
                       </span>
                     </td>
                   </tr>

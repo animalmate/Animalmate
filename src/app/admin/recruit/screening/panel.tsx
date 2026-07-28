@@ -1,7 +1,7 @@
 'use client';
 
 import { HelpButton } from '@/components/help-button';
-import type { Role } from '@/auth/permissions';
+import { isPrivileged, type Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
@@ -14,6 +14,7 @@ import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitScreeningPanel({ role }: { role: Role }) {
+  const canManage = isPrivileged(role);
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -334,17 +335,30 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
                     <span className="text-blue-300">/</span>
                     <span>2지망: {selectedApp.wishTeam2 || '미지정'}</span>
                   </div>
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span className="text-xs font-semibold text-ink-700">팀 이관:</span>
-                    <Select
-                      value={selectedApp.assignedTeam || selectedApp.wishTeam1 || '봉사 1팀'}
-                      disabled={reassigning}
-                      onChange={(e) => handleReassignTeam(e.target.value)}
-                      className="w-32 text-xs h-7"
-                    >
-                <TeamOptions teams={teams} loading={teamsLoading} />
-              </Select>
-                  </div>
+                  {/* 팀 이관은 '배정 = 결정'이라 서버가 회장단만 허용한다(09-RECRUIT-DESIGN §0·§4).
+                      그런데 이 화면은 운영진도 들어오는 곳이라, 셀렉트를 그냥 열어 두면
+                      운영진이 팀을 고를 때마다 403 만 돌아왔다. 권한이 없으면 지금 팀을 보여주기만 한다. */}
+                  {canManage ? (
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className="text-xs font-semibold text-ink-700">팀 이관:</span>
+                      <Select
+                        value={selectedApp.assignedTeam || selectedApp.wishTeam1 || '봉사 1팀'}
+                        disabled={reassigning}
+                        onChange={(e) => handleReassignTeam(e.target.value)}
+                        className="w-32 text-xs h-7"
+                      >
+                        <TeamOptions teams={teams} loading={teamsLoading} />
+                      </Select>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ink-500">
+                      배정 팀:{' '}
+                      <strong className="text-ink-900">
+                        {selectedApp.assignedTeam || selectedApp.wishTeam1 || '미지정'}
+                      </strong>
+                      <span className="ml-1 text-ink-400">(팀 이관은 회장단)</span>
+                    </p>
+                  )}
                   {selectedApp.nearStation && (
                     <p className="text-xs text-ink-500 font-medium">
                       인근 역: <strong className="text-ink-900">{selectedApp.nearStation}</strong>

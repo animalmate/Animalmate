@@ -7,6 +7,7 @@ import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
+import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -368,27 +369,13 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
                       )}
                     </td>
                     <td className="p-3.5 font-semibold">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] ${
-                        ['doc_pass', 'interview_done', 'final_pass'].includes(app.status)
-                          ? 'bg-success-100 text-success-700'
-                          : ['doc_fail', 'final_fail'].includes(app.status)
-                          ? 'bg-coral-100 text-coral-700'
-                          : 'bg-cream-100 text-ink-700'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] ${
+                          BADGE_TONE_CLASS[recruitStatusBadge(app.status).tone]
+                        }`}
+                      >
                         <i className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {app.status === 'doc_pass'
-                          ? '서류 합격'
-                          : app.status === 'doc_fail'
-                          ? '서류 불합격'
-                          : app.status === 'interview_done'
-                          ? '면접 완료'
-                          : app.status === 'interview_noshow'
-                          ? '면접 불참'
-                          : app.status === 'final_pass'
-                          ? '최종 합격'
-                          : app.status === 'final_fail'
-                          ? '최종 불합격'
-                          : '서류 심사 중'}
+                        {recruitStatusBadge(app.status).label}
                       </span>
                     </td>
                   </tr>
