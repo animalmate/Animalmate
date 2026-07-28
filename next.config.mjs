@@ -16,7 +16,8 @@ const SECURITY_HEADERS = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // 품질 게이트는 tsc(typecheck) + vitest 로 강제. 빌드는 lint 로 막지 않는다(ESLint 미구성).
+  // 품질 게이트는 CI 에서 typecheck + vitest + lint 로 강제한다. 빌드가 lint 를 또 돌 이유는 없다
+  // (배포 때마다 같은 검사를 두 번 하며 느려질 뿐이다). eslint.config.mjs 참고.
   eslint: { ignoreDuringBuilds: true },
   // service role / DB 접근은 서버 전용. 브라우저 번들에 서버 시크릿이 새지 않도록
   // NEXT_PUBLIC_ 접두사 없는 환경변수는 서버에서만 읽는다(02-TECH-STACK §4).

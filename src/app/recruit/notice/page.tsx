@@ -56,7 +56,6 @@ export default async function PublicRecruitNoticePage() {
           지원 버튼은 이 페이지에 하나뿐이다: 같은 버튼을 아래에 또 두면 어느 쪽이 진짜인지 헷갈린다. */}
       <header className="border-b border-cream-200 bg-gradient-to-b from-cream-100 to-cream-25 px-4 py-12 sm:py-16">
         <div className="mx-auto max-w-xl space-y-5 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-16 w-16 rounded-full" />
 
           <div className="space-y-2.5">
@@ -84,7 +83,6 @@ export default async function PublicRecruitNoticePage() {
           <section className="space-y-5">
             {notice.noticeImages.map((url, idx) => (
               // 외부/데이터 URL 포스터라 next/image 대신 img 를 쓴다.
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={url}
                 src={url}

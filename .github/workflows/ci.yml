@@ -17,6 +17,9 @@ jobs:
       - run: npm ci
       - name: 타입체크
         run: npm run typecheck
+      # 훅 규칙(무한 렌더 루프)과 Next 필수 룰. 타입체커가 못 보는 자리라 별도 단계로 둔다.
+      - name: 린트
+        run: npm run lint
       - name: 단위 테스트(순수 로직)
         run: npm test
       # RLS 기본 거부 증명(규칙 #8). 실제 Supabase 를 대상으로 anon key 로 전 테이블 접근 거부를

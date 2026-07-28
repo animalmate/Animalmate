@@ -231,7 +231,6 @@ export function PublicRecruitApplyPanel({
       <div className="mx-auto max-w-2xl">
         <div className="space-y-6 rounded-2xl border border-ink-200 bg-white p-6 shadow-card sm:p-8">
           <header className="space-y-2 border-b border-ink-100 pb-5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.png" alt="애니멀메이트" className="h-12 w-12 rounded-full" />
             <span className="inline-flex items-center rounded-lg bg-coral-50 px-3 py-1 text-xs font-bold text-coral-700">
               {cohort.label} 지원서

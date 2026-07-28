@@ -159,7 +159,6 @@ export function PublicRecruitLookupPanel() {
       <div className="w-full max-w-md space-y-4">
         <div className="space-y-5 rounded-2xl border border-ink-200 bg-white p-6 shadow-card sm:p-7">
           <header className="space-y-2 text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-14 w-14 rounded-full" />
             <h1 className="text-lg font-bold text-ink-900">신입 모집 결과 조회</h1>
             <p className="text-[13px] leading-relaxed text-ink-500">
