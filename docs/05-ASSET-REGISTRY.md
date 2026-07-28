@@ -81,7 +81,7 @@ Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions �
 > **깨우는 법**: Supabase 대시보드에서 프로젝트를 열고 `Restore project` / `Resume` 를 누른다
 > (1~2분). 정지된 상태에서 테스트를 돌리면 연결 실패로 CI 가 빨갛게 뜬다 — 코드 문제가 아니라
 > 정지가 원인일 수 있으니 **CI 가 DB 연결 오류로 죽으면 대시보드부터 확인할 것.**
-> 테스트 DB 는 언제든 버리고 다시 만들어도 된다(`db:migrate:test` 로 복구된다).
+> 테스트 DB 는 언제든 버리고 다시 만들어도 된다 — `npm run db:reset:test` 한 줄로 복구된다.
 
 ## 백업·복원
 
@@ -98,7 +98,7 @@ Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions �
 | 범위 | **`public` + `drizzle` 스키마만** (+ `vector` 확장). Supabase 관리 스키마는 담지 않는다 — 아래 참고 |
 | 파일명 | `backup-YYYY-MM-DD.sql.gz.gpg` (UTC 날짜) |
 | 보존 | 최근 8주 전부 + **매월 1일자는 6개월**. 초과분은 잡이 자동 삭제 |
-| 실패 시 | 공용 Gmail 로 알림 메일 |
+| 실패 시 | 이 리포에 **이슈 자동 생성 + 담당자 배정**(메일 아님 — 위 「백업 실패 알림」 참고) |
 
 - 평문 `.sql` 은 **디스크에 닿지 않는다** — 덤프·압축·암호화가 한 파이프라인이다.
 - 암호는 명령행 인자가 아니라 파일 디스크립터로 넘긴다(프로세스 목록에 노출 금지).
@@ -160,8 +160,9 @@ DB 는 전혀 건드리지 않는다. 확인할 것:
 - `RLS 활성화 구문` 이 테이블 수만큼 있는가 — 0 이면 복원본이 **기본 거부가 아니다**(규칙 #8)
 - `users`, `recruit_applicants` 등 실제 데이터가 있어야 할 테이블의 행 수가 0 이 아닌가
 
-> `그 밖의 스키마` 줄에 나오는 `auth`·`storage`·`realtime`·`drizzle` 은 Supabase 시스템 스키마와
-> 마이그레이션 기록이다. 우리 앱 테이블이 아니므로 public 개수에 섞지 않는다.
+> `그 밖의 스키마` 줄에는 이제 `drizzle`(마이그레이션 기록) 하나만 나와야 한다. 거기에
+> `auth`·`storage`·`realtime` 이 보이면 **2026-07-28 이전의 옛 형식 백업**이다 — 그건 다른 Supabase
+> 프로젝트에 복원되지 않는다(범위 축소 이유는 위 참고).
 
 **2단계 — 덤프 원문을 눈으로 본다 (선택)**
 
@@ -170,6 +171,11 @@ read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.m
 ```
 
 `check.sql` 은 **평문 개인정보**다. 확인이 끝나면 반드시 지운다: `rm check.sql`
+
+> ⚠ **리허설 중에는 CI 가 깨진다.** 3~6단계는 테스트 DB 의 스키마를 통째로 갈아엎는데,
+> CI 의 통합 테스트도 **같은 DB** 를 쓴다. 그동안 푸시하면 `relation "users" does not exist` 로
+> 실패한다(2026-07-28 에 실제로 두 번 깨졌다). 리허설은 푸시하지 않는 동안 하고, 끝나면
+> `npm run db:reset:test` 로 되돌린 뒤 CI 를 다시 돌린다.
 
 **3단계 — 복원 대상은 테스트 프로젝트다 (`TEST_DATABASE_URL`)**
 
@@ -226,17 +232,24 @@ psql "$TEST_DATABASE_URL" -c "select relname, n_live_tup from pg_stat_user_table
 
 **6단계 — 뒷정리 (운영 PII 를 테스트 DB 에 남기지 않는다)**
 
-복원한 실데이터를 지우고 테스트 DB 를 원래대로(빈 스키마 + 마이그레이션) 되돌린다.
+복원한 실데이터를 지우고 테스트 DB 를 원래대로(빈 스키마 + 마이그레이션) 되돌린다. **한 줄이다:**
 
 ```bash
-psql "$TEST_DATABASE_URL" -c "drop schema public cascade; create schema public;"
-npm run db:migrate:test
+npm run db:reset:test
 ```
+
+> **`db:migrate:test` 로는 안 된다.** `drop schema public cascade` 는 테이블만 지우고 마이그레이션
+> **기록(`drizzle` 스키마)은 남긴다.** 그러면 migrate 가 "전부 적용됨"으로 보고 아무것도 하지 않은 채
+> 통과하고, 테스트만 `relation "users" does not exist` 로 죽는다 — 원인을 짐작하기 어려운 실패다.
+> `db:reset:test` 는 둘을 함께 지우고 다시 만든다. 어긋난 상태에서 부를 수 있는 유일한 복구 명령이다.
+> (마이그레이션 0000 은 `CREATE SCHEMA public` 을 하지 않으므로 빈 public 을 먼저 만들어 줘야 하는데,
+> 그것도 스크립트가 한다. 운영을 가리키면 하드 실패한다.)
 
 되돌아왔는지 확인한다 — 테이블 수가 스키마와 같고, 모든 테이블의 행이 0 이어야 한다:
 
 ```bash
 psql "$TEST_DATABASE_URL" -c "select coalesce(sum(n_live_tup),0) as 총행수 from pg_stat_user_tables;"
+psql "$TEST_DATABASE_URL" -c "select count(*) as 지원자잔류 from recruit_applicants;"   -- 0 이어야 한다
 ```
 
 리허설 날짜와 결과를 아래 표에 남긴다.
@@ -256,7 +269,26 @@ psql "$TEST_DATABASE_URL" -c "select coalesce(sum(n_live_tup),0) as 총행수 fr
 |---|---|---|---|
 | 2026-07-28 | **첫 백업**(수동 실행) | ✅ 성공 | `backup-2026-07-28.sql.gz.gpg` **601,809 bytes**. 커밋 `c2a7344`. 파일 형식 확인: `PGP symmetric key encrypted data - AES with 256-bit key, salted & iterated, SHA512`. 잡 전체 119초(덤프·암호화 72초) |
 | 2026-07-28 | **복원 리허설 1단계**(내용 확인) | ✅ 성공 | 금고 키로 복호화 성공. 압축 해제 **5.28 MB**, public 테이블 **29개**(당시 스키마와 일치), Supabase 시스템 스키마 4개 별도. 주요 행 수: `audit_logs` 8,174 / `recruit_applicants` 50 / `users` 10 / `memberships` 8. **백업이 실제로 열리고 내용이 온전함을 확인** |
-| ⬜ | 복원 리허설 3~6단계(로컬 DB 적용) | 미실시 | 실제로 넣어 봐야 완전한 리허설이다. **분기 1회 권장** |
+| 2026-07-28 | **복원 리허설 3~6단계**(테스트 DB 적용) | ✅ 성공 — **단, 결함 3건을 잡았다** | 아래 참고. 최종 상태: 복원본 public **29테이블 / RLS 29개 전부 켜짐 / 정책 0개**, pgvector 복원, `doc_chunks` 임베딩 2건 살아남(vector 타입 복원 확인). 뒷정리 후 운영 PII 잔류 **0** |
+| 2026-07-28 | 새 형식 백업(범위 축소 후) | ✅ 성공 | **461,070 bytes**(기존 601,809 → 시스템 스키마 제외로 축소). 압축 해제 2.76 MB. 커밋 `6adcd7b`. public 29 / RLS 29 / `drizzle` 1 |
+| ⬜ | 다음 리허설 | — | **분기 1회 권장.** 다음 예정: 2026-10 |
+
+> **3~6단계에서 잡은 결함 3건.** 1단계(복호화 확인)만으로는 전부 보이지 않았다 —
+> "파일이 열린다"와 "복원된다"는 다른 문제다.
+>
+> 1. **복원이 아예 안 됐다.** 덤프가 DB 전체라 Supabase 관리 스키마(`auth`·`storage`·`realtime`)가
+>    들어 있었고, 대상 프로젝트에는 그것들이 이미 있어 `ERROR: schema "auth" already exists` 로
+>    첫 줄에서 중단됐다. → 덤프 범위를 `public`+`drizzle`(+`vector` 확장)로 좁혔다.
+> 2. **백업이 두 번째 실행부터 매주 실패할 상태였다.** 리포 준비 단계가 `ls-remote ... > /dev/null 2>&1`
+>    로 "main 이 없다"와 "명령이 실패했다"를 구분하지 못해, 기존 백업이 있는데도 빈 히스토리를
+>    새로 만들고 push 가 거부됐다. 첫 백업은 진짜 빈 리포였으므로 이 경로는 이날 처음 실행됐다.
+>    → 클론을 먼저 시도하고 실패 사유로 판단한다. 접근 실패는 하드 실패(빈 히스토리를 만들지 않는다).
+> 3. **복원 실패 시 원인이 화면에서 사라졌다.** psql 이 먼저 죽으면 남은 덤프가 닫힌 stdin 으로 흘러
+>    EPIPE 가 나고, Node 스택 20줄이 진짜 원인인 `ERROR:` 줄을 밀어냈다. → EPIPE 를 잡고 파생 실패를
+>    원인처럼 보고하지 않는다.
+>
+> 부수 발견: 리허설이 테스트 DB 를 갈아엎는 동안 **CI 가 같은 DB 를 써서 두 번 깨졌다.**
+> 그리고 `db:migrate:test` 는 이 상태를 자가 복구하지 못한다(기록만 남아 no-op). → `db:reset:test` 신설.
 
 > 첫 실행까지 두 번 실패했다. 같은 함정에 다시 빠지지 않도록 남긴다.
 > 1. **빈 백업 리포에서 `actions/checkout` 이 죽는다** — 커밋이 없는 리포에는 `refs/heads/main`
