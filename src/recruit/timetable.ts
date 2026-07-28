@@ -1,5 +1,8 @@
-// 면접 시간표 격자 만들기(순수). 운영진에게 공지할 표를 화면과 복사본이 똑같이 쓰도록
-// 여기서 한 번만 짠다.
+// 면접 시간표 — 지난 기수가 실제로 쓰던 엑셀 표와 같은 모양으로 짠다.
+// 조(면접실)마다 표 하나 / 행 = 시간 범위 / 열 = 면접관 N + 면접자 M.
+//
+// 왜 이 모양인가: 운영진에게 공지하는 표라 "그 시간에 내가 어디서 누구를 보는가"가 한 줄로
+// 읽혀야 한다. 시각×장소 격자에 사람을 몰아넣으면 한 칸이 길어져 그게 안 된다.
 //
 // 시각은 **한국 시간에 고정**한다. 봉사·면접이 전부 한국에서 열리므로 보는 사람의 브라우저
 // 시간대에 따라 표가 달라지면 안 된다(공지에 붙일 표라 더욱). 덕분에 테스트도 기계 시간대와
@@ -36,135 +39,181 @@ export interface TimetableSlot {
   link?: string | null;
 }
 
-export interface TimetablePerson {
-  name: string;
-  team?: string | null;
-}
-
-/** 한 칸에 들어가는 것 = 슬롯 하나 + 그 슬롯의 면접관·지원자. */
-export interface TimetableCell {
-  slotId: string;
-  durationMin: number | null;
-  link: string | null;
-  interviewers: string[];
-  applicants: TimetablePerson[];
-  /** 같은 시각·같은 장소를 나눠 쓰는 조 번호(1-based). 그 칸에 슬롯이 하나뿐이면 0. */
-  panelNo: number;
-}
-
 export interface TimetableRow {
+  /** '10:30 ~ 11:00' */
   timeLabel: string;
-  /** places 와 같은 길이. 그 시각·그 장소에 슬롯이 없으면 빈 배열. */
-  cells: TimetableCell[][];
+  /** 이 조·이 시간대의 슬롯. 없으면 null(빈 줄로 남겨 조끼리 시간축을 맞춘다). */
+  slotId: string | null;
+  interviewers: string[];
+  /** 이름만. 팀은 넣지 않는다 — 표가 지저분해지고 공지에 필요하지도 않다. */
+  applicants: string[];
+  link: string | null;
+}
+
+export interface TimetableTrack {
+  /** '학생회관 201호' 또는 조가 나뉘면 '학생회관 201호 1조'. */
+  label: string;
+  rows: TimetableRow[];
 }
 
 export interface TimetableDay {
   dateLabel: string;
-  places: string[];
-  rows: TimetableRow[];
+  /** 모든 조가 같은 열 수를 쓴다 — 표끼리 나란히 놓고 비교할 수 있어야 한다. */
+  interviewerCols: number;
+  applicantCols: number;
+  tracks: TimetableTrack[];
 }
 
 export interface BuildTimetableInput {
   slots: TimetableSlot[];
-  /** 슬롯 id → 그 슬롯 면접 대상자. */
-  applicantsBySlot: Record<string, TimetablePerson[]>;
+  /** 슬롯 id → 그 슬롯 면접 대상자 이름. */
+  applicantsBySlot: Record<string, string[]>;
   /** 슬롯 id → 면접관 이름. */
   interviewersBySlot: Record<string, string[]>;
   /** 장소 표기 규칙(display.slotPlaceLabel 을 넘긴다 — 화면과 같은 문구를 쓰기 위해). */
   placeLabel: (slot: TimetableSlot) => string;
 }
 
-/**
- * 슬롯 목록을 날짜별 격자로 접는다. 행=시각, 열=장소.
- *
- * 같은 시각·같은 장소에 슬롯이 여럿인 것은 **정상 운영**이다 — 한 방에서 면접관 조를 나눠
- * 동시에 여러 명을 본다. 그래서 한 칸에 조를 모두 담고 각각 조 번호를 붙인다.
- * 하나만 보여주면 다른 조에 배정된 지원자가 표에서 사라진다.
- */
+const startOf = (s: TimetableSlot) => new Date(s.startsAt).getTime();
+
 export function buildTimetable({
   slots,
   applicantsBySlot,
   interviewersBySlot,
   placeLabel,
 }: BuildTimetableInput): TimetableDay[] {
-  const byDay = new Map<string, { label: string; slots: TimetableSlot[] }>();
+  const valid = slots.filter((s) => !Number.isNaN(startOf(s))); // 깨진 값이 표를 무너뜨리지 않게
 
-  for (const slot of slots) {
-    const d = new Date(slot.startsAt);
-    if (Number.isNaN(d.getTime())) continue; // 깨진 값이 표 전체를 무너뜨리지 않게
-    const key = sortKeyFmt.format(d);
-    if (!byDay.has(key)) byDay.set(key, { label: dateFmt.format(d), slots: [] });
-    byDay.get(key)!.slots.push(slot);
+  const byDay = new Map<string, TimetableSlot[]>();
+  for (const slot of valid) {
+    const key = sortKeyFmt.format(new Date(slot.startsAt));
+    const list = byDay.get(key);
+    if (list) list.push(slot);
+    else byDay.set(key, [slot]);
   }
 
   return [...byDay.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, day]) => {
-      const places = [...new Set(day.slots.map(placeLabel))].sort((a, b) => a.localeCompare(b, 'ko'));
+    .map(([, daySlots]) => buildDay(daySlots, applicantsBySlot, interviewersBySlot, placeLabel));
+}
 
-      const timeKeys = [...new Set(day.slots.map((s) => new Date(s.startsAt).getTime()))].sort(
-        (a, b) => a - b
-      );
+function buildDay(
+  daySlots: TimetableSlot[],
+  applicantsBySlot: Record<string, string[]>,
+  interviewersBySlot: Record<string, string[]>,
+  placeLabel: (slot: TimetableSlot) => string
+): TimetableDay {
+  // 1) 조(트랙) 나누기. 같은 장소에서 동시에 여러 조가 돌면 장소 하나가 조 여럿이 된다.
+  //    한 조 = 시간이 겹치지 않는 슬롯들의 한 줄기.
+  const byPlace = new Map<string, TimetableSlot[]>();
+  for (const s of daySlots) {
+    const p = placeLabel(s);
+    const list = byPlace.get(p);
+    if (list) list.push(s);
+    else byPlace.set(p, [s]);
+  }
 
-      const rows: TimetableRow[] = timeKeys.map((t) => ({
-        timeLabel: timeFmt.format(new Date(t)),
-        cells: places.map((place) => {
-          const inCell = day.slots.filter(
-            (s) => new Date(s.startsAt).getTime() === t && placeLabel(s) === place
-          );
-          return inCell.map((s, i) => ({
-            slotId: s.id,
-            durationMin: s.durationMin ?? null,
-            link: s.link ?? null,
-            interviewers: interviewersBySlot[s.id] ?? [],
-            applicants: applicantsBySlot[s.id] ?? [],
-            // 한 칸에 조가 여럿일 때만 번호를 붙인다.
-            panelNo: inCell.length > 1 ? i + 1 : 0,
-          }));
-        }),
-      }));
-
-      return { dateLabel: day.label, places, rows };
+  const tracks: { label: string; slots: Map<number, TimetableSlot> }[] = [];
+  for (const [place, placeSlots] of [...byPlace.entries()].sort(([a], [b]) => a.localeCompare(b, 'ko'))) {
+    // 같은 시각에 n 개가 있으면 조가 n 개. i번째 슬롯은 i번째 조로 간다.
+    const lanes: Map<number, TimetableSlot>[] = [];
+    const byStart = new Map<number, TimetableSlot[]>();
+    for (const s of placeSlots) {
+      const t = startOf(s);
+      const list = byStart.get(t);
+      if (list) list.push(s);
+      else byStart.set(t, [s]);
+    }
+    for (const [t, atTime] of byStart) {
+      atTime.forEach((s, i) => {
+        (lanes[i] ??= new Map()).set(t, s);
+      });
+    }
+    lanes.forEach((lane, i) => {
+      tracks.push({ label: lanes.length > 1 ? `${place} ${i + 1}조` : place, slots: lane });
     });
+  }
+
+  // 2) 시간축. 모든 조가 같은 줄을 쓴다 — 빈 시간대도 남겨야 표끼리 나란히 읽힌다.
+  const starts = [...new Set(daySlots.map(startOf))].sort((a, b) => a - b);
+  const durationAt = new Map<number, number>();
+  for (const s of daySlots) {
+    if (!durationAt.has(startOf(s))) durationAt.set(startOf(s), s.durationMin ?? 30);
+  }
+  const timeLabels = starts.map((t) => {
+    const end = t + (durationAt.get(t) ?? 30) * 60_000;
+    return `${timeFmt.format(new Date(t))} ~ ${timeFmt.format(new Date(end))}`;
+  });
+
+  // 3) 조마다 줄 채우기.
+  const built: TimetableTrack[] = tracks.map((track) => ({
+    label: track.label,
+    rows: starts.map((t, i) => {
+      const slot = track.slots.get(t);
+      return {
+        timeLabel: timeLabels[i]!,
+        slotId: slot?.id ?? null,
+        interviewers: slot ? interviewersBySlot[slot.id] ?? [] : [],
+        applicants: slot ? applicantsBySlot[slot.id] ?? [] : [],
+        link: slot?.link ?? null,
+      };
+    }),
+  }));
+
+  // 4) 열 수는 그날 최댓값으로 통일. 최소 1칸은 둔다(빈 표도 모양이 있어야 한다).
+  const all = built.flatMap((t) => t.rows);
+  const interviewerCols = Math.max(1, ...all.map((r) => r.interviewers.length));
+  const applicantCols = Math.max(1, ...all.map((r) => r.applicants.length));
+
+  return {
+    dateLabel: dateFmt.format(new Date(starts[0]!)),
+    interviewerCols,
+    applicantCols,
+    tracks: built,
+  };
 }
 
 /**
- * 표를 붙여넣기 좋은 텍스트로. 탭 구분이라 엑셀·구글시트에 그대로 들어가고,
- * 카톡에 붙여도 줄 단위로는 읽힌다.
+ * 표를 붙여넣기 좋은 텍스트로. 탭 구분이라 엑셀·구글시트에 그대로 들어간다.
+ * 화면과 같은 모양(조마다 표 하나)이어야 공지에 붙였을 때 말이 맞는다.
  */
 export function timetableToTsv(days: TimetableDay[]): string {
   const lines: string[] = [];
   for (const day of days) {
     lines.push(day.dateLabel);
-    lines.push(['시각', ...day.places].join('\t'));
-    for (const row of day.rows) {
-      const cells = row.cells.map((entries) =>
-        entries
-          .map((c) => {
-            const who = c.applicants.map((a) => a.name).join(', ') || '지원자 없음';
-            const staff = c.interviewers.join(', ') || '면접관 미정';
-            const panel = c.panelNo > 0 ? `${c.panelNo}조 ` : '';
-            return `${panel}${who} / ${staff}`;
-          })
-          // 한 칸에 조가 여럿이면 줄바꿈 대신 ' + ' 로 이어 붙인다 —
-          // TSV 안의 줄바꿈은 붙여넣을 때 행이 쪼개진다.
-          .join(' + ')
-      );
-      lines.push([row.timeLabel, ...cells].join('\t'));
+    for (const track of day.tracks) {
+      const header = [
+        track.label,
+        ...Array.from({ length: day.interviewerCols }, (_, i) => `면접관${i + 1}`),
+        ...Array.from({ length: day.applicantCols }, (_, i) => `면접자${i + 1}`),
+      ];
+      lines.push(header.join('\t'));
+      for (const row of track.rows) {
+        const cells = [
+          row.timeLabel,
+          ...pad(row.interviewers, day.interviewerCols),
+          ...pad(row.applicants, day.applicantCols),
+        ];
+        lines.push(cells.join('\t'));
+      }
+      lines.push('');
     }
-    lines.push('');
   }
-  return lines.join('\n').trimEnd();
+  // trimEnd 를 쓰면 안 된다 — 마지막 줄의 빈 칸이 탭으로 끝나는데 그 탭까지 지워져
+  // 엑셀에 붙였을 때 열이 하나 밀린다. 빈 '줄'만 걷어낸다.
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
 }
+
+const pad = (xs: string[], n: number) => Array.from({ length: n }, (_, i) => xs[i] ?? '');
 
 /** 면접관이 한 명도 없는데 지원자는 배정된 슬롯 수 — 시간표에서 바로 알려 준다. */
 export function slotsMissingInterviewers(days: TimetableDay[]): number {
   return days.reduce(
     (n, d) =>
       n +
-      d.rows.reduce(
-        (m, r) =>
-          m + r.cells.flat().filter((c) => c.interviewers.length === 0 && c.applicants.length > 0).length,
+      d.tracks.reduce(
+        (m, t) => m + t.rows.filter((r) => r.slotId && r.interviewers.length === 0 && r.applicants.length > 0).length,
         0
       ),
     0

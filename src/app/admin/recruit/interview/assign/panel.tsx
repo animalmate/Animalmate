@@ -277,13 +277,11 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const panelNumbers = slotPanelNumbers(slots);
 
   // 시간표 팝업에 넘길 모양으로 한 번만 접는다.
-  const applicantsBySlot: Record<string, { name: string; team?: string | null }[]> = {};
+  // 이름만 넣는다 — 팀까지 붙이면 칸이 길어져 표가 지저분해지고, 공지에 필요하지도 않다.
+  const applicantsBySlot: Record<string, string[]> = {};
   applicants.forEach((a) => {
     if (!a.slotId) return;
-    (applicantsBySlot[a.slotId] ??= []).push({
-      name: a.name,
-      team: a.assignedTeam || a.wishTeam1 || null,
-    });
+    (applicantsBySlot[a.slotId] ??= []).push(a.name);
   });
   const interviewerNamesBySlot: Record<string, string[]> = {};
   Object.entries(slotInterviewersMap).forEach(([slotId, list]) => {
