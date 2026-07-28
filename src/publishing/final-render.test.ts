@@ -10,7 +10,7 @@ function makeEvent(patch: Partial<EventRow> = {}): EventRow {
   return {
     id: '00000000-0000-0000-0000-000000000001',
     teamId: '00000000-0000-0000-0000-000000000002',
-    ruleId: null,
+
     title: '정기 봉사',
     eventDate: '2026-07-23',
     meetTime: '14:00:00',

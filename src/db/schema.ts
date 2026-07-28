@@ -12,7 +12,6 @@ import {
   uuid,
   text,
   integer,
-  smallint,
   numeric,
   boolean,
   timestamp,
@@ -60,7 +59,7 @@ export const membershipStatusEnum = pgEnum('membership_status', ['active', 'expi
 export const teamKindEnum = pgEnum('team_kind', ['activity', 'functional']);
 export const teamPositionEnum = pgEnum('team_position', ['leader', 'member']);
 export const naverTokenStatusEnum = pgEnum('naver_token_status', ['ok', 'error']);
-export const monthWeekEnum = pgEnum('month_week', ['1', '2', '3', '4', 'last']);
+// 제거됨: monthWeekEnum — recurring_rules 전용이었다(마이그레이션 0020).
 // F9 신입 모집 지원자 상태(스펙 2026-07-25). 접수 → 서류합격|서류불합격 → 면접완료 → 최종합격|최종불합격.
 // 면접완료 = 면접 점수가 1개라도 저장되면 자동 전환(사실 반영), 점수가 0개로 돌아가면 서류합격으로 자동 복귀.
 // 면접불참(interview_noshow) = 배정됐으나 면접을 못 본 사람을 회장단이 수동 표시(면접 기록 없음과 구분).
@@ -149,18 +148,8 @@ export const teamMembers = pgTable(
   (t) => [unique('team_members_team_user_uq').on(t.teamId, t.userId)]
 );
 
-export const invites = pgTable('invites', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull(),
-  targetRole: roleEnum('target_role').notNull(),
-  targetTeam: uuid('target_team').references(() => teams.id, { onDelete: 'set null' }),
-  token: text('token').notNull().unique(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  usedAt: timestamp('used_at', { withTimezone: true }),
-  invitedBy: uuid('invited_by')
-    .notNull()
-    .references(() => users.id),
-});
+// 제거됨: invites (마이그레이션 0020). 학기별 가입코드(join_codes)가 대체했고(결정 2)
+// 읽고 쓰는 코드가 하나도 없었다. 0행 확인 후 DROP.
 
 // ── 카페 연동 ──────────────────────────────────────────────────────────
 // boards: 게시판 레지스트리. menuid 는 카페 게시판 번호(하드코딩 금지 — 여기서 조회).
@@ -231,33 +220,15 @@ export const postTemplates = pgTable('post_templates', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// recurring_rules: **미사용(2026-07-24)**. 일괄 생성 기능을 없애면서 이 테이블을 읽고 쓰는 코드도 전부 제거했다.
-// (정기 봉사가 "매월 첫째 주 토요일"처럼 고정되는 경우가 드물어 새 예약에서 회차를 직접 넣는 편이 낫다.)
-// 테이블은 데이터 보존을 위해 남겨 둔다 — 다시 쓸 일이 없다고 확정되면 DROP 마이그레이션으로 정리할 것.
-export const recurringRules = pgTable('recurring_rules', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  teamId: uuid('team_id')
-    .notNull()
-    .references(() => teams.id, { onDelete: 'cascade' }),
-  label: text('label').notNull(),
-  monthWeek: monthWeekEnum('month_week').notNull(), // 매월 N번째(1~4|last)
-  weekday: smallint('weekday').notNull(), // 0=일 … 6=토
-  time: time('time').notNull(), // 봉사 집합시간(event.meet_time 의 원천)
-  boardMenuid: integer('board_menuid')
-    .notNull()
-    .references(() => boards.menuid),
-  templateId: uuid('template_id').references(() => postTemplates.id, { onDelete: 'set null' }),
-  noticeLeadDays: integer('notice_lead_days').notNull().default(7), // 봉사일 - N일 = 발행일
-  publishTime: time('publish_time').notNull().default('20:00'), // 발행 시각
-  isActive: boolean('is_active').notNull().default(true),
-});
+// 제거됨: recurring_rules (마이그레이션 0020). 일괄 생성 기능을 없앤 2026-07-24 이후로
+// 읽고 쓰는 코드가 없었고, 데이터 보존을 위해 남겨 두었지만 0행이라 보존할 것도 없었다.
+// events.rule_id 도 함께 제거(이 테이블만 참조하던 컬럼).
 
 export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
   teamId: uuid('team_id')
     .notNull()
     .references(() => teams.id, { onDelete: 'cascade' }),
-  ruleId: uuid('rule_id').references(() => recurringRules.id, { onDelete: 'set null' }),
   title: text('title').notNull(),
   eventDate: date('event_date'),
   meetTime: time('meet_time'),
