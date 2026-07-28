@@ -53,6 +53,12 @@ jobs:
       - run: npm ci
 
       # Supabase 서버 버전보다 pg_dump 가 낮으면 거부당한다. PGDG 에서 17 클라이언트를 받는다.
+      #
+      # ⚠ `/usr/bin/pg_dump` 를 그냥 부르면 안 된다. 그것은 Debian 의 pg_wrapper 이고,
+      #    러너에 postgresql-16 **서버 클러스터**가 이미 있어서 17 을 설치해도 16 을 골라 준다.
+      #    2026-07-28 첫 실행이 여기서 죽었다: "server version: 17.6; pg_dump version: 16.14".
+      #    → 버전이 박힌 절대 경로를 쓰고, 그 경로가 없으면 **즉시 실패**시킨다.
+      #      (예전엔 `pg_dump --version` 을 출력만 하고 검사하지 않아 그대로 통과했다.)
       - name: Postgres 17 클라이언트 설치
         run: |
           set -euo pipefail
@@ -63,7 +69,14 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+
+          PGDUMP=/usr/lib/postgresql/17/bin/pg_dump
+          if [ ! -x "$PGDUMP" ]; then
+            echo "::error::postgresql-client-17 설치 실패 — $PGDUMP 가 없다. 백업하지 않고 멈춘다."
+            exit 1
+          fi
+          echo "PGDUMP=$PGDUMP" >> "$GITHUB_ENV"
+          "$PGDUMP" --version
 
       # actions/checkout 을 쓰지 않는다. 그것은 기본 브랜치 ref(refs/heads/main)를 직접 fetch 하는데,
       # **갓 만든 빈 리포에는 커밋이 없어 그 ref 자체가 없다** → "couldn't find remote ref refs/heads/main"
@@ -112,7 +125,8 @@ jobs:
           OUT="backups/dumps/backup-${STAMP}.sql.gz.gpg"
 
           # --no-owner/--no-privileges: 복원 대상(로컬 검증 DB)에 supabase 역할이 없어도 들어가게.
-          pg_dump "$DIRECT_URL" --no-owner --no-privileges --format=plain \
+          # $PGDUMP = 버전이 박힌 절대 경로(위 설치 스텝이 검증하고 넘겨준다). pg_wrapper 를 우회한다.
+          "$PGDUMP" "$DIRECT_URL" --no-owner --no-privileges --format=plain \
             | gzip -9 \
             | gpg --batch --yes --symmetric --cipher-algo AES256 \
                   --passphrase-fd 3 --output "$OUT" \
