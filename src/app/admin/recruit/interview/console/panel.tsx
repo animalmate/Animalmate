@@ -11,6 +11,8 @@ import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { EssayBlock } from '@/components/essay-block';
 import { formatPhone } from '@/lib/phone';
 import { slotPlaceLabel, formatScore, slotPanelNumbers, slotPanelSuffix } from '@/recruit/display';
+import { formatTimeRange } from '@/recruit/timetable';
+import { groupApplicantsBySlot } from '@/recruit/interview-groups';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -28,6 +30,10 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [slots, setSlots] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
+  const [slotInterviewersNames, setSlotInterviewersNames] = useState<Record<string, string[]>>({});
+  // 면접 당일 화면이라 '지금 시간대'가 시계를 따라 움직여야 한다. 30초마다 갱신하면 충분하다
+  // (슬롯이 10분 단위라 초 단위로 다시 그릴 이유가 없다).
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [staffNames, setStaffNames] = useState<Record<string, string>>({});
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
@@ -46,6 +52,11 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const memoSeq = useRef(0);
 
   const QUICK_SCORES = ['5.0', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'];
+
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     fetchCohorts();
@@ -113,6 +124,16 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     const [slotData, appData, scoreData] = await Promise.all([slotRes.json(), appRes.json(), scoreRes.json()]);
 
     if (slotData.slots) setSlots(slotData.slots);
+    // 슬롯 머리에 "누가 보는 조인지"를 적으려면 면접관이 필요하다. 예전엔 이 응답을 버렸다.
+    if (slotData.interviewersMap) {
+      setSlotInterviewersNames(
+        Object.fromEntries(
+          Object.entries(slotData.interviewersMap as Record<string, { name: string }[]>).map(
+            ([slotId, list]) => [slotId, (list ?? []).map((i) => i.name)]
+          )
+        )
+      );
+    }
     if (appData.applicants) {
       const interviewees = appData.applicants.filter((a: any) =>
         ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass'].includes(a.status)
@@ -238,6 +259,23 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   // 같은 시각·같은 장소를 나눠 쓰는 조 번호(슬롯 필터가 쓴다).
   const panelNumbers = slotPanelNumbers(slots);
 
+  // 한 슬롯에 여러 명이 함께 들어간다. 평면 목록이면 "지금 이 방에 누가 있는지"를
+  // 한 명씩 눌러 봐야 알 수 있어, 슬롯(조) 단위로 묶어서 보여준다.
+  const visibleSlots =
+    selectedSlotFilter === 'ALL' ? slots : slots.filter((s) => s.id === selectedSlotFilter);
+  const groups = groupApplicantsBySlot({
+    slots: visibleSlots,
+    applicants: filteredApplicants,
+    interviewersBySlot: Object.fromEntries(
+      slots.map((s) => [s.id, (slotInterviewersNames[s.id] ?? []) as string[]])
+    ),
+    panelNumbers,
+    placeLabel: slotPlaceLabel,
+    nowMs,
+  });
+
+  const selectedGroup = groups.find((g) => g.applicants.some((a: any) => a.id === selectedApplicantId));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -315,9 +353,43 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
             </span>
           </div>
 
-          <div className="space-y-2">
-            {filteredApplicants.map((app) => {
-              const slot = slots.find((s) => s.id === app.slotId);
+          <div className="space-y-4">
+            {groups.map((group) => (
+              <div key={group.slotId ?? 'unassigned'} className="space-y-2">
+                {/* 슬롯 머리 — 이 시간에 어느 방에서 누가 보는 조인지. 같이 들어가는 사람이 아래에 모여 있다. */}
+                <div
+                  className={`flex flex-wrap items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] ${
+                    group.isNow ? 'bg-blue-600 text-white' : 'bg-cream-100 text-ink-700'
+                  }`}
+                >
+                  <span className="font-mono font-bold">
+                    {group.startsAtMs !== null
+                      ? formatTimeRange(group.startsAtMs, group.durationMin ?? 30)
+                      : '슬롯 미배정'}
+                  </span>
+                  {group.placeLabel && <span className="font-semibold">{group.placeLabel}</span>}
+                  {group.panelNo > 0 && (
+                    <span
+                      className={`rounded px-1.5 py-0.5 font-bold ${
+                        group.isNow ? 'bg-white/25' : 'bg-ink-900 text-white'
+                      }`}
+                    >
+                      {group.panelNo}조
+                    </span>
+                  )}
+                  {group.isNow && <span className="font-bold">지금</span>}
+                  <span className={`ml-auto ${group.isNow ? 'text-white/80' : 'text-ink-500'}`}>
+                    {group.interviewers.length > 0 ? `면접관 ${group.interviewers.join('·')}` : '면접관 미정'}
+                    {' · '}
+                    {group.applicants.length}명
+                  </span>
+                </div>
+
+                {group.applicants.length === 0 && (
+                  <p className="pl-1 text-[11px] text-ink-400">이 시간대에 배정된 지원자가 없습니다.</p>
+                )}
+
+                {group.applicants.map((app) => {
               const isSelected = app.id === selectedApplicantId;
               const effectiveTeam = app.assignedTeam || app.wishTeam1 || '팀미지정';
               const myScore = myInterviewScores[app.id];
@@ -343,14 +415,8 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                         {effectiveTeam}
                       </span>
                     </span>
-                    <span className="text-xs font-mono font-bold text-blue-700">
-                      {slot
-                        ? new Date(slot.startsAt).toLocaleTimeString('ko-KR', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
-                        : '미배정'}
-                    </span>
+                    {/* 시각·장소는 슬롯 머리에 한 번만 적는다 — 줄마다 되풀이하면 정작
+                        이름과 채점 여부가 묻힌다. */}
                   </div>
                   <div className="flex items-center justify-between text-xs text-ink-500 mt-1.5">
                     <span>{app.school}</span>
@@ -376,7 +442,9 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                   </div>
                 </div>
               );
-            })}
+                })}
+              </div>
+            ))}
           </div>
         </Card>
 
@@ -415,6 +483,36 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                   )}
                 </div>
               </div>
+
+              {/* 같은 조에 함께 들어온 사람들. 한 방에서 여러 명을 동시에 보므로, 채점하다
+                  옆 사람으로 바로 넘어갈 수 있어야 한다(왼쪽 목록까지 갈 필요 없이). */}
+              {selectedGroup && selectedGroup.applicants.length > 1 && (
+                <div className="-mt-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-cream-50 px-3 py-2">
+                  <span className="text-[11px] font-bold text-ink-500">같은 조 ({selectedGroup.applicants.length}명)</span>
+                  {selectedGroup.applicants.map((a: any) => {
+                    const done = myInterviewScores[a.id] !== undefined;
+                    const active = a.id === selectedApplicantId;
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setSelectedApplicantId(a.id)}
+                        className={`min-h-tap rounded-lg px-2.5 text-xs font-bold transition-colors ${
+                          active
+                            ? 'bg-blue-600 text-white'
+                            : done
+                            ? 'bg-white text-ink-700 border border-ink-200 hover:bg-cream-100'
+                            : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                        }`}
+                        title={done ? '내 채점 완료' : '내 채점 전'}
+                      >
+                        {a.name}
+                        {done ? ' ✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* 지원서 핵심 보기 */}
               {/* 면접 중에는 점수 입력칸이 화면 밖으로 밀리면 안 된다 — 길면 접어 두고 펼쳐 본다. */}
