@@ -362,8 +362,44 @@ try {
   console.log(`\n[3/3] ${targetId} 에 적용합니다…`);
   const { gpg: gpg2, plain: plain2 } = decryptStream();
   const psql = spawn('psql', [target, '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'inherit', 'inherit'] });
+
+  // psql 이 ON_ERROR_STOP 으로 **먼저 죽으면** 남은 덤프가 닫힌 stdin 으로 계속 흘러들어
+  // EPIPE 가 난다. 이걸 처리하지 않으면 Node 가 `Unhandled 'error' event` 스택을 20줄쯤 토하고,
+  // 그 스택이 **진짜 원인인 psql 의 ERROR 줄을 화면 밖으로 밀어낸다.**
+  // 장애 대응 중에 가장 나쁜 실패 방식이다 — 무엇이 잘못됐는지가 안 보인다.
+  // (2026-07-28 복원 리허설에서 실제로 겪었다.)
+  let psqlDied = false;
+  psql.stdin.on('error', (e) => {
+    if (e.code === 'EPIPE') {
+      psqlDied = true;
+      plain2.unpipe(psql.stdin);
+      plain2.destroy();
+      return;
+    }
+    throw e;
+  });
+
   plain2.pipe(psql.stdin);
-  await Promise.all([waitFor(gpg2, 'gpg'), streamDone(plain2, '압축 해제'), waitFor(psql, 'psql')]);
+  const results = await Promise.allSettled([
+    waitFor(gpg2, 'gpg'),
+    streamDone(plain2, '압축 해제'),
+    waitFor(psql, 'psql'),
+  ]);
+  // psql 이 죽어서 앞단이 함께 끊긴 경우, 진짜 원인은 **위에 이미 출력된 psql 의 ERROR 줄**이다.
+  // 파생 실패(gpg/gunzip 중단)를 원인처럼 보고하지 않는다.
+  const psqlResult = results[2];
+  if (psqlResult.status === 'rejected') {
+    fail(
+      `복원이 중단됐습니다 — ${psqlResult.reason.message}\n` +
+        `  ⤷ 진짜 원인은 위에 찍힌 psql 의 ERROR 줄입니다. 자주 나오는 것:\n` +
+        `     · schema "auth" already exists → 옛 형식(DB 전체) 백업이다. 2026-07-28 이후 백업을 쓰거나,\n` +
+        `       대상에서 public·drizzle 스키마만 지우고 다시 시도할 것.\n` +
+        `     · type "vector" does not exist → 대상에 pgvector 가 없다. CREATE EXTENSION vector 먼저.`
+    );
+  }
+  if (!psqlDied) {
+    for (const r of results) if (r.status === 'rejected') throw r.reason;
+  }
 
   console.log(`\n✔ 복원 완료 → ${targetId}`);
   console.log(`  다음: 테이블 수(29)와 RLS 활성 여부를 확인하세요(05-ASSET-REGISTRY 리허설 절차 5단계).`);

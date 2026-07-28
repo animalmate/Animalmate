@@ -95,6 +95,7 @@ Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions �
 | 워크플로 | `.github/workflows/backup.yml` (이름: 백업) |
 | 주기 | 매주 일요일 18:00 UTC(= 월 03:00 KST) + **매월 1일** 18:00 UTC |
 | 방식 | `pg_dump` → `gzip` → `gpg` 대칭 암호화(AES256) → 비공개 리포 `animalmate-backups` 의 `dumps/` 에 커밋 |
+| 범위 | **`public` + `drizzle` 스키마만** (+ `vector` 확장). Supabase 관리 스키마는 담지 않는다 — 아래 참고 |
 | 파일명 | `backup-YYYY-MM-DD.sql.gz.gpg` (UTC 날짜) |
 | 보존 | 최근 8주 전부 + **매월 1일자는 6개월**. 초과분은 잡이 자동 삭제 |
 | 실패 시 | 공용 Gmail 로 알림 메일 |
@@ -103,6 +104,15 @@ Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions �
 - 암호는 명령행 인자가 아니라 파일 디스크립터로 넘긴다(프로세스 목록에 노출 금지).
 - 푸시 전에 **복호화가 되는지 확인**한다. 열리지 않는 파일을 6개월 쌓지 않기 위해서다.
 - 월간 잡을 따로 둔 이유: 주간 잡만으로는 1일에 걸리는 일이 드물어 월간 보존 규칙이 사실상 죽는다.
+
+> **왜 `public` + `drizzle` 만 담는가 (2026-07-28 변경).** 그 전에는 DB 전체를 떴는데, 그러면
+> Supabase 가 관리하는 `auth`·`storage`·`realtime` 스키마까지 들어간다. 복원 대상 Supabase
+> 프로젝트에는 그것들이 **이미 있으므로** 복원이 `ERROR: schema "auth" already exists` 로
+> 첫 줄에서 죽는다. 리허설에서 실제로 겪었다 — **그때까지의 백업은 "열리기는 하는데 되돌릴 수는
+> 없는" 상태였다.** 빠지는 것들은 잃어도 되는 것이거나 있어도 소용이 없다:
+> `auth`(세션이 커스텀 JWT 라 Supabase Auth 미사용), `storage`(파일 실체가 덤프에 없어 메타데이터만
+> 되살려도 가리킬 파일이 없다), `realtime`(미사용).
+> 범위를 좁히면 `CREATE EXTENSION` 이 빠져 `vector(768)` 에서 깨지므로 `--extension=vector` 를 함께 준다.
 
 ### 복원 리허설 (분기 1회 권장 — 백업은 복원해 본 적 있을 때만 백업이다)
 
@@ -169,11 +179,15 @@ read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.m
 > ⚠ **이 단계부터 테스트 DB 에 운영 PII 가 들어간다**(지원자 실명·전화·자기소개서). 6단계에서
 > 전량 지우는 데까지가 리허설이다. 그 전에는 테스트 프로젝트의 anon key 를 아무 데도 노출하지 않는다.
 
-덤프에 `CREATE TABLE` 이 들어 있으므로 기존 스키마와 충돌한다. 먼저 비운다:
+덤프가 `CREATE SCHEMA public` 부터 시작하므로, 비우되 **다시 만들지 않는다**(덤프가 만든다).
+`drizzle`(마이그레이션 기록) 스키마도 함께 지운다:
 
 ```bash
-psql "$TEST_DATABASE_URL" -c "drop schema public cascade; create schema public;"
+psql "$TEST_DATABASE_URL" -c "drop schema if exists public cascade; drop schema if exists drizzle cascade;"
 ```
+
+> Supabase 가 관리하는 `auth`·`storage`·`realtime` 은 **건드리지 않는다.** 지우면 프로젝트가
+> 망가진다. 백업도 2026-07-28부터 그 스키마들을 담지 않는다(아래 참고).
 
 **4단계 — 테스트 DB 에 복원한다**
 
@@ -195,13 +209,20 @@ psql "$TEST_DATABASE_URL" -c "select relname, n_live_tup from pg_stat_user_table
 ```
 
 테이블 수가 스키마와 맞고 주요 테이블에 행이 있으면 데이터 복원은 성공이다.
-**그다음이 진짜 확인할 것 — `rls켜진테이블` 이 테이블 수와 같은가.**
-다르면 복원본은 기본 거부가 아니다(규칙 #8). 1단계 출력의 `RLS 활성화 구문` 개수와 함께 본다:
+**그다음이 진짜 확인할 것 — `rls켜진테이블` 이 테이블 수와 같은가.** 다르면 복원본은 기본 거부가
+아니다(규칙 #8).
 
-- 구문이 **테이블 수만큼** 있고 복원 후에도 켜져 있다 → 백업만으로 RLS 까지 되살아난다.
-- 구문이 **0개** → 덤프가 RLS 를 담지 않는다. 복원본은 **전 테이블이 뚫린 상태**다.
-  이 경우 복원 직후 곧바로 `npm run db:migrate:test`(또는 운영이면 `db:migrate`)로 RLS 를
-  세우고 `npm run test:rls:prod` 로 증명하기 전까지 그 DB 를 아무에게도 노출하지 않는다.
+> ✅ **덤프에 RLS 는 포함된다 — 2026-07-28 확인.** (예전에 이 문서는 "포함되지 않을 수 있다"고
+> 적고 있었는데 사실이 아니었다.) `backup-2026-07-28` 을 뜯어 보니 `ALTER TABLE … ENABLE ROW
+> LEVEL SECURITY` 가 **public 29개 테이블 전부**에 있었고, `CREATE POLICY` 는 **0개**였다 —
+> 정확히 "RLS 켬 + 정책 미부여 = 기본 거부" 그대로다. 즉 **백업만으로 RLS 까지 되살아난다.**
+> (시스템 스키마 포함 총 54개: auth 16 / public 29 / storage 8 / realtime 1.
+> 1단계가 출력하는 숫자는 이 총합이라, public 이 다 덮였는지는 이 5단계에서 확인한다.)
+>
+> 그래도 **매번 확인한다.** `pg_dump` 옵션이나 Supabase 쪽 사정이 바뀌면 조용히 달라질 수 있고,
+> 그때 복원본은 전 테이블이 뚫린 상태가 된다. 만약 0 이 나오면, 복원 직후 곧바로
+> `npm run db:migrate:test`(운영이면 `db:migrate`)로 RLS 를 세우고 증명하기 전까지 그 DB 를
+> 아무에게도 노출하지 않는다.
 
 **6단계 — 뒷정리 (운영 PII 를 테스트 DB 에 남기지 않는다)**
 
