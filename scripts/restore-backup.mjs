@@ -51,8 +51,43 @@ if (flag('--help') || flag('-h')) {
   process.exit(0);
 }
 
-const key = process.env.BACKUP_ENCRYPTION_KEY;
-if (!key) fail('BACKUP_ENCRYPTION_KEY 가 없습니다. 금고에서 꺼내 환경변수로 주세요.\n  예) BACKUP_ENCRYPTION_KEY=… node scripts/restore-backup.mjs');
+/**
+ * 복호화 암호를 얻는다. 환경변수가 없으면 **입력을 감춘 채 물어본다.**
+ *
+ * 왜 물어보는가: 명령줄에 키를 붙여넣으면 셸 기록 파일에 그대로 남는다
+ * (PowerShell 의 ConsoleHost_history.txt, bash 의 .bash_history). 백업 전체를 여는 열쇠가
+ * 평문으로 디스크에 남는 셈이라, 사람이 직접 돌릴 때는 물어보는 편이 안전하다.
+ * 자동화(CI)에서는 환경변수를 그대로 쓴다.
+ */
+async function readKey() {
+  const fromEnv = process.env.BACKUP_ENCRYPTION_KEY;
+  if (fromEnv) return fromEnv;
+  if (!process.stdin.isTTY) {
+    fail('BACKUP_ENCRYPTION_KEY 가 없습니다. 금고에서 꺼내 환경변수로 주거나, 터미널에서 직접 실행하세요.');
+  }
+  const { createInterface } = await import('node:readline');
+
+  // 입력을 감추려면 raw mode 가 필요하다. 없는 환경에서 terminal:true 로 열면 입력을 영영
+  // 기다리며 **멈춘다** — 그게 가장 나쁜 실패다. 있을 때만 감추고, 없으면 그냥 보이게 받는다
+  // (화면에 보여도 셸 기록에는 남지 않으므로 명령줄에 붙여넣는 것보다는 낫다).
+  const canHide = typeof process.stdin.setRawMode === 'function';
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: canHide });
+  process.stdout.write(
+    canHide
+      ? '금고에 보관한 BACKUP_ENCRYPTION_KEY 를 붙여넣으세요(화면에 보이지 않습니다): '
+      : '금고에 보관한 BACKUP_ENCRYPTION_KEY 를 붙여넣으세요(이 터미널은 입력을 가리지 못합니다): '
+  );
+  // 타이핑·붙여넣기 에코를 끈다. readline 은 입력을 output 으로 되돌려 쓰므로 그 쓰기를 막는다.
+  if (canHide) rl.output.write = () => true;
+  const answer = await new Promise((resolve) => rl.question('', resolve));
+  rl.close();
+  process.stdout.write('\n');
+  const trimmed = answer.trim();
+  if (!trimmed) fail('입력이 비어 있습니다.');
+  return trimmed;
+}
+
+const key = await readKey();
 
 const target = value('--to');
 const confirm = flag('--confirm');

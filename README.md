@@ -148,10 +148,13 @@ npm run test:rls         # RLS 기본 거부 증명 + 서비스 통합(실 Supab
 복원은 개발자 작업이라 이 README에 절차를 두지 않는다. 확인만 하는 명령은 안전하다(DB를 건드리지 않는다):
 
 ```bash
-BACKUP_ENCRYPTION_KEY='금고 값' node scripts/restore-backup.mjs   # 최신 백업 받아 테이블·행 수만 출력
+node scripts/restore-backup.mjs   # 최신 백업 받아 테이블·행 수만 출력. 키는 실행 중에 물어본다
 ```
 
 `--confirm` 없이는 어떤 DB에도 적용하지 않는다.
+
+> `gpg`는 PowerShell PATH에 없다(Git for Windows 안에만 있다). **Git Bash에서 실행**하거나,
+> PowerShell이라면 먼저 `$env:PATH = "C:\Program Files\Git\usr\bin;$env:PATH"`.
 
 ## CI
 
