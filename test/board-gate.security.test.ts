@@ -16,9 +16,9 @@ import { createReservation, BoardNotWritableError } from '@/publishing/reservati
 import { createDraft, markReady, schedulePost, getPost } from '@/publishing/scheduled-posts';
 import { runPublishWorker } from '@/publishing/publish-worker';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const OK_MENUID = 990090; // 활성 + 봇 쓰기 허용
 const NO_BOT_MENUID = 990091; // 등록됐지만 봇 쓰기 불가
@@ -48,7 +48,7 @@ suite('게시판 게이트 — 봇 쓰기가 허용된 게시판에만 예약·�
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     testStart = new Date();
     await cleanup();

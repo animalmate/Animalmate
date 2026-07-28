@@ -9,9 +9,9 @@ import { withdrawMember, listMembers, WITHDRAWN_NAME } from '@/auth/members';
 import { loadActor } from '@/auth/auth-service';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 // 이 테스트는 공용 DB 에 붙는다(테스트 전용 DB 가 아니다) — 만든 것만 지운다.
 const EMAILS = {
@@ -52,7 +52,7 @@ suite('회원 탈퇴(withdrawMember) — 개인정보 삭제 + 영구 잠금', (
   };
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     const [t] = await db.insert(teams).values({ name: TEAM_NAME, kind: 'activity' }).returning();

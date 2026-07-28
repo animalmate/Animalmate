@@ -7,9 +7,9 @@ import * as schema from '@/db/schema';
 import { users, recruitCohorts, recruitApplicants } from '@/db/schema';
 import { lookupApplicantResult } from '@/recruit/lookup';
 import { findApplicantInCohort } from '@/recruit/applicants';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const OLD_LABEL = 'QA-PUBLIC-지난기수';
 const NEW_LABEL = 'QA-PUBLIC-이번기수';
@@ -35,7 +35,7 @@ suite('공개 접수·조회 (실 DB)', () => {
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
 

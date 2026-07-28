@@ -7,13 +7,13 @@ import * as schema from '@/db/schema';
 import { users, memberships, auditLogs } from '@/db/schema';
 import { expireLapsedMemberships } from '@/auth/term-expiry';
 import type { Db } from '@/db/types';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 // ⚠ expireLapsedMemberships 는 **범위 인자가 없다** — DB 전체에서 임기 지난 멤버십을 찾아 강등하고
-// 세션을 끊는다. 통합 테스트는 운영 DB(DIRECT_URL)를 대상으로 돌기 때문에, 그대로 호출하면
-// 실제 운영진이 로그아웃될 수 있다. 그래서 **전부 하나의 트랜잭션 안에서 돌리고 마지막에 롤백**한다.
+// 세션을 끊는다. 대상이 테스트 DB 로 분리된 뒤에도 그대로 호출하면 다른 테스트 파일이 만들어 둔
+// 멤버십까지 싹 강등시킨다. 그래서 **전부 하나의 트랜잭션 안에서 돌리고 마지막에 롤백**한다.
 // (함수 내부의 transaction 은 세이브포인트가 되므로 정상 동작한다.)
 const ROLLBACK = new Error('__rollback__');
 
@@ -26,7 +26,7 @@ suite('임기 자동 만료(expireLapsedMemberships)', () => {
   let db: ReturnType<typeof drizzle<typeof schema>>;
 
   beforeAll(() => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
   });
 

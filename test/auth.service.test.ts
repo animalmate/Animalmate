@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { TEST_DATABASE_URL } from './db-url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -17,8 +18,7 @@ import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
 import type { Mailer, OtpMail } from '@/auth/mailer';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const SECRET = 'integration-secret';
 const ADMIN_EMAIL = 'auth-admin@example.invalid';
@@ -52,10 +52,11 @@ suite('인증 — 가입코드 + 이메일 OTP', () => {
   let preexistingActiveCodeId: string | null = null;
 
   async function cleanup() {
-    // ⚠ 이 테스트는 실제 운영 DB(DIRECT_URL)를 대상으로 돌 수 있다.
-    // 예전에는 여기서 join_codes 를 **전부** 지웠는데(= "테스트 전용 DB 가정"), 그 가정이 틀려서
-    // 통합 테스트를 돌릴 때마다 동아리의 실제 활성 가입코드가 삭제됐다(가입이 조용히 막힌다).
-    // 이제 이 테스트가 만든 코드만 지운다. 다른 정리 대상도 전부 테스트 전용 값으로 한정한다.
+    // ⚠ 지우는 범위를 **이 테스트가 만든 것으로만** 한정한다.
+    // 예전에는 여기서 join_codes 를 전부 지웠다("어차피 테스트 DB니까"). 그런데 그때는 대상이
+    // 운영 DB 였고, 통합 테스트를 돌릴 때마다 동아리의 실제 활성 가입코드가 삭제됐다
+    // (가입이 조용히 막힌다). 지금은 TEST_DATABASE_URL 로 대상이 분리됐지만 한정은 그대로 둔다 —
+    // 테스트 DB 도 24개 파일이 함께 쓰는 공유 자원이라, 전부 지우면 다른 파일의 픽스처가 날아간다.
     const codes = await db.select({ id: joinCodes.id }).from(joinCodes).where(inArray(joinCodes.code, TEST_JOIN_CODES));
     const codeIds = codes.map((c) => c.id);
     if (codeIds.length) await db.delete(auditLogs).where(inArray(auditLogs.targetId, codeIds));
@@ -65,7 +66,7 @@ suite('인증 — 가입코드 + 이메일 OTP', () => {
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     // 활성 가입코드는 항상 1개(부분 유니크 인덱스)라, 이 테스트가 코드를 발급하면
     // 기존 활성 코드가 비활성으로 밀린다 = 실제 가입이 막힌다. 원래 값을 기억해 두고 끝나면 되돌린다.

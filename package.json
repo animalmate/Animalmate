@@ -11,12 +11,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:rls": "vitest run --config vitest.rls.config.ts --passWithNoTests",
-    "test:e2e": "vitest run --config vitest.rls.config.ts test/e2e-http.test.ts",
-    "eval": "cross-env RUN_EVAL=1 vitest run --config vitest.rls.config.ts test/chatbot-eval.test.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:rls:prod": "vitest run --config vitest.prod.config.ts test/rls.security.test.ts",
+    "test:e2e": "vitest run --config vitest.prod.config.ts test/e2e-http.test.ts",
+    "eval": "cross-env RUN_EVAL=1 vitest run --config vitest.prod.config.ts test/chatbot-eval.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:migrate:test": "drizzle-kit migrate --config drizzle.test.config.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.38.4",

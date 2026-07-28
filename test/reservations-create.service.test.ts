@@ -10,9 +10,9 @@ import { cancelPost } from '@/publishing/scheduled-posts';
 import { createTemplate } from '@/publishing/post-templates';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const MENUID = 990082;
 const EMAIL = 'resv-create-test@example.invalid';
@@ -39,7 +39,7 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     // 이전 크래시 잔여 데이터 방지(멱등).
     await db.delete(scheduledPosts).where(eq(scheduledPosts.boardMenuid, MENUID));

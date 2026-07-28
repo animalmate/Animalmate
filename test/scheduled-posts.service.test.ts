@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { TEST_DATABASE_URL } from './db-url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -15,8 +16,7 @@ import { autoDetermineStatus } from '@/publishing/reservations';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const MENUID = 990069;
 const EMAIL = 'sched-posts-test@example.invalid';
@@ -36,7 +36,7 @@ suite('scheduled_posts 서비스 — 작성/상태머신/발행결과', () => {
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     await db.insert(boards).values({ menuid: MENUID, name: '예약글 테스트', botCanWrite: true });

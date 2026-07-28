@@ -313,15 +313,33 @@ try {
     process.exit(0);
   }
 
-  const hostAndDb = (url) => {
+  // ⚠ 호스트+DB 이름으로 "운영인지" 판정하면 안 된다. Supabase 풀러를 쓰면 운영과 테스트
+  //    프로젝트가 **호스트도 DB 이름도 완전히 같다**(둘 다 ...pooler.supabase.com / postgres).
+  //    구분되는 것은 사용자명의 프로젝트 ref 뿐이다. 예전 코드는 hostname+pathname 을 비교해서
+  //    테스트 DB 로 복원할 때도 "운영 DB 와 같습니다" 경고를 띄웠다(늑대소년이 되면 사람은
+  //    경고를 읽지 않게 된다 — 진짜 운영일 때 10초를 그냥 흘려보낸다).
+  const projectRef = (url) => {
     try {
       const u = new URL(url);
-      return `${u.hostname}${u.pathname}`;
+      const pooler = /^postgres\.([a-z0-9]{16,})$/.exec(decodeURIComponent(u.username));
+      if (pooler) return pooler[1];
+      const direct = /^db\.([a-z0-9]{16,})\.supabase\.co$/.exec(u.hostname);
+      if (direct) return direct[1];
+      return null; // Supabase 가 아닌 DB(로컬 등)
     } catch {
       return null;
     }
   };
-  const targetId = hostAndDb(target);
+  const label = (url) => {
+    try {
+      const u = new URL(url);
+      const ref = projectRef(url);
+      return ref ? `supabase:${ref}` : `${u.hostname}${u.pathname}`;
+    } catch {
+      return null;
+    }
+  };
+  const targetId = label(target);
   if (!targetId) fail('--to 값이 올바른 postgres URL 이 아닙니다.');
 
   if (!confirm) {
@@ -333,7 +351,7 @@ try {
   }
 
   // 운영 DB 는 한 겹 더 막는다. 되돌릴 수 없다.
-  const prodIds = [process.env.DATABASE_URL, process.env.DIRECT_URL].filter(Boolean).map(hostAndDb);
+  const prodIds = [process.env.DATABASE_URL, process.env.DIRECT_URL].filter(Boolean).map(label);
   if (prodIds.includes(targetId)) {
     console.warn(`\n⚠  복원 대상이 .env 의 운영 DB 와 같습니다 (${targetId}).`);
     console.warn(`   운영 데이터를 백업 시점으로 되돌립니다. 되돌릴 수 없습니다.`);

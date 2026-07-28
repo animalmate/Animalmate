@@ -18,10 +18,12 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '@/db/schema';
 import { askChatbot, type AskResult } from '@/rag/chatbot';
 import type { Actor, Role } from '@/auth/permissions';
+// ⚠ 이 파일은 **운영 DB 를 본다**(vitest.prod.config.ts). 재는 것이 "실제 지식베이스로 답했을 때의
+// 품질"이라, 빈 테스트 DB 에서 돌리면 전부 핸드오프가 나와 측정 자체가 성립하지 않는다.
+const PROD_DB_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
 const RUN = process.env.RUN_EVAL === '1';
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = RUN && DIRECT_URL && process.env.GEMINI_API_KEY ? describe : describe.skip;
+const suite = RUN && PROD_DB_URL && process.env.GEMINI_API_KEY ? describe : describe.skip;
 
 type Expect = 'answer' | 'handoff' | 'refuse' | 'refuse_or_handoff';
 interface Q {
@@ -57,7 +59,7 @@ suite('챗봇 평가셋', () => {
   let db: ReturnType<typeof drizzle<typeof schema>>;
 
   beforeAll(() => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(PROD_DB_URL!, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
   });
   afterAll(async () => {

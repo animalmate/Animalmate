@@ -13,10 +13,10 @@ import { documents, users, auditLogs } from '@/db/schema';
 import { createDocument, deleteDocument } from '@/rag/documents';
 import { searchChunks, allowedVisibilities } from '@/rag/search';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const HAVE_KEY = !!process.env.GEMINI_API_KEY;
-const suite = DIRECT_URL && HAVE_KEY ? describe : describe.skip;
+const suite = HAVE_KEY ? describe : describe.skip;
 
 const PREFIX = 'RAGTEST_';
 const OWNER_EMAIL = 'ragtest-owner@example.invalid';
@@ -38,7 +38,7 @@ suite('RAG visibility — 질문자 역할 이하 문서만 검색된다', () =>
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     const [u] = await db.insert(users).values({ email: OWNER_EMAIL, name: 'RAG오너' }).returning();

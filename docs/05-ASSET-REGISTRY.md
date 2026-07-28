@@ -16,7 +16,8 @@
 | 공용 Gmail | 루트 계정·복구·알림 수신 | (공용) | 필수 | 금고 | 무료 | — | 복구=회장 개인메일 |
 | GitHub Org | 소스 리포 | 공용 Gmail | 필수 | 금고 | 무료 | — | 개발자=멤버 |
 | Vercel | 호스팅(Hobby) | 공용 Gmail | 권장 | 금고 | 무료 | — | Cron 사용 금지 |
-| Supabase | DB/Auth/벡터/스토리지 | 공용 Gmail | 권장 | 금고 | 무료 | — | 7일 미사용 정지 주의 |
+| Supabase (운영) | DB/Auth/벡터/스토리지 | 공용 Gmail | 권장 | 금고 | 무료 | — | 7일 미사용 정지 주의 |
+| Supabase (테스트) | 통합 테스트 전용 DB `animalmate-test` | 공용 Gmail | 권장 | 금고 | 무료 | — | 운영과 **별개 프로젝트**. 아래 「테스트 DB 운용」 참고 |
 | 네이버 개발자센터 | 카페 글쓰기 앱 | 조직/공용 네이버 | 필수 | 금고 | 무료 | — | 앱 소유=조직 계정 |
 | 네이버 봇 계정 | 카페 글쓰기 실행 | 공용 네이버 | 필수 | 금고 | 무료 | — | 카페 가입·쓰기권한 필요 |
 | LLM 제공사 | 생성+임베딩 | 공용 Gmail | 권장 | 금고 | 선불 크레딧 | 월 | 하드 한도+알림 설정 |
@@ -43,7 +44,8 @@
 | CRON_SECRET | pg_cron→API 인증 | Supabase + Vercel + 금고 | 운영진 교체 시 | 양쪽 일치 |
 | BACKUP_ENCRYPTION_KEY | 백업 암호화(GPG 대칭) | GitHub Actions 시크릿 + 금고 | 신중히 | **잃으면 모든 백업이 열리지 않는다.** `.env`·Vercel 에 넣지 말 것(앱 런타임 변수 아님) |
 | BACKUP_REPO_TOKEN | 백업 리포 push | GitHub Actions 시크릿 + 금고 | **만료일 주의** | fine-grained PAT, 대상 `animalmate-backups` 한정, Contents read/write + Metadata read. 만료되면 백업이 조용히 멈추므로 갱신일을 달력에 |
-| DIRECT_URL (Actions) | pg_dump 접속 | GitHub Actions 시크릿 + 금고 | DB 비밀번호 변경 시 | 세션 풀러(5432). 트랜잭션 풀러(6543)로는 pg_dump 불가 |
+| DIRECT_URL (Actions) | pg_dump 접속 + RLS 증명 | GitHub Actions 시크릿 + 금고 | DB 비밀번호 변경 시 | 세션 풀러(5432). 트랜잭션 풀러(6543)로는 pg_dump 불가 |
+| TEST_DATABASE_URL | 통합 테스트 대상 DB | `.env` + GitHub Actions 시크릿 + 금고 | 테스트 프로젝트 비밀번호 변경 시 | **운영이 아닌** `animalmate-test` 프로젝트. 운영 값을 넣으면 테스트가 하드 실패한다 |
 
 **백업 실패 알림에는 시크릿이 필요 없다.** 실패하면 `backup.yml` 의 `alert` 잡이 `GITHUB_TOKEN`
 (워크플로가 자동으로 받는 토큰, `issues: write`)으로 이 리포에 이슈를 만들고 담당자에게 배정한다.
@@ -53,6 +55,33 @@
 Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions 에 두면 잡이 실메일을 보낼 수
 있게 되는데, 이 프로젝트는 테스트 경로에서 메일이 새어 나간 사고를 이미 겪었고 그 뒤로
 "테스트 환경에서는 항상 dry"를 원칙으로 지켜 왔다. 백업 알림 하나 때문에 그 원칙에 구멍을 내지 않는다.
+
+## 테스트 DB 운용 (`animalmate-test`)
+
+통합 테스트 전용 Supabase 프로젝트다. **운영과 완전히 별개 프로젝트**이고, 접속 문자열은
+`TEST_DATABASE_URL`(로컬 `.env` + GitHub Actions 시크릿)에만 둔다.
+
+**왜 만들었나.** 예전에는 통합 테스트 24개 파일이 `DIRECT_URL ?? DATABASE_URL` 을 집었다.
+`.env` 가 있는 머신에서 `npm run test:rls` 를 치면 곧바로 운영 DB 였고, 이 테스트들은 읽기만
+하지 않는다 — 회원·지원자·예약 행을 만들고 지운다. 규약(`@example.invalid` + 멱등 cleanup)으로
+버텨 왔지만 그건 사람이 규약을 지킬 때만 성립하는 안전이었다. 실제로 한 번은 정리 코드가
+`join_codes` 를 전부 지워 동아리의 실제 활성 가입코드가 삭제된 적이 있다.
+
+| 항목 | 내용 |
+|---|---|
+| 스키마 맞추기 | `npm run db:migrate:test` — 운영과 **같은 마이그레이션**을 적용한다 |
+| 테스트 실행 | `npm run test:integration` (21파일 / 136케이스, 약 45초) |
+| 가드 | `test/db-url.ts` — 값이 없거나 운영 ref 를 가리키면 **skip 이 아니라 하드 실패** |
+| 운영과의 구분 | **프로젝트 ref 로만 구분된다.** 호스트도 DB 이름도 운영과 완전히 같다 |
+| 넣지 말 것 | 실데이터·PII. 복원 리허설 중에만 예외이고, 끝나면 전량 삭제한다(아래 6단계) |
+
+> **7일 미사용 시 일시정지된다** — 무료 티어 규칙은 운영 프로젝트와 같다. 다만 운영에는
+> UptimeRobot 5분 핑이 있지만 **테스트 DB 에는 그런 것이 없다.** 개발이 뜸하면 정지된다.
+>
+> **깨우는 법**: Supabase 대시보드에서 프로젝트를 열고 `Restore project` / `Resume` 를 누른다
+> (1~2분). 정지된 상태에서 테스트를 돌리면 연결 실패로 CI 가 빨갛게 뜬다 — 코드 문제가 아니라
+> 정지가 원인일 수 있으니 **CI 가 DB 연결 오류로 죽으면 대시보드부터 확인할 것.**
+> 테스트 DB 는 언제든 버리고 다시 만들어도 된다(`db:migrate:test` 로 복구된다).
 
 ## 백업·복원
 
@@ -77,7 +106,10 @@ Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions �
 
 ### 복원 리허설 (분기 1회 권장 — 백업은 복원해 본 적 있을 때만 백업이다)
 
-준비물: `git`, `gpg`, Node 22+, (5단계까지 갈 때만) 로컬 PostgreSQL 17 + `psql`.
+준비물: `git`, `gpg`, Node 22+, (3단계부터) `psql` 17 클라이언트와 `TEST_DATABASE_URL`.
+
+> **1~2단계는 DB 가 전혀 필요 없다.** 백업이 열리는지, 안에 무엇이 들었는지, **RLS 구문이 있는지**
+> 까지 여기서 다 나온다. `psql` 이 없어도 최소 리허설은 지금 당장 할 수 있다.
 
 > ⚠ **셸마다 되는 방법이 다르다.** 두 가지 제약이 겹친다.
 > - `gpg` 는 **PowerShell PATH 에 없다**(Git for Windows 안에만 있다).
@@ -129,39 +161,61 @@ read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.m
 
 `check.sql` 은 **평문 개인정보**다. 확인이 끝나면 반드시 지운다: `rm check.sql`
 
-**3단계 — 빈 로컬 DB 를 만든다**
+**3단계 — 복원 대상은 테스트 프로젝트다 (`TEST_DATABASE_URL`)**
+
+로컬 Postgres 를 세우지 않는다. **통합 테스트용 Supabase 프로젝트(`animalmate-test`)를 그대로 쓴다** —
+어차피 유지하는 DB 이고, 스키마가 운영과 같은 마이그레이션으로 맞춰져 있어 비교가 정확하다.
+
+> ⚠ **이 단계부터 테스트 DB 에 운영 PII 가 들어간다**(지원자 실명·전화·자기소개서). 6단계에서
+> 전량 지우는 데까지가 리허설이다. 그 전에는 테스트 프로젝트의 anon key 를 아무 데도 노출하지 않는다.
+
+덤프에 `CREATE TABLE` 이 들어 있으므로 기존 스키마와 충돌한다. 먼저 비운다:
 
 ```bash
-createdb animalmate_restore_test
+psql "$TEST_DATABASE_URL" -c "drop schema public cascade; create schema public;"
 ```
 
-**4단계 — 로컬 DB 에 복원한다**
+**4단계 — 테스트 DB 에 복원한다**
 
 ```bash
 read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.mjs \
-  --to postgresql://postgres@localhost:5432/animalmate_restore_test --confirm; unset K
+  --to "$TEST_DATABASE_URL" --confirm; unset K
 ```
 
 `--confirm` 이 없으면 대상만 확인하고 적용하지 않는다(사고 방지). 대상이 `.env` 의 운영 DB 와
-같으면 경고 후 10초 기다린다 — 그때 Ctrl+C 로 멈출 수 있다.
+같으면 경고 후 10초 기다린다 — 그때 Ctrl+C 로 멈출 수 있다. 판정은 **프로젝트 ref** 로 한다.
+호스트로 비교하면 안 된다 — 운영과 테스트는 호스트도 DB 이름도 같다.
 
 **5단계 — 복원 결과를 검증한다**
 
 ```bash
-psql postgresql://postgres@localhost:5432/animalmate_restore_test -c \
-  "select count(*) as 테이블수 from pg_tables where schemaname='public';"
-psql postgresql://postgres@localhost:5432/animalmate_restore_test -c \
-  "select relname, n_live_tup from pg_stat_user_tables order by n_live_tup desc limit 10;"
+psql "$TEST_DATABASE_URL" -c "select count(*) as 테이블수 from pg_tables where schemaname='public';"
+psql "$TEST_DATABASE_URL" -c "select count(*) as rls켜진테이블 from pg_tables where schemaname='public' and rowsecurity;"
+psql "$TEST_DATABASE_URL" -c "select relname, n_live_tup from pg_stat_user_tables order by n_live_tup desc limit 10;"
 ```
 
-테이블 수가 29(현재 스키마 기준)이고 주요 테이블에 행이 있으면 리허설 성공이다.
-**RLS 는 덤프에 포함되지 않을 수 있다** — 복원본을 운영으로 승격할 일이 생기면
-`npm run db:migrate` 로 마이그레이션을 다시 적용해 RLS 를 확인하고, `npm run test:rls` 로 증명한다.
+테이블 수가 스키마와 맞고 주요 테이블에 행이 있으면 데이터 복원은 성공이다.
+**그다음이 진짜 확인할 것 — `rls켜진테이블` 이 테이블 수와 같은가.**
+다르면 복원본은 기본 거부가 아니다(규칙 #8). 1단계 출력의 `RLS 활성화 구문` 개수와 함께 본다:
 
-**6단계 — 뒷정리**
+- 구문이 **테이블 수만큼** 있고 복원 후에도 켜져 있다 → 백업만으로 RLS 까지 되살아난다.
+- 구문이 **0개** → 덤프가 RLS 를 담지 않는다. 복원본은 **전 테이블이 뚫린 상태**다.
+  이 경우 복원 직후 곧바로 `npm run db:migrate:test`(또는 운영이면 `db:migrate`)로 RLS 를
+  세우고 `npm run test:rls:prod` 로 증명하기 전까지 그 DB 를 아무에게도 노출하지 않는다.
+
+**6단계 — 뒷정리 (운영 PII 를 테스트 DB 에 남기지 않는다)**
+
+복원한 실데이터를 지우고 테스트 DB 를 원래대로(빈 스키마 + 마이그레이션) 되돌린다.
 
 ```bash
-dropdb animalmate_restore_test
+psql "$TEST_DATABASE_URL" -c "drop schema public cascade; create schema public;"
+npm run db:migrate:test
+```
+
+되돌아왔는지 확인한다 — 테이블 수가 스키마와 같고, 모든 테이블의 행이 0 이어야 한다:
+
+```bash
+psql "$TEST_DATABASE_URL" -c "select coalesce(sum(n_live_tup),0) as 총행수 from pg_stat_user_tables;"
 ```
 
 리허설 날짜와 결과를 아래 표에 남긴다.

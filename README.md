@@ -92,6 +92,8 @@ npm run dev              # 개발 서버 (http://localhost:3000)
 
 - `DATABASE_URL` — 런타임 쿼리용 Postgres(트랜잭션 풀러 6543). 서버 전용.
 - `DIRECT_URL` — 마이그레이션(DDL)용 Postgres(세션 풀러 5432). 서버 전용.
+- `TEST_DATABASE_URL` — **통합 테스트 전용 DB**(별개의 Supabase 프로젝트, 세션 풀러 5432).
+  운영 프로젝트를 넣으면 테스트가 하드 실패한다.
 - `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`.
 - `TOKEN_ENCRYPTION_KEY`(토큰 암호화), `CRON_SECRET`(크론 인증), `SESSION_SECRET`(세션/OTP).
 - `GEMINI_*`(챗봇), `NAVER_*`(카페 글쓰기), `SMTP_*`(Gmail 발송), `NAVER_PUBLISH_DRY_RUN`.
@@ -115,7 +117,7 @@ npm run db:migrate       # DIRECT_URL(5432)로 적용
 > ```sql
 > ALTER TABLE "새_테이블" ENABLE ROW LEVEL SECURITY;
 > ```
-> `npm run test:rls`가 `pg_tables`를 훑어 전 테이블을 검사하므로, 빠뜨리면 테스트가 잡아낸다.
+> `npm run test:rls:prod`가 `pg_tables`를 훑어 전 테이블을 검사하므로, 빠뜨리면 테스트가 잡아낸다.
 >
 > **배포 순서는 migrate 먼저, push 나중.** 컬럼을 추가한 코드를 먼저 배포하면 `SELECT *`가
 > 없는 컬럼을 찾아 전 화면이 500이 된다(2026-07-28 실제 사고).
@@ -123,11 +125,30 @@ npm run db:migrate       # DIRECT_URL(5432)로 적용
 ### 통합/보안 테스트 (실 DB 필요)
 
 ```bash
-npm run test:rls         # RLS 기본 거부 증명 + 서비스 통합(실 Supabase 대상)
+npm run db:migrate:test  # 테스트 DB 에 스키마 적용(처음 한 번, 그리고 스키마 바뀔 때마다)
+npm run test:integration # 통합 테스트 — 대상은 TEST_DATABASE_URL(테스트 전용 프로젝트)
+npm run test:rls:prod    # RLS 기본 거부 증명 — 대상은 운영. 비파괴적(읽기 거부 확인만)
 ```
 
-`SUPABASE_URL`/`SUPABASE_ANON_KEY`/`DIRECT_URL`이 없으면 건너뛴다. `test/rls.security.test.ts`는
-`pg_tables`에서 테이블을 런타임 수집하므로 **새 테이블이 RLS를 빠뜨리면 자동으로 실패**한다.
+**통합 테스트는 운영 DB 에 닿지 않는다.** 예전에는 각 테스트 파일이 `DIRECT_URL ?? DATABASE_URL`
+을 집었기 때문에, `.env` 가 있는 머신에서 테스트를 돌리면 곧바로 운영 DB 였다. 이 테스트들은 읽기만
+하지 않는다 — 회원·지원자·예약 행을 만들고 지운다. 지금은 `test/db-url.ts` 가 `TEST_DATABASE_URL`
+하나만 보고, 값이 없거나 **운영 프로젝트를 가리키면 skip 이 아니라 하드 실패**시킨다.
+
+> 운영과 테스트는 **호스트가 같다**(둘 다 `...pooler.supabase.com`, DB 이름도 둘 다 `postgres`).
+> 구분되는 것은 사용자명의 프로젝트 ref 뿐이라, 가드도 ref 로 판정한다. 호스트로 비교하는 코드를
+> 쓰지 말 것 — 반드시 통과해 버린다.
+
+운영을 대상으로 남은 것은 셋뿐이고, 각각 이유가 있다(`vitest.prod.config.ts`).
+
+| 스크립트 | 파일 | 왜 운영이어야 하는가 |
+|---|---|---|
+| `test:rls:prod` | `rls.security.test.ts` | 증명할 대상이 **운영의** RLS 다. 테스트 DB 에서 통과해도 2026-07-27 사고를 잡지 못한다 |
+| `test:e2e` | `e2e-http.test.ts` | 배포된 앱에 HTTP 로 붙는다. 그 앱이 보는 DB 와 같아야 한다 |
+| `eval` | `chatbot-eval.test.ts` | 실제 지식베이스 품질 측정. 빈 DB 면 전부 핸드오프라 측정이 무의미 |
+
+`test/rls.security.test.ts`는 `pg_tables`에서 테이블을 런타임 수집하므로 **새 테이블이 RLS를
+빠뜨리면 자동으로 실패**한다.
 
 모집(recruit) 서비스는 db를 인자로 받지 않고 `src/db/client.ts` 싱글턴을 쓰므로 `DATABASE_URL`도
 필요하다(CI는 `DIRECT_URL` 값을 그대로 넘긴다). 이 싱글턴은 **지연 초기화(Proxy)** 라 import만으로는

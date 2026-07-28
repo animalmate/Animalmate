@@ -55,6 +55,13 @@
 - 환경 변수는 `02-TECH-STACK.md`의 목록에만 정의하고 `env.example` 동기화.
 - 핵심 로직은 반드시 단위 테스트 작성: 권한 검사, 반복 규칙 날짜 계산(매월 N번째 X요일),
   발행 상태머신 전이, visibility 필터.
+- **통합 테스트는 운영 DB 에 붙지 않는다.** `test/**` 는 `TEST_DATABASE_URL`(별개 Supabase
+  프로젝트 `animalmate-test`)만 쓴다 — `test/db-url.ts` 를 import 하고, `process.env.DIRECT_URL`
+  이나 `DATABASE_URL` 을 직접 읽지 말 것. 값이 없거나 운영 ref 를 가리키면 **skip 이 아니라
+  하드 실패**한다(skip 은 초록으로 보이지만 아무것도 증명하지 않는다).
+  예외는 운영이어야만 의미가 있는 3개뿐이다 — RLS 거부 증명 / e2e HTTP / 챗봇 평가
+  (`vitest.prod.config.ts`). 여기에 새 파일을 추가하려면 그 이유를 주석으로 남긴다.
+  스키마를 바꾸면 `npm run db:migrate` 와 함께 **`npm run db:migrate:test` 도** 돌린다.
 - DB 변경은 마이그레이션 파일로만: `npm run db:generate` → `npm run db:migrate`.
   스키마를 바꾸면 `03-DATA-MODEL.md`를 같은 커밋에서 갱신.
   **`drizzle-kit push` 절대 금지** — push 는 schema.ts 에 RLS 선언이 없는 것을 보고 public 전 테이블의

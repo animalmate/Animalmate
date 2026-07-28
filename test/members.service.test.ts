@@ -8,9 +8,9 @@ import { users, memberships, auditLogs } from '@/db/schema';
 import { setMemberRole, setMemberActive, listMembers } from '@/auth/members';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const EMAILS = {
   target: 'member-mgmt-target@example.invalid',
@@ -49,7 +49,7 @@ suite('회원 권한 관리 보안 가드(setMemberRole/Active)', () => {
   };
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     targetId = await mk(EMAILS.target, 'member');

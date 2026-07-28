@@ -8,9 +8,9 @@ import { teams, teamMembers, users, memberships, auditLogs } from '@/db/schema';
 import { setUserTeams, setTeamManualLeaders } from '@/org/team-members';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const EMAIL = 'roster-test@example.invalid';
 const BOARD_EMAIL = 'roster-test-board@example.invalid';
@@ -52,7 +52,7 @@ suite('팀 배정(setUserTeams) + 미가입자 팀장단(setTeamManualLeaders)',
     (await db.select({ position: teamMembers.position, label: teamMembers.label }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId))))[0];
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     const [a] = await db.insert(teams).values({ name: TEAM_A, kind: 'activity' }).returning();

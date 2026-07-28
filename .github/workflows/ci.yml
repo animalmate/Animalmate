@@ -6,6 +6,7 @@ on:
   pull_request:
 
 jobs:
+  # ── ① 코드 품질 + 통합 테스트 (대상: **테스트 DB**) ──────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
@@ -22,17 +23,43 @@ jobs:
         run: npm run lint
       - name: 단위 테스트(순수 로직)
         run: npm test
-      # RLS 기본 거부 증명(규칙 #8). 실제 Supabase 를 대상으로 anon key 로 전 테이블 접근 거부를
-      # 검증한다. public 스키마 테이블을 런타임에 수집하므로 새 테이블 누락도 자동 감지.
-      # 아래 시크릿은 GitHub 리포 Settings > Secrets and variables > Actions 에 등록해야 한다.
-      - name: RLS 보안 테스트
-        run: npm run test:rls
+
+      # 테스트 DB 의 스키마를 마이그레이션으로 맞춘다. 운영과 같은 마이그레이션을 적용받아야
+      # 통합 테스트가 의미를 갖는다. 이미 최신이면 아무것도 하지 않는다(멱등).
+      - name: 테스트 DB 마이그레이션
+        run: npm run db:migrate:test
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+
+      # 통합 테스트는 행을 만들고 지운다. 대상은 **반드시** 테스트 전용 프로젝트다 —
+      # test/db-url.ts 가 운영 ref 를 감지하면 하드 실패시킨다. 여기에 운영 DATABASE_URL/
+      # DIRECT_URL 을 넣지 말 것(넣으면 그 가드가 무력해지는 게 아니라, 테스트가 죽는다).
+      - name: 통합 테스트(테스트 DB)
+        run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+  # ── ② RLS 기본 거부 증명 (대상: **운영 DB**) ────────────────────────────────
+  # 이 잡만 운영을 본다. 증명해야 할 대상이 운영의 RLS 이기 때문이다 — 테스트 DB 에서 통과해도
+  # 2026-07-27 사고(drizzle-kit push 가 운영 28개 테이블의 RLS 를 해제)를 잡지 못한다.
+  # anon key 로 접근이 거부되는지만 확인하는 **비파괴적** 테스트다(읽기 시도만 한다).
+  #
+  # ⚠ 이 단계가 13초 만에 끝나면 시크릿이 없어 describe.skip 으로 건너뛴 것이다(가짜 초록).
+  #   실제로 돌면 6~8분 걸린다. 소요 시간을 보고 판단할 것.
+  rls-prod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: RLS 기본 거부 증명(운영)
+        run: npm run test:rls:prod
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # public 스키마 테이블 목록을 런타임에 수집해 새 테이블 누락도 자동 감지한다.
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
-          # 모집(recruit) 서비스는 db 를 인자로 받지 않고 db/client 싱글턴을 import 한다.
-          # 그 싱글턴이 읽는 변수라, 시크릿이 등록된 환경에서는 이게 있어야 모집 테스트가 실제로 돈다.
-          # 별도 시크릿을 두지 않고 같은 DB 를 가리키는 DIRECT_URL 을 그대로 쓴다.
-          # (시크릿이 비어 있으면 위 DIRECT_URL 가드에 걸려 전 파일이 skip 된다 — 실패가 아니다.)
-          DATABASE_URL: ${{ secrets.DIRECT_URL }}

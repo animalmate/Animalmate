@@ -9,9 +9,9 @@ import { createDraft, markReady, schedulePost, getPost } from '@/publishing/sche
 import { runPublishWorker } from '@/publishing/publish-worker';
 import type { Actor } from '@/auth/permissions';
 import type { CafeWriteResult } from '@/naver/cafe-write';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const MENUID = 990070;
 const EMAIL = 'publish-worker-test@example.invalid';
@@ -54,7 +54,7 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     testStart = new Date();
     await cleanup();

@@ -9,9 +9,9 @@ import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { events, teams } from '@/db/schema';
 import { listUpcomingSessions, getSessionsOnDate } from '@/rag/tools';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const TEAM = 'TOOLTEST_봉사팀';
 const FUTURE = '2099-08-01'; // 먼 미래(다른 테스트 데이터와 안 겹치게)
@@ -33,7 +33,7 @@ suite('챗봇 봉사 tool — 취소 아님 + 장소 있음만 노출', () => {
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     const [t] = await db.insert(teams).values({ name: TEAM, kind: 'activity' }).returning();

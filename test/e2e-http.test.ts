@@ -9,11 +9,15 @@ import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { users, memberships, postTemplates, auditLogs } from '@/db/schema';
 import { signSession, SESSION_COOKIE } from '@/auth/session';
+// ⚠ 이 파일은 **운영 DB 를 본다**(vitest.prod.config.ts). 다른 통합 테스트처럼 TEST_DATABASE_URL
+// 로 옮길 수 없다 — 배포된 앱(E2E_BASE_URL)에 HTTP 로 붙어 그 결과를 DB 에서 확인하는 테스트라,
+// 그 앱이 보는 DB 와 같은 DB 여야만 의미가 있다. 배포본이 보는 것은 운영 DB 다.
+// 그래서 여기서 만드는 데이터는 반드시 `@example.invalid`·`QA-` 규약을 지키고 끝에 지운다.
+const PROD_DB_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
 const BASE = process.env.E2E_BASE_URL;
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const SECRET = process.env.SESSION_SECRET;
-const suite = BASE && DIRECT_URL && SECRET ? describe : describe.skip;
+const suite = BASE && PROD_DB_URL && SECRET ? describe : describe.skip;
 
 const BOARD_EMAIL = 'e2e-board@example.invalid';
 const MEMBER_EMAIL = 'e2e-member@example.invalid';
@@ -43,7 +47,7 @@ suite('인증 필요 HTTP E2E (템플릿 CRUD · 입력검증 · 권한 게이�
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(PROD_DB_URL!, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     const [b] = await db.insert(users).values({ email: BOARD_EMAIL, name: 'E2E회장' }).returning();

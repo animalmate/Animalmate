@@ -10,9 +10,9 @@ import { aggregateScoresByApplicant } from '@/recruit/aggregate';
 import { purgeCohortApplicants, PurgeNotAllowedError } from '@/recruit/purge';
 import { listApplicantsByIds } from '@/recruit/applicants';
 import { buildNoteKey } from '@/recruit/note-keys';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const COHORT_LABEL = 'QA-SCORING-TEST기수';
 const OTHER_COHORT_LABEL = 'QA-SCORING-다른기수';
@@ -64,7 +64,7 @@ suite('모집 채점 — 자동 상태 전이·집계·폐기 (실 DB)', () => {
   };
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup(); // 이전 크래시 잔여 데이터 방지(멱등)
 

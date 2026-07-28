@@ -11,9 +11,9 @@ import { documents, users, auditLogs } from '@/db/schema';
 import { createDocument, deleteDocument } from '@/rag/documents';
 import { askChatbot } from '@/rag/chatbot';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL && process.env.GEMINI_API_KEY ? describe : describe.skip;
+const suite = process.env.GEMINI_API_KEY ? describe : describe.skip;
 
 const PREFIX = 'CHATANSWER_';
 const EMAIL = 'chatanswer@example.invalid';
@@ -35,15 +35,16 @@ suite('챗봇 정답 경로 — 심은 문서로 답하고 출처를 단다', ()
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     const [u] = await db.insert(users).values({ email: EMAIL, name: '정답오너' }).returning();
     owner = { userId: u!.id, role: 'member', membershipActive: true, teams: [] };
-    // ⚠ 픽스처 사실은 **실 지식베이스에 없을 고유한 것**이어야 한다.
-    // 이 통합 테스트는 DIRECT_URL=운영 DB 에 붙어 돌기 때문에, 예전 "회비 2만원" 픽스처는
-    // 사용자가 실제로 올린 회비 문서(연 5만원)와 함께 검색되어 모델이 실 문서로 답했고
-    // 테스트만 실패했다(챗봇은 정상이었다). 실 문서와 겹칠 수 없는 표현으로 바꾼다.
+    // ⚠ 픽스처 사실은 **다른 문서와 겹칠 수 없는 고유한 것**이어야 한다.
+    // 예전 "회비 2만원" 픽스처는 사용자가 실제로 올린 회비 문서(연 5만원)와 함께 검색되어
+    // 모델이 실 문서로 답했고 테스트만 실패했다(챗봇은 정상이었다). 대상이 테스트 DB 로
+    // 분리된 지금도 조건은 같다 — 복원 리허설처럼 테스트 DB 에 실 문서가 들어오는 순간이
+    // 있고, RAG 는 "그 주제의 문서가 하나뿐"이라는 가정 위에서만 결정적이다.
     const doc = await createDocument(db, { ...owner, role: 'board' }, {
       title: `${PREFIX}물떼새프로젝트안내`,
       contentMd:

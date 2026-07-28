@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { TEST_DATABASE_URL } from './db-url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -16,8 +17,7 @@ import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
 
 // 실제 Supabase 대상 통합 테스트. env 없으면 건너뜀(CI 는 시크릿 주입).
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 // 실제 게시판(예: 68)과 겹치지 않는 테스트 전용 menuid.
 const TEST_MENUID = 990068;
@@ -36,7 +36,7 @@ suite('boards 서비스 — CRUD + 권한 + audit', () => {
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup(); // 이전 실패 잔여 제거
     // audit_logs.actor_user_id 는 users FK → 실제 사용자 1명 필요.

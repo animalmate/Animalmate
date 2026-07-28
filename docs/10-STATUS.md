@@ -369,7 +369,9 @@ received ──→ doc_pass ──→ interview_done ──→ final_pass | fina
 |---|---|---|
 | `BACKUP_ENCRYPTION_KEY` | 백업 GPG 암호 | 등록됨(2026-07-28, 금고 보관) |
 | `BACKUP_REPO_TOKEN` | 백업 리포 push용 fine-grained PAT | 등록됨. 대상 `animalmate-backups` 한정, Contents read/write + Metadata read |
-| `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` | RLS 테스트 + pg_dump | 등록됨(2026-07-27) |
+| `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` | RLS 거부 증명(운영) + pg_dump | 등록됨(2026-07-27) |
+| `TEST_DATABASE_URL` | 통합 테스트 대상 DB(`animalmate-test`) | **사용자가 등록해야 함** — 없으면 CI 의 통합 테스트 잡이 하드 실패한다(설계상 skip 하지 않는다) |
+| `GEMINI_API_KEY` | 챗봇 통합 테스트 | 미확인 — 없으면 챗봇 관련 테스트만 skip 된다 |
 
 2026-07-28에 `gh secret list`로 확인한 결과 등록된 시크릿은 **위 5개가 전부**다. `SMTP_*`는 없고,
 **앞으로도 넣지 않는다** — 백업 실패 알림은 메일이 아니라 **이슈 자동 생성**으로 바뀌었다.
@@ -497,10 +499,11 @@ received ──→ doc_pass ──→ interview_done ──→ final_pass | fina
 | 마이그레이션 | **0000 ~ 0020** (21개), 최신 `0020_peaceful_may_parker.sql` — **0020은 실 DB 미적용** |
 | 테이블 | **27개** (0020 적용 후 기준. 전부 RLS 활성 + 정책 미부여 = 기본 거부) |
 | 단위 테스트 | **38 파일 / 349 케이스** — `src/**/*.test.ts`, DB 불필요, `npm test` |
-| 통합·보안 테스트 | **24 파일 / 151 케이스** — `test/**`, 실 DB 필요, `npm run test:rls` |
+| 통합 테스트 | **21 파일 / 136 케이스** — `test/**`, **테스트 전용 DB**(`TEST_DATABASE_URL`), `npm run test:integration`. 약 45초 |
+| 운영 대상 테스트 | **3 파일** — RLS 거부 증명(`test:rls:prod`) / e2e HTTP(`test:e2e`) / 챗봇 평가(`eval`). 각각 운영이어야만 의미가 있어 남겼다 |
 | 앱 라우트 | 페이지 **26개** + API **44개** |
 | 소스 파일 | `src/` 기준 **234개** (`.ts`/`.tsx`, 테스트 포함) |
-| CI | GitHub Actions 2개 — `ci.yml`(타입체크 → 린트 → 단위 테스트 → RLS) + `backup.yml`(주간·월간 백업) |
+| CI | GitHub Actions 3개 — `ci.yml`(잡 2개: ①타입체크·린트·단위·**통합(테스트 DB)** ②**RLS 거부 증명(운영)**) + `backup.yml`(주간·월간 백업, 실패 시 이슈 자동 생성) + `keepalive.yml`(60일 비활성 방지) |
 | 품질 게이트 | typecheck 0 오류 / lint 0 / **349 테스트 통과** / `next build` 통과 (2026-07-28 확인) |
 | 배포 | Vercel Hobby + Supabase 무료 티어. pg_cron 2잡, UptimeRobot 5분 핑. **콘솔 직접 확인은 불가** |
 | 실카페 게시 | 2026-07-24 전환 완료(봇 카페스탭 임명 + `NAVER_PUBLISH_DRY_RUN=false`) |

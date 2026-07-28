@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { TEST_DATABASE_URL } from './db-url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -13,19 +14,16 @@ import {
 } from '@/naver/token-service';
 import type { RefreshResult } from '@/naver/oauth';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 const key = randomBytes(32);
 
-// 실 DB 대상. 기존 naver_tokens 행(실제 토큰)이 있으면 덮어쓰지 않도록 스킵.
-const shouldRun = Boolean(DIRECT_URL);
-
-describe.runIf(shouldRun)('naver token-service — 암호화 저장 + 갱신', () => {
+// 테스트 DB 에 naver_tokens 행이 이미 있으면 덮어쓰지 않고 끝에 되돌린다(preExisting).
+describe('naver token-service — 암호화 저장 + 갱신', () => {
   let sql: ReturnType<typeof postgres>;
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let preExisting = false;
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     preExisting = (await getTokenRow(db)) !== null; // 실제 토큰이 있으면 건드리지 않음
   });

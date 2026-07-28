@@ -9,9 +9,9 @@ import { eq, like } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { rateLimits } from '@/db/schema';
 import { consumeRateLimit, resetRateLimit, pruneRateLimits, RateLimitError, type LimitRule } from '@/http/rate-limit';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const BUCKET = 'test_bucket';
 const RULE: LimitRule = { bucket: BUCKET, windowSeconds: 60, max: 3 };
@@ -24,7 +24,7 @@ suite('레이트 리밋 — 고정 윈도 카운터', () => {
   const cleanup = () => db.delete(rateLimits).where(eq(rateLimits.bucket, BUCKET));
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
   });

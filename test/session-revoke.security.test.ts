@@ -15,9 +15,9 @@ import { loadActor } from '@/auth/auth-service';
 import { revokeSessions, setMemberRole, setMemberActive, MemberError } from '@/auth/members';
 import { signSession, verifySession } from '@/auth/session';
 import type { Actor } from '@/auth/permissions';
+import { TEST_DATABASE_URL } from './db-url';
 
-const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-const suite = DIRECT_URL ? describe : describe.skip;
+const suite = describe;
 
 const SECRET = 'session-revoke-test-secret';
 const EMAILS = {
@@ -55,7 +55,7 @@ suite('세션 무효화 + 전원 잠금 방지', () => {
   }
 
   beforeAll(async () => {
-    sql = postgres(DIRECT_URL!, { prepare: false, max: 1 });
+    sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
     db = drizzle(sql, { schema, casing: 'snake_case' });
     await cleanup();
     ids.boardA = await mkUser(EMAILS.boardA, 'board');
