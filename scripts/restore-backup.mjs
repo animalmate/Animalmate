@@ -65,7 +65,10 @@ let tempRepo = null;
 if (!file) {
   console.log(`[1/3] 백업 리포에서 최신 백업을 받습니다 — ${BACKUP_REPO}`);
   tempRepo = mkdtempSync(join(tmpdir(), 'am-backup-'));
-  const clone = spawnSync('git', ['clone', '--depth', '1', '--quiet', BACKUP_REPO, tempRepo], {
+  // `--branch main` 을 명시한다. 인자 없는 clone 은 **원격 HEAD** 를 따라가는데, 그것이
+  // 엉뚱한 브랜치를 가리키면 백업이 멀쩡히 있는데도 빈 디렉터리를 받는다. 장애 대응 중에
+  // "백업이 없다"고 잘못 판단하게 만드는 종류의 실패다.
+  const clone = spawnSync('git', ['clone', '--depth', '1', '--branch', 'main', '--quiet', BACKUP_REPO, tempRepo], {
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   if (clone.status !== 0) {

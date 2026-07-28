@@ -9,7 +9,8 @@ name: 백업
 # 무료 티어에는 자동 백업이 없다 — 이 잡이 유일한 안전망이다.
 #
 # ── 사전 준비(사람이 1회) ──────────────────────────────────────────────────
-#  1. GitHub Org 에 **비공개** 리포 `animalmate-backups` 생성(빈 리포도 됨).
+#  1. GitHub Org 에 **비공개** 리포 `animalmate-backups` 생성.
+#     커밋이 하나도 없는 빈 리포여도 된다 — 아래 "백업 리포 준비" 스텝이 첫 커밋을 만든다.
 #  2. fine-grained PAT 발급: Repository access = animalmate-backups **한 개만**,
 #     권한 = Contents(Read and write) **하나만**. 광범위 토큰 금지.
 #  3. 이 리포 Settings > Secrets > Actions 에 등록:
@@ -64,13 +65,35 @@ jobs:
           sudo apt-get install -y -qq postgresql-client-17
           pg_dump --version
 
-      - name: 백업 리포 체크아웃
-        uses: actions/checkout@v4
-        with:
-          repository: animalmate/animalmate-backups
-          token: ${{ secrets.BACKUP_REPO_TOKEN }}
-          path: backups
-          persist-credentials: true
+      # actions/checkout 을 쓰지 않는다. 그것은 기본 브랜치 ref(refs/heads/main)를 직접 fetch 하는데,
+      # **갓 만든 빈 리포에는 커밋이 없어 그 ref 자체가 없다** → "couldn't find remote ref refs/heads/main"
+      # 으로 실패한다(2026-07-28 첫 실행에서 실제로 겪었다). git clone 은 빈 리포에서도 성공한다.
+      - name: 백업 리포 준비
+        env:
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_REPO_TOKEN:-}" ]; then
+            echo "::error::BACKUP_REPO_TOKEN 시크릿이 없다. 백업을 보관할 곳이 없으므로 실패시킨다."
+            exit 1
+          fi
+          # 토큰 값은 Actions 가 로그에서 자동 마스킹한다.
+          REPO="https://x-access-token:${BACKUP_REPO_TOKEN}@github.com/animalmate/animalmate-backups.git"
+
+          # 원격 HEAD 에 기대지 않고 **main 브랜치의 존재를 직접 확인한다.**
+          # 클론 후 `checkout -B main` 으로 때우면, 원격 HEAD 가 엉뚱한 곳을 가리킬 때
+          # 기존 백업이 있는데도 빈 히스토리에서 새로 시작해 버린다(로컬 재현으로 확인).
+          if git ls-remote --exit-code --heads "$REPO" main > /dev/null 2>&1; then
+            # depth 1 — 과거 커밋까지 받으면 지금까지의 모든 백업을 내려받게 된다(용량 낭비).
+            git clone --depth 1 --branch main --quiet "$REPO" backups
+            echo "기존 백업 리포를 받았다. 보유 $(ls backups/dumps 2>/dev/null | wc -l)개"
+          else
+            # 커밋이 하나도 없는 리포(갓 만든 상태). actions/checkout 이 여기서 죽는다.
+            echo "main 브랜치가 없다 — 첫 백업으로 보고 새로 시작한다."
+            mkdir backups
+            git -C backups init -q -b main
+            git -C backups remote add origin "$REPO"
+          fi
 
       # 덤프 → gzip → gpg 를 **한 파이프라인**으로 흘린다. 평문 .sql 이 디스크에 닿는 순간이 없다.
       # 암호는 argv 가 아니라 fd 3 으로 넣는다(ps 로 보이지 않게). 프로세스 치환이라 임시 파일도 없다.
@@ -137,8 +160,11 @@ jobs:
             echo "변경 없음 — 푸시 건너뜀"
             exit 0
           fi
-          git commit -m "백업 ${BACKUP_NAME}"
-          git push
+          git commit -q -m "백업 ${BACKUP_NAME}"
+          # 첫 백업이면 원격에 main 이 아직 없다 — 인자 없는 push 는 upstream 이 없어 실패한다.
+          # HEAD:main 으로 명시하면 첫 푸시와 이후 푸시가 같은 명령으로 처리된다.
+          git push -q origin HEAD:main
+          echo "푸시 완료: ${BACKUP_NAME}"
 
       # 워크스페이스는 잡이 끝나면 사라지지만, 이후 스텝이 추가될 때를 대비해 명시적으로 지운다.
       - name: 흔적 정리
