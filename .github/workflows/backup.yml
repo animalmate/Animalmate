@@ -1,0 +1,162 @@
+name: 백업
+
+# 주 1회 + 매월 1일 DB 전체 덤프를 암호화해 **비공개 리포**(animalmate-backups)에 보관한다.
+#
+# 왜 비공개 리포인가(07-DECISIONS 45): 이 리포는 public 이고, public 리포의 Actions 아티팩트는
+# 누구나 내려받을 수 있다. 암호화돼 있어도 회원·지원자 PII 덤프를 공개 인터넷에 두는 셈이라
+# 보관처로 부적합하다. Supabase 비공개 버킷도 백업 대상과 같은 프로젝트 안이라 오프사이트가 아니다.
+#
+# 무료 티어에는 자동 백업이 없다 — 이 잡이 유일한 안전망이다.
+#
+# ── 사전 준비(사람이 1회) ──────────────────────────────────────────────────
+#  1. GitHub Org 에 **비공개** 리포 `animalmate-backups` 생성(빈 리포도 됨).
+#  2. fine-grained PAT 발급: Repository access = animalmate-backups **한 개만**,
+#     권한 = Contents(Read and write) **하나만**. 광범위 토큰 금지.
+#  3. 이 리포 Settings > Secrets > Actions 에 등록:
+#       BACKUP_REPO_TOKEN     위 PAT
+#       BACKUP_ENCRYPTION_KEY 복호화 암호(고엔트로피, 금고에도 보관 — 잃으면 백업 전부 무용지물)
+#       DIRECT_URL            세션 풀러(5432) 연결 문자열. pg_dump 는 트랜잭션 풀러(6543)로 못 뜬다
+#       SMTP_HOST/PORT/USER/PASS(+선택 SMTP_FROM, ALERT_TO)  실패 알림용
+#  4. 복원 절차와 리허설은 docs/05-ASSET-REGISTRY.md 의 "백업·복원" 절 참고.
+
+on:
+  schedule:
+    # 주간: 매주 일요일 18:00 UTC = 월요일 03:00 KST(트래픽이 가장 적은 시간).
+    - cron: '0 18 * * 0'
+    # 월간: 매월 1일 18:00 UTC. 파일명이 UTC 날짜라 '1일자'로 남아 6개월 보존 대상이 된다.
+    # 주간 잡만으로는 1일에 걸리는 일이 드물어 월간 보존 규칙이 사실상 동작하지 않는다.
+    - cron: '0 18 1 * *'
+  workflow_dispatch: # 수동 실행(복원 리허설 전 최신 백업 확보 등)
+
+# 동시에 두 개가 돌면 같은 파일명으로 push 가 충돌한다.
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    # 이 잡은 백업 리포에만 쓴다. 기본 GITHUB_TOKEN 권한은 전부 회수한다.
+    permissions: {}
+    steps:
+      - name: 메인 리포 체크아웃(보존 정책 스크립트용)
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Supabase 서버 버전보다 pg_dump 가 낮으면 거부당한다. PGDG 에서 17 클라이언트를 받는다.
+      - name: Postgres 17 클라이언트 설치
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: 백업 리포 체크아웃
+        uses: actions/checkout@v4
+        with:
+          repository: animalmate/animalmate-backups
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: backups
+          persist-credentials: true
+
+      # 덤프 → gzip → gpg 를 **한 파이프라인**으로 흘린다. 평문 .sql 이 디스크에 닿는 순간이 없다.
+      # 암호는 argv 가 아니라 fd 3 으로 넣는다(ps 로 보이지 않게). 프로세스 치환이라 임시 파일도 없다.
+      - name: 덤프·암호화
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DIRECT_URL:-}" ] || [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then
+            echo "::error::DIRECT_URL 또는 BACKUP_ENCRYPTION_KEY 시크릿이 없다. 백업하지 않고 실패시킨다."
+            exit 1
+          fi
+          STAMP="$(date -u +%F)"
+          mkdir -p backups/dumps
+          OUT="backups/dumps/backup-${STAMP}.sql.gz.gpg"
+
+          # --no-owner/--no-privileges: 복원 대상(로컬 검증 DB)에 supabase 역할이 없어도 들어가게.
+          pg_dump "$DIRECT_URL" --no-owner --no-privileges --format=plain \
+            | gzip -9 \
+            | gpg --batch --yes --symmetric --cipher-algo AES256 \
+                  --passphrase-fd 3 --output "$OUT" \
+                  3< <(printf '%s' "$BACKUP_ENCRYPTION_KEY")
+
+          BYTES="$(stat -c%s "$OUT")"
+          echo "BACKUP_FILE=$OUT" >> "$GITHUB_ENV"
+          echo "BACKUP_NAME=backup-${STAMP}.sql.gz.gpg" >> "$GITHUB_ENV"
+          echo "생성: $OUT (${BYTES} bytes)"
+          # 덤프가 사실상 비었으면(연결은 됐는데 아무것도 안 나온 경우) 성공으로 넘기지 않는다.
+          if [ "$BYTES" -lt 1024 ]; then
+            echo "::error::백업 파일이 ${BYTES} bytes 로 너무 작다. 덤프 실패로 본다."
+            exit 1
+          fi
+
+      # 여기서 복호화가 되는지까지 확인한다. "암호화는 됐는데 열리지 않는 파일"을 6개월 쌓지 않기 위해서다.
+      - name: 복호화 검증(gzip 헤더까지 확인)
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          gpg --batch --quiet --decrypt --passphrase-fd 3 "$BACKUP_FILE" \
+              3< <(printf '%s' "$BACKUP_ENCRYPTION_KEY") \
+            | gunzip \
+            | head -c 200 \
+            | grep -q "PostgreSQL database dump" \
+            && echo "복호화·압축 해제 확인 완료"
+
+      - name: 보존 정책 적용(최근 8주 + 매월 1일자 6개월)
+        run: npx tsx src/ops/prune-backups-cli.ts backups/dumps
+
+      - name: 커밋·푸시
+        working-directory: backups
+        run: |
+          set -euo pipefail
+          git config user.name "animalmate-backup-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A dumps
+          if git diff --cached --quiet; then
+            echo "변경 없음 — 푸시 건너뜀"
+            exit 0
+          fi
+          git commit -m "백업 ${BACKUP_NAME}"
+          git push
+
+      # 워크스페이스는 잡이 끝나면 사라지지만, 이후 스텝이 추가될 때를 대비해 명시적으로 지운다.
+      - name: 흔적 정리
+        if: always()
+        run: rm -rf backups/dumps || true
+
+      - name: 실패 알림(공용 Gmail)
+        if: failure()
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+        run: |
+          node scripts/notify-failure.mjs \
+            "[애니멀메이트] ⚠️ 주간 DB 백업 실패" \
+            "주간 백업 잡이 실패했습니다. 무료 티어에는 자동 백업이 없어 이 잡이 유일한 안전망입니다.
+
+          실행 로그: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          자주 나오는 원인:
+          - DIRECT_URL 만료·비밀번호 변경(세션 풀러 5432 여야 합니다)
+          - BACKUP_REPO_TOKEN(fine-grained PAT) 만료 — 기본 만료가 짧습니다
+          - Supabase 프로젝트 일시정지
+
+          복원 절차는 docs/05-ASSET-REGISTRY.md 의 '백업·복원' 절에 있습니다."
