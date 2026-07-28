@@ -10,18 +10,26 @@ import {
   buildTimetable,
   timetableToTsv,
   slotsMissingInterviewers,
+  formatTimeRange,
   type TimetableSlot,
 } from '@/recruit/timetable';
+import { dutyRosterToTsv, type DutyRow } from '@/recruit/duty-rules';
 
 export function TimetableModal({
   slots,
   applicantsBySlot,
   interviewersBySlot,
+  dutyRoles,
+  dutyRows,
+  durationAt,
   onClose,
 }: {
   slots: TimetableSlot[];
   applicantsBySlot: Record<string, string[]>;
   interviewersBySlot: Record<string, string[]>;
+  dutyRoles: string[];
+  dutyRows: DutyRow[];
+  durationAt: Record<number, number>;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -35,9 +43,14 @@ export function TimetableModal({
   const missing = slotsMissingInterviewers(days);
   const totalAssigned = Object.values(applicantsBySlot).reduce((n, a) => n + a.length, 0);
 
+  const timeLabel = (ms: number) => formatTimeRange(ms, durationAt[ms] ?? 30);
+  const dutyTsv = dutyRosterToTsv(dutyRoles, dutyRows, timeLabel);
+
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(timetableToTsv(days));
+      // 면접 표와 대기실 표를 한 번에 가져간다 — 공지에 둘 다 붙이므로.
+      const text = [timetableToTsv(days), dutyTsv].filter(Boolean).join('\n\n');
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -134,6 +147,56 @@ export function TimetableModal({
               ))}
             </div>
           ))
+        )}
+
+        {/* 대기실 업무 — 면접관이 아니라 명단 체크·안내·인솔을 맡는 사람들. 공지에 함께 나간다. */}
+        {dutyRows.length > 0 && dutyRoles.length > 0 && (
+          <div className="space-y-1.5">
+            <h3 className="text-sm font-bold text-ink-900">대기실 업무</h3>
+            <div className="overflow-x-auto rounded-xl border border-cream-200">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="bg-cream-100">
+                    <th className="w-32 whitespace-nowrap border-b border-cream-200 p-2 font-bold text-ink-900">
+                      대기실
+                    </th>
+                    {dutyRoles.map((r) => (
+                      <th
+                        key={r}
+                        className="border-b border-l border-cream-200 p-2 font-semibold text-ink-600"
+                      >
+                        {r}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dutyRows.map((row) => (
+                    <tr key={row.startsAtMs}>
+                      <td className="whitespace-nowrap border-b border-cream-100 p-2 font-mono text-[11px] font-semibold text-ink-700">
+                        {timeLabel(row.startsAtMs)}
+                      </td>
+                      {row.allNote ? (
+                        // 전원 공지는 지난 기수 표처럼 칸을 합쳐 한 줄로 보여준다.
+                        <td
+                          colSpan={dutyRoles.length}
+                          className="border-b border-l border-cream-100 bg-cream-100 p-2 text-center font-semibold text-ink-700"
+                        >
+                          {row.allNote}
+                        </td>
+                      ) : (
+                        dutyRoles.map((role) => (
+                          <td key={role} className="border-b border-l border-cream-100 p-2 text-ink-900">
+                            {row.byDuty[role]?.userName ?? ''}
+                          </td>
+                        ))
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
     </Modal>

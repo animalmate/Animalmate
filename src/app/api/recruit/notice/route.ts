@@ -4,6 +4,8 @@ import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { updateCohortNoticeAndSettings } from '@/recruit/notice';
 import { resolveApplyForm } from '@/recruit/apply-form';
+import { resolveDutyRoles } from '@/recruit/duty-rules';
+import { pruneDutyAssignments } from '@/recruit/duties';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
@@ -48,6 +50,7 @@ export async function GET(req: Request): Promise<Response> {
       congratsMessage: cohort.congratsMessage,
       postPassNotice: cohort.postPassNotice,
       venues: cohort.venues ?? DEFAULT_VENUES,
+      dutyRoles: resolveDutyRoles(cohort.dutyRoles),
       // 지원서 양식 설정은 편집 화면에서만 필요하다(공개 지원서 화면은 서버 컴포넌트가 DB 에서 직접 읽는다).
       applyForm: resolveApplyForm(cohort.applyForm),
       schedulePublic: cohort.schedulePublic,
@@ -70,6 +73,7 @@ const MANAGE_ONLY_FIELDS = [
   { key: 'congratsMessage', label: '합격 축하 멘트' },
   { key: 'postPassNotice', label: '합격 후 안내' },
   { key: 'venues', label: '면접 장소 프리셋' },
+  { key: 'dutyRoles', label: '대기실 업무 목록' }, // 면접 당일 배정과 같은 급 = 회장단
 ] as const;
 
 /** 얕은 값 비교(문자열·불리언·문자열 배열). 이 네 필드에 중첩 객체는 없다. */
@@ -93,7 +97,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { cohortId, noticeContent, noticeImages, congratsMessage, postPassNotice, isClosed, venues, applyForm } = body;
+    const { cohortId, noticeContent, noticeImages, congratsMessage, postPassNotice, isClosed, venues, dutyRoles, applyForm } = body;
 
     if (!cohortId) return NextResponse.json({ error: 'missing_cohortId' }, { status: 400 });
 
@@ -107,7 +111,11 @@ export async function POST(req: Request): Promise<Response> {
     if (!isPrivileged(actor.role)) {
       // venues 는 GET 이 기본값을 채워 내려보내므로(DB 는 null) 비교도 같은 기준으로 해야 한다.
       const beforeValue = (key: string): unknown =>
-        key === 'venues' ? (before.venues ?? DEFAULT_VENUES) : (before as Record<string, unknown>)[key];
+        key === 'venues'
+          ? (before.venues ?? DEFAULT_VENUES)
+          : key === 'dutyRoles'
+          ? resolveDutyRoles(before.dutyRoles)
+          : (before as Record<string, unknown>)[key];
       const attempted = MANAGE_ONLY_FIELDS.filter(
         (f) => body[f.key] !== undefined && !sameValue(body[f.key], beforeValue(f.key))
       );
@@ -129,9 +137,17 @@ export async function POST(req: Request): Promise<Response> {
       postPassNotice,
       isClosed,
       venues,
+      // 업무 이름을 바꾸면 없어진 이름으로 남은 배정은 화면에 뜨지 않는다(유령 행) → 아래에서 정리.
+      dutyRoles: dutyRoles === undefined ? undefined : resolveDutyRoles(dutyRoles),
       // 저장 전에 정규화한다 — 빈 선택지 배열이 DB 에 들어가 지원서가 빈 셀렉트로 뜨는 일을 막는다.
       applyForm: applyForm === undefined ? undefined : resolveApplyForm(applyForm),
     });
+
+    // 업무 이름이 바뀌었으면 사라진 이름의 배정을 정리한다. 남겨 두면 화면에는 안 뜨는데
+    // DB 에만 있는 행이 되어, 나중에 같은 이름을 다시 쓰면 옛 배정이 되살아난다.
+    if (dutyRoles !== undefined) {
+      await pruneDutyAssignments(cohortId, resolveDutyRoles(dutyRoles));
+    }
 
     // 모집 마감 전환은 지원 접수를 막는 대외 효과가 있어 기록에 남긴다(규칙 #4).
     if (typeof isClosed === 'boolean' && isClosed !== before.isClosed) {

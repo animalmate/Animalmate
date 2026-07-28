@@ -6,7 +6,11 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import { slotPlaceLabel, slotPanelNumbers, slotPanelSuffix } from '@/recruit/display';
+import { timeAxisOf } from '@/recruit/timetable';
+import type { DutyRow } from '@/recruit/duty-rules';
+import { isPrivileged } from '@/auth/permissions';
 import { TimetableModal } from './timetable-modal';
+import { DutyRoster } from './duty-roster';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { useTeams } from '@/components/use-teams';
@@ -40,6 +44,9 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
+  // 대기실 표는 별도 컴포넌트가 불러온다. 시간표 팝업이 같은 값을 쓰도록 위로 올려 받는다.
+  const [dutyRoles, setDutyRoles] = useState<string[]>([]);
+  const [dutyRows, setDutyRows] = useState<DutyRow[]>([]);
 
   // 10분 단위 시각 리스트 생성 (09:00 ~ 21:50)
   const timeOptions: string[] = [];
@@ -287,6 +294,16 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   Object.entries(slotInterviewersMap).forEach(([slotId, list]) => {
     interviewerNamesBySlot[slotId] = (list ?? []).map((i: any) => i.name);
   });
+
+  // 대기실 표는 면접 시간표와 같은 시간축을 쓴다 — 줄이 어긋나면 나란히 볼 수 없다.
+  // useMemo 가 없으면 렌더마다 새 배열이 나오고, 그것을 prop 으로 받은 DutyRoster 의 effect 가
+  // 매번 다시 돌아 부모 setState → 재렌더 → 새 배열…로 무한 루프가 된다(실제로 터졌다).
+  const { startTimes, durationAt } = React.useMemo(() => timeAxisOf(slots), [slots]);
+
+  const handleDutiesLoaded = React.useCallback((roles: string[], rows: DutyRow[]) => {
+    setDutyRoles(roles);
+    setDutyRows(rows);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -639,11 +656,23 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
         </div>
       </Card>
 
+      <DutyRoster
+        cohortId={selectedCohortId}
+        startTimes={startTimes}
+        durationAt={durationAt}
+        staffMembers={staffMembers}
+        canManage={isPrivileged(role)}
+        onLoaded={handleDutiesLoaded}
+      />
+
       {showTimetable && (
         <TimetableModal
           slots={slots}
           applicantsBySlot={applicantsBySlot}
           interviewersBySlot={interviewerNamesBySlot}
+          dutyRoles={dutyRoles}
+          dutyRows={dutyRows}
+          durationAt={durationAt}
           onClose={() => setShowTimetable(false)}
         />
       )}

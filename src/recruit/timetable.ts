@@ -30,6 +30,26 @@ const sortKeyFmt = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
+/** '10:00 ~ 10:30'. 면접 표와 대기실 표가 같은 문구를 써야 나란히 읽힌다. */
+export function formatTimeRange(startMs: number, durationMin: number): string {
+  const end = startMs + durationMin * 60_000;
+  return `${timeFmt.format(new Date(startMs))} ~ ${timeFmt.format(new Date(end))}`;
+}
+
+/** 여러 슬롯에서 시간축(시작 시각 ms 오름차순)과 시각별 소요 시간을 뽑는다. */
+export function timeAxisOf(slots: { startsAt: string | Date; durationMin?: number | null }[]): {
+  startTimes: number[];
+  durationAt: Record<number, number>;
+} {
+  const durationAt: Record<number, number> = {};
+  for (const s of slots) {
+    const t = new Date(s.startsAt).getTime();
+    if (Number.isNaN(t)) continue;
+    durationAt[t] ??= s.durationMin ?? 30;
+  }
+  return { startTimes: Object.keys(durationAt).map(Number).sort((a, b) => a - b), durationAt };
+}
+
 export interface TimetableSlot {
   id: string;
   startsAt: string | Date;

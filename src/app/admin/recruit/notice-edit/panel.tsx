@@ -26,6 +26,8 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
   const [postPassNotice, setPostPassNotice] = useState('');
   const [isClosed, setIsClosed] = useState(false);
   const [venuesText, setVenuesText] = useState('학생회관 301호\n학생회관 302호');
+  // 면접 당일 대기실 업무 이름들(3번 화면 배정표의 열). 서버가 기본값을 채워 내려보낸다.
+  const [dutyRolesText, setDutyRolesText] = useState('');
 
   // 공개 지원서 양식 설정(문항 문구·안내·선택지). 상세 편집 UI 는 ApplyFormEditor 가 담당한다.
   const [applyForm, setApplyForm] = useState<ApplyFormConfig>(DEFAULT_APPLY_FORM);
@@ -138,6 +140,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       // 저장된 적이 없으면 resolveApplyForm 이 기본값을 채워 준다.
       setApplyForm(resolveApplyForm(data.cohort.applyForm));
       setVenuesText((data.cohort.venues || ['학생회관 301호', '학생회관 302호']).join('\n'));
+      setDutyRolesText((data.cohort.dutyRoles ?? []).join('\n'));
     }
   };
 
@@ -228,6 +231,10 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean);
+      const dutyRoles = dutyRolesText
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
 
       const res = await fetch('/api/recruit/notice', {
         method: 'POST',
@@ -239,7 +246,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           noticeContent,
           noticeImages,
           applyForm,
-          ...(canManage ? { congratsMessage, postPassNotice, isClosed, venues } : {}),
+          ...(canManage ? { congratsMessage, postPassNotice, isClosed, venues, dutyRoles } : {}),
         }),
       });
 
@@ -490,6 +497,19 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
                 placeholder="학생회관 301호&#10;학생회관 302호"
                 value={venuesText}
                 onChange={(e) => setVenuesText(e.target.value)}
+              />
+            </Field>
+
+            <h2 className="text-base font-bold text-ink-900">대기실 업무 목록 (줄바꿈 구분)</h2>
+            <Field
+              label="면접 당일 대기실 업무"
+              hint="면접관 말고 명단 체크·안내·인솔을 맡는 자리입니다. 3번 화면의 대기실 배정표 열이 됩니다. 이름을 지우면 그 업무의 배정도 함께 지워집니다."
+            >
+              <textarea
+                className="w-full h-20 rounded-xl border border-ink-200 bg-white p-3 text-xs font-sans text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500"
+                placeholder="면접자 명단 체크&#10;대기실 안내&#10;면접장 인솔a&#10;면접장 인솔b"
+                value={dutyRolesText}
+                onChange={(e) => setDutyRolesText(e.target.value)}
               />
             </Field>
           </div>

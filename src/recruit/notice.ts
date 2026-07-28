@@ -11,6 +11,8 @@ export interface UpdateNoticeInput {
   postPassNotice?: string | null;
   isClosed?: boolean;
   venues?: string[] | null;
+  /** 면접 당일 대기실 업무 이름들. 기수마다 다르다(src/recruit/duty-rules.ts 기본값). */
+  dutyRoles?: string[] | null;
   /** 공개 지원서 양식 설정(ApplyFormConfig). 자세한 형태는 src/recruit/apply-form.ts. */
   applyForm?: unknown;
 }
@@ -23,6 +25,7 @@ export async function updateCohortNoticeAndSettings(cohortId: string, input: Upd
   if (input.postPassNotice !== undefined) updateData.postPassNotice = input.postPassNotice;
   if (input.isClosed !== undefined) updateData.isClosed = input.isClosed;
   if (input.venues !== undefined) updateData.venues = input.venues;
+  if (input.dutyRoles !== undefined) updateData.dutyRoles = input.dutyRoles;
   if (input.applyForm !== undefined) updateData.applyForm = input.applyForm;
 
   if (Object.keys(updateData).length === 0) return getCohortById(cohortId);

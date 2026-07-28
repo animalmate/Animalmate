@@ -130,9 +130,10 @@
   열람 staff+/export board-only, cohort hard delete 로 보관을 제한한다. 조회는 이름+전화 정확 일치(해시 폐기),
   실패 시도값은 저장하지 않고 IP 레이트리밋으로만 막는다.
   - `recruit_cohorts` (id, label uq, schedule_public, result_public, notice_content?, notice_images? jsonb,
-    congrats_message?, post_pass_notice?, is_closed, venues? jsonb, closed_at?, archived_stats? jsonb,
+    congrats_message?, post_pass_notice?, is_closed, venues? jsonb, duty_roles? jsonb, closed_at?, archived_stats? jsonb,
     created_by, created_at) — 공개 스위치 2개(면접 일정/최종 결과)가 여기. `notice_*`/`congrats_message`/
     `post_pass_notice`/`is_closed`/`venues` 는 공개 공고·마감 스위치·면접 장소 프리셋용(0014).
+    `duty_roles` 는 면접 당일 대기실 업무 이름 목록(0019) — `recruit_duty_assignments` 의 열이 된다.
     `notice_images` 는 **Supabase Storage 공개 버킷 `recruit-notice` 의 URL 목록**이다(파일 본체는 DB 에 두지 않는다).
     예전에는 base64 문자열을 그대로 넣어 포스터 몇 장이면 행 하나가 수 MB 였고, 공고를 볼 때마다 그 행이 통째로 오갔다.
     `apply_form` jsonb(0015) = 공개 지원서의 **문항별 문구·안내·필수 여부 + 선택지 목록**
@@ -147,6 +148,13 @@
   - `recruit_slots` (id, cohort_id, starts_at, duration_min=20, link?, venue?, is_remote, created_by, created_at)
     — 면접 슬롯. cohort_id 인덱스(0014).
   - `recruit_slot_interviewers` (id, slot_id, user_id, created_at) UNIQUE(slot_id, user_id) — 슬롯별 면접관 배정(0014).
+  - `recruit_duty_assignments` (id, cohort_id, starts_at, duty, user_id?(set null), note?, created_by, created_at)
+    UNIQUE(cohort_id, starts_at, duty) — **면접 당일 대기실 업무 배정**(0019). 면접관이 아니라
+    명단 체크·대기실 안내·인솔을 맡는 사람들. 업무 이름 목록은 `recruit_cohorts.duty_roles`(jsonb,
+    미설정 시 `src/recruit/duty-rules.ts` 기본값). `duty = '__ALL__'` 은 그 시간대 전원 공지 줄로,
+    `user_id` 대신 `note`('전원 면접실 정비')를 쓴다.
+    ⚠ `starts_at` 은 `recruit_slots` 를 FK 로 걸지 **않는다** — 대기실 업무는 면접이 없는 시간대에도
+    있고, 슬롯 하나를 지웠다고 그 시간의 대기실 배정까지 사라지면 안 된다. 시간축만 공유한다.
   - `recruit_applicants` (id, cohort_id, name, gender?, birth_date?(text), phone, school?, department?, email?,
     apply_route?, other_activities?, expected_frequency?, wish_team1?, wish_team2?, assigned_team?,
     **near_station?**(주소 대신 역명), ot_attend?(text), remote_interview_wish?(text), essay_intro?, essay_values?,

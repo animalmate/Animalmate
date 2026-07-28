@@ -424,6 +424,9 @@ export const recruitCohorts = pgTable('recruit_cohorts', {
   postPassNotice: text('post_pass_notice'), // 최종 합격자 합격 후 안내 사항
   isClosed: boolean('is_closed').notNull().default(false), // 모집 중단/마감 스위치
   venues: jsonb('venues').$type<string[]>(), // 기수별 사전 등록 대면 면접 장소 프리셋 리스트
+  // 면접 당일 대기실 업무 이름들(예: 면접자 명단 체크·대기실 안내·면접장 인솔a). 기수마다 다르다.
+  // 미설정이면 src/recruit/duties.ts 의 기본값을 쓴다.
+  dutyRoles: jsonb('duty_roles').$type<string[]>(),
   // 공개 지원서의 선택지·자기소개서 문항(기수마다 다르다). 미설정이면 코드의 기본값을 쓴다.
   // 형태는 src/recruit/apply-form.ts 의 ApplyFormConfig.
   applyForm: jsonb('apply_form'),
@@ -467,6 +470,35 @@ export const recruitSlotInterviewers = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique('recruit_slot_interviewers_uq').on(t.slotId, t.userId)]
+);
+
+// 면접 당일 지원 업무(대기실) 배정. 면접관이 아니라 명단 체크·대기실 안내·인솔을 맡는 사람들.
+// 지난 기수는 이걸 별도 엑셀로 돌렸다(22.png) — 면접 시간표와 같은 시간축을 쓰므로 함께 둔다.
+//
+// starts_at 은 recruit_slots 를 FK 로 걸지 않는다. 대기실 업무는 면접이 없는 시간대에도 있고
+// (예: 첫 30분 '전원 면접실 정비'), 슬롯 하나를 지웠다고 그 시간의 대기실 배정까지
+// 사라지면 안 된다. 시간축만 공유한다.
+export const recruitDutyAssignments = pgTable(
+  'recruit_duty_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cohortId: uuid('cohort_id')
+      .notNull()
+      .references(() => recruitCohorts.id, { onDelete: 'cascade' }),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    /** 역할 이름(기수 설정의 duty_roles 중 하나). 전원 공지 줄은 DUTY_ALL 센티넬을 쓴다. */
+    duty: text('duty').notNull(),
+    /** 배정된 운영진. 전원 공지 줄에서는 null. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    /** 전원 공지 문구('전원 면접실 B 정비'). 역할 배정 줄에서는 null. */
+    note: text('note'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  // 한 시간대의 한 역할에는 한 명. 같은 칸을 두 번 저장하면 덮어쓴다(upsert).
+  (t) => [unique('recruit_duty_assignments_uq').on(t.cohortId, t.startsAt, t.duty)]
 );
 
 // 지원자(구글폼 전 필드 또는 온라인 직접 입력). birth_date·ot_attend·remote_interview_wish 는 폼 표기가 제각각이라 원문 text 로 둔다.
