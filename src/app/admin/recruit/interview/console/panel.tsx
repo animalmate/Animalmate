@@ -10,6 +10,8 @@ import { ScreenNotes } from '@/components/screen-notes';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { EssayBlock } from '@/components/essay-block';
 import { formatPhone } from '@/lib/phone';
+import { slotPlaceLabel, formatScore } from '@/recruit/display';
+import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 // 점수칸은 비워 둔 채 시작한다. 예전에는 '8.0' 이 미리 채워져 있어서, 면접관이 점수칸을 건드리지
@@ -218,6 +220,21 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     return matchesTeamFilter(app, selectedTeam);
   });
 
+  // 서류 심사와 같은 기준 — 목록만 보고 '내가 이 사람을 채점했는지' 알 수 있어야 한다.
+  // 면접 당일에는 더 급하다: 다음 지원자가 들어오는데 앞사람 점수를 넣었는지 확인하러
+  // 한 명씩 눌러 볼 시간이 없다.
+  // 이 화면은 aggregations 를 받아오지 않는다. scores 에 기수 전체가 이미 들어 있으므로
+  // 목록에 쓸 면접 평균은 여기서 바로 센다(요청을 늘리지 않는다).
+  const myInterviewScores: Record<string, number> = {};
+  const interviewScoresByApplicant: Record<string, number[]> = {};
+  scores.forEach((s) => {
+    if (s.stage !== 'interview') return;
+    const v = parseFloat(s.score);
+    (interviewScoresByApplicant[s.applicantId] ??= []).push(v);
+    if (s.scorerUserId === viewerUserId) myInterviewScores[s.applicantId] = v;
+  });
+  const myScoredCount = filteredApplicants.filter((a) => myInterviewScores[a.id] !== undefined).length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -241,7 +258,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
               <option key={s.id} value={s.id}>
                 {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                 {' | '}
-                {s.venue || '대면'}
+                {slotPlaceLabel(s)}
               </option>
             ))}
           </ToolbarSelect>
@@ -288,6 +305,9 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
             <span className="text-xs font-bold uppercase tracking-wider text-ink-400">
               면접 대상자 ({filteredApplicants.length}명)
             </span>
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+              내 채점 {myScoredCount}/{filteredApplicants.length}
+            </span>
           </div>
 
           <div className="space-y-2">
@@ -295,6 +315,11 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
               const slot = slots.find((s) => s.id === app.slotId);
               const isSelected = app.id === selectedApplicantId;
               const effectiveTeam = app.assignedTeam || app.wishTeam1 || '팀미지정';
+              const myScore = myInterviewScores[app.id];
+              const mine = interviewScoresByApplicant[app.id] ?? [];
+              const intAvg = formatScore(
+                mine.length > 0 ? Math.round((mine.reduce((a, b) => a + b, 0) / mine.length) * 10) / 10 : null
+              );
 
               return (
                 <div
@@ -324,18 +349,24 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                   </div>
                   <div className="flex items-center justify-between text-xs text-ink-500 mt-1.5">
                     <span>{app.school}</span>
-                    <span className="rounded-full bg-cream-100 px-2 py-0.5 text-[10px] font-semibold text-ink-700">
-                      {app.status === 'doc_pass'
-                        ? '서류 합격'
-                        : app.status === 'interview_done'
-                        ? '면접 완료'
-                        : app.status === 'interview_noshow'
-                        ? '면접 불참'
-                        : app.status === 'final_pass'
-                        ? '최종 합격'
-                        : app.status === 'final_fail'
-                        ? '최종 불합격'
-                        : '서류 심사 중'}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        BADGE_TONE_CLASS[recruitStatusBadge(app.status).tone]
+                      }`}
+                    >
+                      {recruitStatusBadge(app.status).label}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <span
+                      className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-bold ${
+                        myScore !== undefined ? 'bg-blue-600 text-white' : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {myScore !== undefined ? `내 ${myScore.toFixed(1)}점` : '내 채점 전'}
+                    </span>
+                    <span className="text-[11px] text-ink-400">
+                      {intAvg !== null ? `전체 평균 ${intAvg}점 · ${mine.length}명` : '채점한 면접관 없음'}
                     </span>
                   </div>
                 </div>

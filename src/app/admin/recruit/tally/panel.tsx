@@ -8,6 +8,7 @@ import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
+import { formatScore, docSampleState } from '@/recruit/display';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -80,7 +81,13 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
     ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass', 'final_fail'].includes(a.status)
   ).length;
 
-  const deficientCount = filteredApplicants.filter((a) => aggregations[a.id]?.isDocSampleDeficient).length;
+  // 0명과 1~2명은 다른 사실이다 — 전자는 아무도 읽지 않은 것이고, 후자는 표본이 얕은 것이다.
+  const unscoredCount = filteredApplicants.filter(
+    (a) => docSampleState(aggregations[a.id]?.docScorerCount ?? 0) === 'unscored'
+  ).length;
+  const deficientCount = filteredApplicants.filter(
+    (a) => docSampleState(aggregations[a.id]?.docScorerCount ?? 0) === 'deficient'
+  ).length;
 
   const handleToggleSelect = (id: string) => {
     const next = new Set(selectedIds);
@@ -232,17 +239,35 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
 
         <Card className="flex items-center justify-between p-4">
           <div>
-            <div className="text-xs font-semibold text-ink-500">표본 부족 경고 (&lt;3명)</div>
-            <div className={`text-2xl font-bold mt-1 ${deficientCount > 0 ? 'text-warning-700' : 'text-ink-400'}`}>
-              {deficientCount}명
+            <div className="text-xs font-semibold text-ink-500">손봐야 할 지원자</div>
+            <div className="mt-1 flex items-baseline gap-3">
+              <span className={`text-2xl font-bold ${unscoredCount > 0 ? 'text-coral-600' : 'text-ink-400'}`}>
+                {unscoredCount}명
+                <span className="ml-1 text-xs font-semibold text-ink-500">미채점</span>
+              </span>
+              <span className={`text-2xl font-bold ${deficientCount > 0 ? 'text-warning-700' : 'text-ink-400'}`}>
+                {deficientCount}명
+                <span className="ml-1 text-xs font-semibold text-ink-500">표본 부족</span>
+              </span>
             </div>
           </div>
-          <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${deficientCount > 0 ? 'bg-amber-100 text-amber-700' : 'bg-cream-100 text-ink-400'}`}>
+          <span
+            className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+              unscoredCount + deficientCount > 0 ? 'bg-amber-100 text-amber-700' : 'bg-cream-100 text-ink-400'
+            }`}
+          >
             <Icon name="alert" size={20} />
           </span>
         </Card>
       </div>
 
+      {/* 두 경고를 한 문장으로 뭉치면 "0명이 채점받았습니다" 같은 말이 된다. 따로 말한다. */}
+      {unscoredCount > 0 && (
+        <Banner kind="warning" title="아직 아무도 보지 않은 지원자">
+          {unscoredCount}명은 채점한 운영진이 <strong>한 명도 없습니다.</strong> 이대로 넘어가면 검토 없이
+          떨어집니다. 확정 전에 운영진에게 서류 심사를 요청하세요.
+        </Banner>
+      )}
       {deficientCount > 0 && (
         <Banner kind="warning" title="심사 표본 부족 안내">
           {deficientCount}명의 지원자가 3명 미만의 운영진에게만 채점받았습니다. 집계 신뢰도를 위해 추가 서류 심사를 권장합니다.
@@ -330,7 +355,8 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
               {filteredApplicants.map((app, idx) => {
                 const agg = aggregations[app.id];
                 const isSelected = selectedIds.has(app.id);
-                const isDeficient = agg?.isDocSampleDeficient;
+                const sample = docSampleState(agg?.docScorerCount ?? 0);
+                const docAvg = formatScore(agg?.docScoreAvg);
                 const effectiveTeam = app.assignedTeam || app.wishTeam1 || '-';
 
                 return (
@@ -349,20 +375,28 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
                         />
                       </label>
                     </td>
-                    <td className="p-3.5 text-center font-mono font-bold text-ink-500">{idx + 1}</td>
+                    {/* 미채점자에게 석차를 붙이면 '최하위'로 읽힌다 — 순위가 없는 것과 꼴찌는 다르다. */}
+                    <td className="p-3.5 text-center font-mono font-bold text-ink-500">
+                      {docAvg === null ? <span className="text-ink-300">-</span> : idx + 1}
+                    </td>
                     <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
                     <td className="p-3.5 text-ink-700">{app.school} {app.department}</td>
                     <td className="p-3.5 text-ink-700 font-semibold">{effectiveTeam} <span className="text-[11px] font-normal text-ink-400">({app.wishTeam1 || '-'})</span></td>
                     <td className="p-3.5">
-                      {agg?.docScoreAvg !== null && agg?.docScoreAvg !== undefined ? (
-                        <span className="font-bold text-blue-700 text-sm">{agg.docScoreAvg}점</span>
+                      {docAvg !== null ? (
+                        <span className="font-bold text-blue-700 text-sm">{docAvg}점</span>
                       ) : (
                         <span className="text-ink-400">미채점</span>
                       )}
                     </td>
                     <td className="p-3.5 text-ink-700">
                       <span className="font-semibold">{agg?.docScorerCount ?? 0}명</span>
-                      {isDeficient && (
+                      {sample === 'unscored' && (
+                        <span className="ml-2 inline-flex items-center rounded-md bg-coral-100 px-1.5 py-0.5 text-[10px] font-bold text-coral-700">
+                          <Icon name="alert" size={12} className="inline" /> 아무도 안 봄
+                        </span>
+                      )}
+                      {sample === 'deficient' && (
                         <span className="ml-2 inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
                           <Icon name="alert" size={12} className="inline" /> 표본 부족 (&lt;3)
                         </span>

@@ -5,6 +5,7 @@ import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@/components/icon';
 import { matchesTeamFilter } from '@/recruit/team-filter';
+import { slotPlaceLabel } from '@/recruit/display';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { useTeams } from '@/components/use-teams';
@@ -462,9 +463,12 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                         })}{' '}
                         ({slot.durationMin}분)
                       </span>
-                      <p className="text-xs font-semibold text-blue-700 mt-1">
-                        {slot.venue ? slot.venue : slot.link ? `${slot.link}` : '대면 면접'}
-                      </p>
+                      {/* 예전엔 venue 가 있으면 링크를 아예 안 보여줬다 — 비대면 슬롯인데
+                          어디로 들어가는지 이 카드에서 확인할 수 없었다. 둘 다 보여준다. */}
+                      <p className="text-xs font-semibold text-blue-700 mt-1">{slotPlaceLabel(slot)}</p>
+                      {slot.isRemote && slot.link && (
+                        <p className="mt-0.5 break-all text-[11px] text-ink-500">{slot.link}</p>
+                      )}
                     </div>
 
                     <button
@@ -592,7 +596,7 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                             hour: '2-digit',
                             minute: '2-digit',
                           })}{' '}
-                          | {s.venue || '대면'} ({s.durationMin}분)
+                          | {slotPlaceLabel(s)} ({s.durationMin}분)
                         </option>
                       ))}
                     </Select>

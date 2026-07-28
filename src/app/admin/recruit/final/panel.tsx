@@ -8,6 +8,7 @@ import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
+import { formatScore } from '@/recruit/display';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
@@ -359,6 +360,9 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
                 // 경고가 `app.slotId &&` 로 시작해서, **슬롯을 아예 못 받은 사람은 아무 경고도
                 // 못 받았다.** 배정 단계에서 잊힌 사람이 정확히 그 경우인데 화면이 조용했다.
                 // 두 경우를 나눠서 각각 말해 준다.
+                const docAvg = formatScore(agg?.docScoreAvg);
+                const intAvg = formatScore(agg?.interviewScoreAvg);
+
                 const warns: string[] = [];
                 if (app.status === 'interview_noshow') {
                   // 불참이면 점수가 없는 게 당연하다. '채점 미기록'까지 같이 붙이면 문제가
@@ -397,10 +401,10 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
                 <TeamOptions teams={teams} loading={teamsLoading} />
               </Select>
                     </td>
-                    <td className="p-3.5 text-ink-700">{agg?.docScoreAvg !== null && agg?.docScoreAvg !== undefined ? `${agg.docScoreAvg}점` : '-'}</td>
+                    <td className="p-3.5 text-ink-700">{docAvg !== null ? `${docAvg}점` : '-'}</td>
                     <td className="p-3.5">
-                      {agg?.interviewScoreAvg !== null && agg?.interviewScoreAvg !== undefined ? (
-                        <span className="font-bold text-blue-700 text-sm">{agg.interviewScoreAvg}점</span>
+                      {intAvg !== null ? (
+                        <span className="font-bold text-blue-700 text-sm">{intAvg}점</span>
                       ) : (
                         <span className="text-ink-400">-</span>
                       )}
