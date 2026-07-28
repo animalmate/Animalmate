@@ -25,6 +25,7 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
   // 스위치 및 모달 상태
   const [schedulePublic, setSchedulePublic] = useState(false);
   const [resultPublic, setResultPublic] = useState(false);
+  const [stageFilter, setStageFilter] = useState('ALL');
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeConfirmInput, setPurgeConfirmInput] = useState('');
 
@@ -208,7 +209,19 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     }
   };
 
-  const filteredApplicants = sortedApplicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  // 이 화면은 팀으로만 걸러져서, 실제로 결정할 수 있는 사람이 탈락자·미심사자 사이에 섞여 있었다.
+  // 서버가 단계를 검증하므로 안전하긴 하지만, 고를 때 눈으로 찾아야 하는 건 그대로였다.
+  const DECIDABLE = ['interview_done', 'interview_noshow'];
+  const DECIDED = ['final_pass', 'final_fail'];
+
+  const teamApplicants = sortedApplicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  const filteredApplicants = teamApplicants.filter((app) => {
+    if (stageFilter === 'DECIDABLE') return DECIDABLE.includes(app.status);
+    if (stageFilter === 'DECIDED') return DECIDED.includes(app.status);
+    if (stageFilter === 'PENDING') return !DECIDABLE.includes(app.status) && !DECIDED.includes(app.status);
+    return true;
+  });
+  const decidableCount = teamApplicants.filter((a) => DECIDABLE.includes(a.status)).length;
 
   return (
     <div className="space-y-6">
@@ -226,6 +239,13 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
           <ToolbarSelect label="팀" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
             <option value="ALL">전체</option>
             <TeamOptions teams={teams} loading={teamsLoading} />
+          </ToolbarSelect>
+
+          <ToolbarSelect label="단계" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
+            <option value="ALL">전체</option>
+            <option value="DECIDABLE">결정 대상 (면접 완료·불참)</option>
+            <option value="DECIDED">결정 완료</option>
+            <option value="PENDING">아직 결정 단계 아님</option>
           </ToolbarSelect>
 
           <div className="contents">
@@ -247,40 +267,40 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
 
       <RecruitNav role={role} />
 
-      {/* 공개 스위치 & 데이터 폐기 컨트롤 바 */}
-      <Card className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      {/* 공개 스위치. 되돌릴 수 없는 폐기는 화면 맨 아래로 내렸다 — 스위치를 켜고 끄다가
+          바로 옆의 파기 버튼을 누를 자리에 두면 안 된다. */}
+      <Card className="space-y-3">
+        <div>
+          <h2 className="text-sm font-bold text-ink-900">지원자 공개 설정</h2>
+          <p className="mt-1 text-xs text-ink-500">
+            켜면 지원자가 <strong>/recruit</strong> 조회에서 바로 볼 수 있습니다. 끄면 결과를 알 수 없습니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-6 rounded-2xl bg-cream-50 border border-cream-200 p-3 px-5">
-            <label className="flex items-center gap-2.5 cursor-pointer font-bold text-xs text-ink-900">
+            <label className="flex min-h-tap items-center gap-2.5 cursor-pointer font-bold text-xs text-ink-900">
               <input
                 type="checkbox"
                 checked={schedulePublic}
                 onChange={(e) => handleUpdateSwitches(e.target.checked, resultPublic)}
-                className="h-4 w-4 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+                className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
               />
               <span>면접 일정/링크 지원자 공개</span>
             </label>
 
             <div className="h-4 w-px bg-cream-200" />
 
-            <label className="flex items-center gap-2.5 cursor-pointer font-bold text-xs text-ink-900">
+            <label className="flex min-h-tap items-center gap-2.5 cursor-pointer font-bold text-xs text-ink-900">
               <input
                 type="checkbox"
                 checked={resultPublic}
                 onChange={(e) => handleUpdateSwitches(schedulePublic, e.target.checked)}
-                className="h-4 w-4 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+                className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
               />
               <span>최종 합격 결과 지원자 공개</span>
             </label>
           </div>
 
-          <DangerButton
-            type="button"
-            onClick={() => setShowPurgeModal(true)}
-            className="h-control"
-          >
-            모집 종료 PII 데이터 일괄 파기
-          </DangerButton>
         </div>
 
         <StatusMessage text={message} />
@@ -291,6 +311,9 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
         <div className="flex items-center justify-between border-b border-cream-200 pb-3">
           <span className="text-sm font-bold text-ink-900">
             최종 결정 매트릭스 ({filteredApplicants.length}명)
+            <span className="ml-2 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+              지금 결정할 수 있는 사람 {decidableCount}명
+            </span>
           </span>
           <div className="flex items-center gap-2">
             <span className="text-xs text-ink-500 font-semibold mr-1">
@@ -336,13 +359,19 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
 
                 return (
                   <tr key={app.id} className={`hover:bg-cream-25 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
-                    <td className="p-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelect(app.id)}
-                        className="h-4 w-4 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
-                      />
+                    <td className="p-0 text-center">
+                      {/* 라벨로 감싸 셀 전체를 누를 수 있게 한다 — 16px 네모만 노리면 자꾸 빗나간다. */}
+                      <label
+                        className="flex min-h-tap cursor-pointer items-center justify-center px-3.5"
+                        aria-label={`${app.name} 선택`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(app.id)}
+                          className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </label>
                     </td>
                     <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
                     <td className="p-3.5 text-ink-700">{app.school} {app.department}</td>
@@ -402,6 +431,23 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
               })}
             </tbody>
           </table>
+        </div>
+      </Card>
+
+      {/* 되돌릴 수 없는 작업 — 공개 스위치와 떨어뜨려 화면 맨 아래에 둔다. */}
+      <Card className="space-y-3 border-coral-200 bg-coral-50/30">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-bold text-coral-700">모집 종료 후 지원자 데이터 파기</h2>
+            <p className="mt-1 text-xs text-ink-700">
+              인적사항·자기소개서·점수·메모를 <strong>실제로 지웁니다.</strong> 지원자 수·합격자 수·평균만
+              익명 집계로 남습니다. <strong>되돌릴 수 없습니다.</strong> 결과 공개와 합격자 안내가 모두 끝난 뒤에
+              실행하세요.
+            </p>
+          </div>
+          <DangerButton type="button" onClick={() => setShowPurgeModal(true)} className="h-control">
+            지원자 데이터 파기
+          </DangerButton>
         </div>
       </Card>
 

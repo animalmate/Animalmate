@@ -470,7 +470,7 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                     <button
                       type="button"
                       onClick={() => handleDeleteSlot(slot.id)}
-                      className="text-xs text-coral-600 font-semibold hover:underline"
+                      className="inline-flex min-h-tap items-center px-2 text-xs text-coral-600 font-semibold hover:underline"
                     >
                       슬롯 삭제
                     </button>
@@ -481,6 +481,13 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                     <span className="text-[11px] font-bold text-ink-500 block">
                       배정된 운영진(면접관) ({interviewers.length}명)
                     </span>
+                    {/* 지원자는 배정해 놓고 면접관을 빠뜨리면 면접 당일 그 시간대에 아무도 없다.
+                        슬롯을 만든 직후에는 늘 0명이므로, 지원자가 있을 때만 경고한다. */}
+                    {interviewers.length === 0 && assignedApps.length > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                        <Icon name="alert" size={12} className="inline" /> 면접관 없음 — 지원자 {assignedApps.length}명 배정됨
+                      </span>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {interviewers.map((int: any) => (
                         <span

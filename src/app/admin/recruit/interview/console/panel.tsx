@@ -9,6 +9,7 @@ import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { EssayBlock } from '@/components/essay-block';
+import { formatPhone } from '@/lib/phone';
 import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 // 점수칸은 비워 둔 채 시작한다. 예전에는 '8.0' 이 미리 채워져 있어서, 면접관이 점수칸을 건드리지
@@ -352,7 +353,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                 <div>
                   <h2 className="text-2xl font-bold text-ink-900">{selectedApp.name}</h2>
                   <p className="text-xs text-ink-500 mt-1 font-medium">
-                    {selectedApp.school} {selectedApp.department} · 연락처: {selectedApp.phone}
+                    {selectedApp.school} {selectedApp.department} · 연락처: {formatPhone(selectedApp.phone)}
                   </p>
                 </div>
 

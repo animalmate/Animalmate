@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
+import { formatPhone } from '@/lib/phone';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { EssayBlock } from '@/components/essay-block';
@@ -324,7 +325,7 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
                     </span>
                   </div>
                   <p className="text-xs text-ink-500 mt-1 font-medium">
-                    {selectedApp.school} {selectedApp.department} · 연락처: {selectedApp.phone} · {selectedApp.email}
+                    {selectedApp.school} {selectedApp.department} · 연락처: {formatPhone(selectedApp.phone)} · {selectedApp.email}
                   </p>
                 </div>
                 <div className="text-right space-y-1.5">

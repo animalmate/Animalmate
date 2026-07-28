@@ -334,13 +334,19 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
 
                 return (
                   <tr key={app.id} className={`transition-colors hover:bg-cream-25 ${isSelected ? 'bg-blue-50/50' : ''}`}>
-                    <td className="p-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelect(app.id)}
-                        className="h-4 w-4 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
-                      />
+                    <td className="p-0 text-center">
+                      {/* 라벨로 감싸 셀 전체를 누를 수 있게 한다 — 16px 네모만 노리면 자꾸 빗나간다. */}
+                      <label
+                        className="flex min-h-tap cursor-pointer items-center justify-center px-3.5"
+                        aria-label={`${app.name} 선택`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(app.id)}
+                          className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </label>
                     </td>
                     <td className="p-3.5 text-center font-mono font-bold text-ink-500">{idx + 1}</td>
                     <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
