@@ -370,7 +370,12 @@ received ──→ doc_pass ──→ interview_done ──→ final_pass | fina
 | `BACKUP_ENCRYPTION_KEY` | 백업 GPG 암호 | 등록됨(2026-07-28, 금고 보관) |
 | `BACKUP_REPO_TOKEN` | 백업 리포 push용 fine-grained PAT | 등록됨. 대상 `animalmate-backups` 한정, Contents read/write + Metadata read |
 | `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` | RLS 테스트 + pg_dump | 등록됨(2026-07-27) |
-| `SMTP_*` (+선택 `ALERT_TO`) | 백업 실패 알림 | **미확인** — 없으면 백업이 실패해도 메일이 오지 않는다 |
+
+2026-07-28에 `gh secret list`로 확인한 결과 등록된 시크릿은 **위 5개가 전부**다. `SMTP_*`는 없고,
+**앞으로도 넣지 않는다** — 백업 실패 알림은 메일이 아니라 **이슈 자동 생성**으로 바뀌었다.
+`backup.yml`의 `alert` 잡이 `GITHUB_TOKEN`(`issues: write`)으로 이 리포에 이슈를 만들고
+`ALERT_ASSIGNEE`(기본 `hanchaehun`)에게 배정한다. 배정 알림은 워치 설정과 무관하게 반드시 간다.
+같은 실패가 반복되면 새 이슈를 쌓지 않고 열려 있는 이슈에 코멘트로 붙인다.
 
 ~~⚠ env.example 불일치 3건~~ → **해소(2026-07-28)**. `.env`에서 `RESEND_API_KEY`(코드 참조 0),
 `NAVER_ACCESS_TOKEN`(앱 런타임 미사용), `BACKUP_ENCRYPTION_KEY`(Actions 전용) 3개를 제거했다.
@@ -454,7 +459,10 @@ received ──→ doc_pass ──→ interview_done ──→ final_pass | fina
    회비·봉사시간 인정·연락처 5건). **현재 파일럿의 가장 큰 병목이다.**
 4. **`CONTACT_EMAIL` 설정.** 개인정보처리방침의 문의 주소가 비어 있다. 처리방침에 연락처가 없으면
    열람·삭제 요청 경로가 없는 셈이다.
-5. **Actions에 `SMTP_*` 시크릿 등록 확인.** 없으면 백업이 실패해도 알림이 오지 않는다.
+5. ~~**Actions에 `SMTP_*` 시크릿 등록 확인.**~~ → **해소(2026-07-28).** 확인해 보니 등록돼 있지
+   않았고, 넣는 대신 **이슈 자동 생성**으로 바꿨다(§5 참고). Actions에 메일 자격증명을 두지 않는다는
+   원칙을 지키면서 "조용한 실패"를 막는다. 덤으로 `keepalive.yml`을 신설해 60일 비활성으로
+   스케줄이 꺼지는 경로도 막았다.
 
 **04-TODO "질문" 섹션에 남은 것**
 

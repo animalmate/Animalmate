@@ -44,7 +44,15 @@
 | BACKUP_ENCRYPTION_KEY | 백업 암호화(GPG 대칭) | GitHub Actions 시크릿 + 금고 | 신중히 | **잃으면 모든 백업이 열리지 않는다.** `.env`·Vercel 에 넣지 말 것(앱 런타임 변수 아님) |
 | BACKUP_REPO_TOKEN | 백업 리포 push | GitHub Actions 시크릿 + 금고 | **만료일 주의** | fine-grained PAT, 대상 `animalmate-backups` 한정, Contents read/write + Metadata read. 만료되면 백업이 조용히 멈추므로 갱신일을 달력에 |
 | DIRECT_URL (Actions) | pg_dump 접속 | GitHub Actions 시크릿 + 금고 | DB 비밀번호 변경 시 | 세션 풀러(5432). 트랜잭션 풀러(6543)로는 pg_dump 불가 |
-| SMTP_* (Actions) | 백업 실패 알림 | GitHub Actions 시크릿 + 금고 | 앱 비밀번호 변경 시 | 앱과 같은 값. 선택 `ALERT_TO` 로 수신자 지정 |
+
+**백업 실패 알림에는 시크릿이 필요 없다.** 실패하면 `backup.yml` 의 `alert` 잡이 `GITHUB_TOKEN`
+(워크플로가 자동으로 받는 토큰, `issues: write`)으로 이 리포에 이슈를 만들고 담당자에게 배정한다.
+배정 알림은 리포 워치 설정과 무관하게 반드시 가므로 "실패했는데 아무도 몰랐다"가 나오지 않는다.
+담당자는 리포 변수 `ALERT_ASSIGNEE` 로 바꾼다(미설정 시 `hanchaehun`) — 인수인계 때 여기만 고치면 된다.
+
+Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions 에 두면 잡이 실메일을 보낼 수
+있게 되는데, 이 프로젝트는 테스트 경로에서 메일이 새어 나간 사고를 이미 겪었고 그 뒤로
+"테스트 환경에서는 항상 dry"를 원칙으로 지켜 왔다. 백업 알림 하나 때문에 그 원칙에 구멍을 내지 않는다.
 
 ## 백업·복원
 

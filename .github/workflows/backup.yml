@@ -17,7 +17,7 @@ name: 백업
 #       BACKUP_REPO_TOKEN     위 PAT
 #       BACKUP_ENCRYPTION_KEY 복호화 암호(고엔트로피, 금고에도 보관 — 잃으면 백업 전부 무용지물)
 #       DIRECT_URL            세션 풀러(5432) 연결 문자열. pg_dump 는 트랜잭션 풀러(6543)로 못 뜬다
-#       SMTP_HOST/PORT/USER/PASS(+선택 SMTP_FROM, ALERT_TO)  실패 알림용
+#     실패 알림용 시크릿은 없다 — 아래 alert 잡이 GITHUB_TOKEN 으로 이슈를 만든다.
 #  4. 복원 절차와 리허설은 docs/05-ASSET-REGISTRY.md 의 "백업·복원" 절 참고.
 
 on:
@@ -185,25 +185,84 @@ jobs:
         if: always()
         run: rm -rf backups/dumps || true
 
-      - name: 실패 알림(공용 Gmail)
-        if: failure()
+  # ── 조용한 실패 금지 ────────────────────────────────────────────────────────
+  # 백업이 실패하면 **리포에 이슈가 생기고 담당자에게 배정된다.** 배정 알림은 리포 워치
+  # 설정과 무관하게 반드시 가므로, "실패했는데 아무도 몰랐다"가 구조적으로 불가능해진다.
+  #
+  # SMTP 를 쓰지 않는 이유: Actions 에 메일 자격증명을 두면 잡이 실메일을 보낼 수 있게 된다.
+  # 이 프로젝트는 테스트 경로에서 메일이 새어 나간 사고를 이미 겪었고(그 뒤로 테스트 환경은
+  # 항상 dry), 백업 알림 하나 때문에 그 원칙에 구멍을 내지 않는다.
+  #
+  # 토큰 선택: BACKUP_REPO_TOKEN 은 **쓸 수 없다.** 그 PAT 은 animalmate-backups 리포의
+  # Contents 권한만 가져서 이 리포의 Issues 에 닿지 않는다. 권한을 넓히면 "백업 리포 하나,
+  # 권한 하나"라는 최소 권한 설계가 무너진다. 대신 워크플로가 자동으로 받는 GITHUB_TOKEN 에
+  # issues:write 만 준다 — 새 시크릿이 필요 없고 이 리포 밖으로는 아무것도 못 한다.
+  #
+  # 잡을 분리한 이유: 권한은 잡 단위라, 이 알림을 dump 잡에 넣으면 덤프 잡이 issues:write 를
+  # 함께 갖게 된다. dump 는 contents:read 만 가진 상태로 두는 편이 낫다.
+  #
+  # ⚠ 이 리포는 public 이라 **이슈도 공개된다.** 그래서 본문에 값·연결 문자열·PII 를 절대
+  #   넣지 않는다(원인 목록은 이미 README·docs 에 공개된 수준의 정보다).
+  alert:
+    needs: dump
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 실패 이슈 생성·배정
+        uses: actions/github-script@v7
         env:
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          SMTP_FROM: ${{ secrets.SMTP_FROM }}
-          ALERT_TO: ${{ secrets.ALERT_TO }}
-        run: |
-          node scripts/notify-failure.mjs \
-            "[애니멀메이트] ⚠️ 주간 DB 백업 실패" \
-            "주간 백업 잡이 실패했습니다. 무료 티어에는 자동 백업이 없어 이 잡이 유일한 안전망입니다.
+          # 인수인계 때 리포 변수 ALERT_ASSIGNEE 만 바꾸면 담당자가 옮겨간다.
+          ALERT_ASSIGNEE: ${{ vars.ALERT_ASSIGNEE || 'hanchaehun' }}
+        with:
+          script: |
+            const label = 'backup-failure';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`
+              + `/actions/runs/${context.runId}`;
+            const body = [
+              '주간 DB 백업 잡이 **실패**했습니다.',
+              '',
+              `- 실행 로그: ${runUrl}`,
+              `- 트리거: \`${context.eventName}\``,
+              '',
+              '무료 티어에는 자동 백업이 없어 이 잡이 유일한 안전망입니다.',
+              '',
+              '자주 나오는 원인:',
+              '- `DIRECT_URL` 만료·비밀번호 변경 (세션 풀러 5432 여야 합니다)',
+              '- `BACKUP_REPO_TOKEN`(fine-grained PAT) 만료 — 기본 만료가 짧습니다',
+              '- Supabase 프로젝트 일시정지',
+              '',
+              '복원 절차는 `docs/05-ASSET-REGISTRY.md` 의 「백업·복원」 절에 있습니다.',
+            ].join('\n');
 
-          실행 로그: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            // 매주 실패하면 이슈가 매주 쌓인다. 열려 있는 것이 있으면 코멘트로 붙여
+            // "같은 문제 N주째"가 한 스레드에서 보이게 한다.
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo, state: 'open', labels: label, per_page: 1,
+            });
 
-          자주 나오는 원인:
-          - DIRECT_URL 만료·비밀번호 변경(세션 풀러 5432 여야 합니다)
-          - BACKUP_REPO_TOKEN(fine-grained PAT) 만료 — 기본 만료가 짧습니다
-          - Supabase 프로젝트 일시정지
+            if (open.length > 0) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: open[0].number, body,
+              });
+              core.notice(`기존 이슈 #${open[0].number} 에 코멘트를 달았다.`);
+              return;
+            }
 
-          복원 절차는 docs/05-ASSET-REGISTRY.md 의 '백업·복원' 절에 있습니다."
+            const title = `⚠️ 주간 DB 백업 실패 (${new Date().toISOString().slice(0, 10)})`;
+            const assignee = process.env.ALERT_ASSIGNEE;
+            try {
+              const { data: issue } = await github.rest.issues.create({
+                ...context.repo, title, body, labels: [label], assignees: [assignee],
+              });
+              core.notice(`이슈 #${issue.number} 생성 (담당 @${assignee}).`);
+            } catch (e) {
+              // 담당자 계정이 사라졌거나 권한이 없으면 배정만 실패한다. 그때 알림 자체를
+              // 포기하면 이 잡을 만든 이유가 없어지므로, 배정 없이라도 이슈는 남긴다.
+              core.warning(`배정 실패(${e.message}) — 배정 없이 이슈만 만든다.`);
+              const { data: issue } = await github.rest.issues.create({
+                ...context.repo, title, body, labels: [label],
+              });
+              core.notice(`이슈 #${issue.number} 생성 (배정 없음).`);
+            }
