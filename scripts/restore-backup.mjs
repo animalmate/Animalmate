@@ -198,12 +198,21 @@ function streamDone(stream, name) {
  * pg_dump plain 포맷은 데이터를 `COPY public.t (...) FROM stdin;` … `\.` 블록으로 넣는다.
  */
 function makeAnalyzer() {
-  const tables = new Set();
-  const rows = new Map();
+  // 스키마를 반드시 함께 잡는다. 예전엔 `CREATE TABLE auth.users` 에서 `auth` 를 테이블명으로
+  // 읽어, Supabase 시스템 스키마(auth·storage·realtime)와 drizzle 이 테이블처럼 세어졌다
+  // (2026-07-28 첫 리허설에서 29개가 33개로 보였다).
+  const tables = new Set(); // "schema.table"
+  const rows = new Map(); // "schema.table" → 행 수
   let current = null;
   let carry = '';
   let bytes = 0;
   let sawHeader = false;
+  let rlsCount = 0;
+
+  const CREATE = /^CREATE TABLE (?:(\w+|"[^"]+")\.)?("?[\w]+"?)\s*\(/;
+  const COPY = /^COPY (?:(\w+|"[^"]+")\.)?("?[\w]+"?)\s*\(.*FROM stdin;/;
+  const unquote = (s) => (s ?? '').replace(/"/g, '');
+  const key = (m) => `${unquote(m[1]) || 'public'}.${unquote(m[2])}`;
 
   return {
     feed(chunk) {
@@ -218,20 +227,30 @@ function makeAnalyzer() {
           else rows.set(current, (rows.get(current) ?? 0) + 1);
           continue;
         }
-        const create = /^CREATE TABLE (?:public\.)?"?([\w]+)"?/.exec(line);
+        // 복원했을 때 RLS(규칙 #8)가 함께 살아나는지 — 덤프에 이 구문이 들어 있는지로 확인한다.
+        if (line.includes('ENABLE ROW LEVEL SECURITY')) rlsCount += 1;
+        const create = CREATE.exec(line);
         if (create) {
-          tables.add(create[1]);
+          tables.add(key(create));
           continue;
         }
-        const copy = /^COPY (?:public\.)?"?([\w]+)"?\s*\(.*FROM stdin;/.exec(line);
+        const copy = COPY.exec(line);
         if (copy) {
-          current = copy[1];
+          current = key(copy);
           if (!rows.has(current)) rows.set(current, 0);
         }
       }
     },
     result() {
-      return { tables: [...tables].sort(), rows, bytes, sawHeader };
+      const all = [...tables].sort();
+      return {
+        publicTables: all.filter((t) => t.startsWith('public.')).map((t) => t.slice(7)),
+        otherTables: all.filter((t) => !t.startsWith('public.')),
+        rows,
+        bytes,
+        sawHeader,
+        rlsCount,
+      };
     },
   };
 }
@@ -250,21 +269,40 @@ try {
   await Promise.all([waitFor(gpg, 'gpg'), streamDone(plain, '압축 해제')]);
   keepStream?.end();
 
-  const { tables, rows, bytes, sawHeader } = analyzer.result();
+  const { publicTables, otherTables, rows, bytes, sawHeader, rlsCount } = analyzer.result();
   if (!sawHeader) fail('복호화는 됐지만 PostgreSQL 덤프 형식이 아닙니다.');
 
+  const rowsOf = (t) => rows.get(`public.${t}`) ?? 0;
+
   console.log(`\n  ✔ 복호화 성공 — 압축 해제 ${(bytes / 1024 / 1024).toFixed(2)} MB`);
-  console.log(`  테이블 ${tables.length}개\n`);
-  const withRows = [...rows.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
-  const empty = tables.filter((t) => !(rows.get(t) > 0));
+  console.log(`  public 테이블 ${publicTables.length}개 · RLS 활성화 구문 ${rlsCount}개`);
+  if (otherTables.length > 0) {
+    // Supabase 의 auth·storage·realtime, drizzle 마이그레이션 기록 등. 우리 앱 테이블이 아니므로
+    // 개수만 알려 주고 위 숫자에는 섞지 않는다.
+    const schemas = [...new Set(otherTables.map((t) => t.split('.')[0]))].sort();
+    console.log(`  그 밖의 스키마 ${otherTables.length}개 테이블 (${schemas.join(', ')})`);
+  }
+  console.log('');
+
+  const withRows = publicTables.filter((t) => rowsOf(t) > 0).sort((a, b) => rowsOf(b) - rowsOf(a));
+  const empty = publicTables.filter((t) => rowsOf(t) === 0);
   if (withRows.length > 0) {
     console.log('  행이 있는 테이블:');
-    for (const [t, n] of withRows) console.log(`    ${String(n).padStart(7)}  ${t}`);
+    for (const t of withRows) console.log(`    ${String(rowsOf(t)).padStart(7)}  ${t}`);
   }
   if (empty.length > 0) console.log(`\n  빈 테이블 ${empty.length}개: ${empty.join(', ')}`);
   if (keepPath) console.log(`\n  복호화 결과를 저장했습니다: ${keepPath} (확인 후 반드시 삭제하세요)`);
-  if (tables.length < 25) {
-    console.warn(`\n  ⚠ 테이블이 ${tables.length}개뿐입니다. 현재 스키마는 29개입니다 — 덤프를 확인하세요.`);
+
+  // 앱 테이블이 통째로 빠진 덤프를 "성공"으로 넘기지 않는다.
+  if (publicTables.length < 20) {
+    console.warn(`\n  ⚠ public 테이블이 ${publicTables.length}개뿐입니다 — 덤프가 온전한지 확인하세요.`);
+  }
+  // RLS 구문이 하나도 없으면 복원본은 기본 거부가 아니다(규칙 #8).
+  if (rlsCount === 0) {
+    console.warn(
+      `\n  ⚠ 덤프에 RLS 활성화 구문이 없습니다. 이 백업으로 복원하면 **RLS 가 꺼진 상태**가 됩니다.\n` +
+        `     복원본을 운영으로 쓸 일이 생기면 npm run db:migrate 로 RLS 를 복구하고 npm run test:rls 로 증명하세요.`
+    );
   }
 
   // ── 3) 복원 ────────────────────────────────────────────────────────────
