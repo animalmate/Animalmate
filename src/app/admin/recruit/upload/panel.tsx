@@ -2,7 +2,7 @@
 
 import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { autoMapHeaders, parseCsv, missingRequiredMappings, REQUIRED_MAPPING_LABELS } from '@/recruit/csv';
 import { RecruitNav } from '@/components/recruit-nav';
@@ -54,24 +54,26 @@ export function RecruitUploadPanel({ role }: { role: Role }) {
     englishName: '영문 이름',
   };
 
-  useEffect(() => {
-    fetchCohorts();
-  }, []);
-
-  const fetchCohorts = async () => {
+  // 마운트 때 한 번만 부른다. 선택된 기수를 함수 안에서 읽지 않고 setState 갱신 함수로 넘겨야
+  // 의존성이 비고, 그래야 기수를 고를 때마다 목록을 다시 받아오는 일이 없다.
+  const fetchCohorts = useCallback(async () => {
     try {
       const res = await fetch('/api/recruit/cohorts');
       const data = await res.json();
       if (data.cohorts) {
         setCohorts(data.cohorts);
-        if (data.cohorts.length > 0 && !selectedCohortId) {
-          setSelectedCohortId(data.cohorts[0].id);
+        if (data.cohorts.length > 0) {
+          setSelectedCohortId((prev) => prev || data.cohorts[0].id);
         }
       }
     } finally {
       setCohortsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchCohorts();
+  }, [fetchCohorts]);
 
   const handleCsvInput = (text: string) => {
     setCsvText(text);

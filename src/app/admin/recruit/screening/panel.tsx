@@ -2,7 +2,7 @@
 
 import { HelpButton } from '@/components/help-button';
 import { isPrivileged, type Role } from '@/auth/permissions';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
@@ -39,6 +39,42 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
 
   const [staffNames, setStaffNames] = useState<Record<string, string>>({});
 
+  const fetchCohorts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/recruit/cohorts');
+      const data = await res.json();
+      if (data.cohorts && data.cohorts.length > 0) {
+        setCohorts(data.cohorts);
+        setSelectedCohortId(data.cohorts[0].id);
+      }
+    } finally {
+      setCohortsLoading(false);
+    }
+  }, []);
+
+  const fetchApplicantsAndScores = useCallback(async () => {
+    // 이 화면은 자기소개서 전문을 읽으므로 slim 을 쓰지 않는다. 대신 두 요청을 동시에 보낸다.
+    const [appRes, scoreRes] = await Promise.all([
+      fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`),
+      fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`),
+    ]);
+    const [appData, scoreData] = await Promise.all([appRes.json(), scoreRes.json()]);
+
+    if (appData.applicants) {
+      setApplicants(appData.applicants);
+      // 이미 고른 지원자가 있으면 그대로 둔다. 갱신 함수로 넘겨야 selectedApplicantId 가
+      // 이 함수의 의존성에서 빠지고, 지원자를 바꿀 때마다 목록을 다시 받는 일이 없다.
+      if (appData.applicants.length > 0) {
+        setSelectedApplicantId((prev) => prev || appData.applicants[0].id);
+      }
+    }
+    if (scoreData.scores) {
+      setScores(scoreData.scores);
+      setAggregations(scoreData.aggregations || {});
+    }
+    if (scoreData.viewerUserId) setViewerUserId(scoreData.viewerUserId);
+  }, [selectedCohortId]);
+
   useEffect(() => {
     fetchCohorts();
     // 점수 기록에 이름을 붙이기 위한 운영진 명단.
@@ -50,13 +86,13 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [fetchCohorts]);
 
   useEffect(() => {
     if (selectedCohortId) {
       fetchApplicantsAndScores();
     }
-  }, [selectedCohortId]);
+  }, [selectedCohortId, fetchApplicantsAndScores]);
 
   // 지원자를 바꾸면 내 입력칸을 새로 맞춘다. 초기화가 없으면 앞 지원자에게 쓴 점수·코멘트가
   // 그대로 남아 다음 지원자의 기록으로 저장된다. 이미 채점한 사람은 그 값을 되살린다.
@@ -72,40 +108,6 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
     setMyScore(mine ? parseFloat(mine.score).toFixed(1) : NO_SCORE);
     setMyComment(mine?.comment ?? '');
   }, [selectedApplicantId, viewerUserId, scores]);
-
-  const fetchCohorts = async () => {
-    try {
-      const res = await fetch('/api/recruit/cohorts');
-      const data = await res.json();
-      if (data.cohorts && data.cohorts.length > 0) {
-        setCohorts(data.cohorts);
-        setSelectedCohortId(data.cohorts[0].id);
-      }
-    } finally {
-      setCohortsLoading(false);
-    }
-  };
-
-  const fetchApplicantsAndScores = async () => {
-    // 이 화면은 자기소개서 전문을 읽으므로 slim 을 쓰지 않는다. 대신 두 요청을 동시에 보낸다.
-    const [appRes, scoreRes] = await Promise.all([
-      fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}`),
-      fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`),
-    ]);
-    const [appData, scoreData] = await Promise.all([appRes.json(), scoreRes.json()]);
-
-    if (appData.applicants) {
-      setApplicants(appData.applicants);
-      if (appData.applicants.length > 0 && !selectedApplicantId) {
-        setSelectedApplicantId(appData.applicants[0].id);
-      }
-    }
-    if (scoreData.scores) {
-      setScores(scoreData.scores);
-      setAggregations(scoreData.aggregations || {});
-    }
-    if (scoreData.viewerUserId) setViewerUserId(scoreData.viewerUserId);
-  };
 
   // 점수를 고르지 않았으면 저장할 것이 없다. 서버도 빈 값을 400 으로 막지만(규칙 #6),
   // 버튼을 눌러 놓고 오류를 보는 것보다 애초에 못 누르게 하는 편이 덜 헷갈린다.

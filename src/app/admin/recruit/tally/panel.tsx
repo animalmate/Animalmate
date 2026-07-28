@@ -2,7 +2,7 @@
 
 import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
@@ -26,23 +26,7 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    fetchCohorts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCohortId) {
-      fetchApplicantsAndScores();
-    }
-  }, [selectedCohortId]);
-
-  // 팀·기수를 바꾸면 선택을 푼다. 안 그러면 1팀에서 고른 20명이 2팀 화면에서도 그대로 남아,
-  // 보이지 않는 사람들이 함께 확정된다.
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [selectedTeam, selectedCohortId]);
-
-  const fetchCohorts = async () => {
+  const fetchCohorts = useCallback(async () => {
     try {
       const res = await fetch('/api/recruit/cohorts');
       const data = await res.json();
@@ -53,9 +37,9 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
     } finally {
       setCohortsLoading(false);
     }
-  };
+  }, []);
 
-  const fetchApplicantsAndScores = async () => {
+  const fetchApplicantsAndScores = useCallback(async () => {
     // 두 요청은 서로를 기다릴 이유가 없다. 집계 화면은 자기소개서를 쓰지 않으므로 slim 으로 받는다.
     const [appRes, scoreRes] = await Promise.all([
       fetch(`/api/recruit/applicants?cohortId=${selectedCohortId}&slim=1`),
@@ -64,7 +48,23 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
     const [appData, scoreData] = await Promise.all([appRes.json(), scoreRes.json()]);
     if (appData.applicants) setApplicants(appData.applicants);
     if (scoreData.aggregations) setAggregations(scoreData.aggregations);
-  };
+  }, [selectedCohortId]);
+
+  useEffect(() => {
+    fetchCohorts();
+  }, [fetchCohorts]);
+
+  useEffect(() => {
+    if (selectedCohortId) {
+      fetchApplicantsAndScores();
+    }
+  }, [selectedCohortId, fetchApplicantsAndScores]);
+
+  // 팀·기수를 바꾸면 선택을 푼다. 안 그러면 1팀에서 고른 20명이 2팀 화면에서도 그대로 남아,
+  // 보이지 않는 사람들이 함께 확정된다.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [selectedTeam, selectedCohortId]);
 
   // 서류 평균 내림차순 정렬
   const sortedApplicants = [...applicants].sort((a, b) => {

@@ -2,7 +2,7 @@
 
 import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { isPrivileged } from '@/auth/permissions';
 import { RecruitNav } from '@/components/recruit-nav';
@@ -38,17 +38,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
   const [noticeImages, setNoticeImages] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
 
-  useEffect(() => {
-    fetchCohorts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCohortId) {
-      fetchNoticeSettings();
-    }
-  }, [selectedCohortId]);
-
-  const fetchCohorts = async (selectIdOverride?: string) => {
+  const fetchCohorts = useCallback(async (selectIdOverride?: string) => {
     try {
       try {
         const res = await fetch('/api/recruit/cohorts');
@@ -70,7 +60,34 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
     } finally {
       setCohortsLoading(false);
     }
-  };
+  }, []);
+
+  const fetchNoticeSettings = useCallback(async () => {
+    if (!selectedCohortId) return;
+    const res = await fetch(`/api/recruit/notice?cohortId=${selectedCohortId}`);
+    const data = await res.json();
+    if (data.cohort) {
+      setNoticeContent(data.cohort.noticeContent || '');
+      setNoticeImages(data.cohort.noticeImages || []);
+      setCongratsMessage(data.cohort.congratsMessage || '');
+      setPostPassNotice(data.cohort.postPassNotice || '');
+      setIsClosed(!!data.cohort.isClosed);
+      // 저장된 적이 없으면 resolveApplyForm 이 기본값을 채워 준다.
+      setApplyForm(resolveApplyForm(data.cohort.applyForm));
+      setVenuesText((data.cohort.venues || ['학생회관 301호', '학생회관 302호']).join('\n'));
+      setDutyRolesText((data.cohort.dutyRoles ?? []).join('\n'));
+    }
+  }, [selectedCohortId]);
+
+  useEffect(() => {
+    fetchCohorts();
+  }, [fetchCohorts]);
+
+  useEffect(() => {
+    if (selectedCohortId) {
+      fetchNoticeSettings();
+    }
+  }, [selectedCohortId, fetchNoticeSettings]);
 
   const handleCreateCohort = async () => {
     if (!newCohortLabel.trim()) {
@@ -124,23 +141,6 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       }
     } finally {
       setSaving(false);
-    }
-  };
-
-  const fetchNoticeSettings = async () => {
-    if (!selectedCohortId) return;
-    const res = await fetch(`/api/recruit/notice?cohortId=${selectedCohortId}`);
-    const data = await res.json();
-    if (data.cohort) {
-      setNoticeContent(data.cohort.noticeContent || '');
-      setNoticeImages(data.cohort.noticeImages || []);
-      setCongratsMessage(data.cohort.congratsMessage || '');
-      setPostPassNotice(data.cohort.postPassNotice || '');
-      setIsClosed(!!data.cohort.isClosed);
-      // 저장된 적이 없으면 resolveApplyForm 이 기본값을 채워 준다.
-      setApplyForm(resolveApplyForm(data.cohort.applyForm));
-      setVenuesText((data.cohort.venues || ['학생회관 301호', '학생회관 302호']).join('\n'));
-      setDutyRolesText((data.cohort.dutyRoles ?? []).join('\n'));
     }
   };
 

@@ -2,7 +2,7 @@
 
 import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import { slotPlaceLabel, slotPanelNumbers, slotPanelSuffix } from '@/recruit/display';
@@ -63,13 +63,6 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     fetchStaffMembers();
   }, []);
 
-  useEffect(() => {
-    if (selectedCohortId) {
-      fetchSlotsAndApplicants();
-      fetchCohortNoticeSettings();
-    }
-  }, [selectedCohortId]);
-
   const fetchCohorts = async () => {
     try {
       const res = await fetch('/api/recruit/cohorts');
@@ -93,7 +86,7 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     }
   };
 
-  const fetchCohortNoticeSettings = async () => {
+  const fetchCohortNoticeSettings = useCallback(async () => {
     setVenuesLoading(true);
     // 기수를 바꾸는 동안 앞 기수의 장소가 남아 있으면 그대로 슬롯을 만들 수 있다.
     setVenuePresets([]);
@@ -109,9 +102,9 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     } finally {
       setVenuesLoading(false);
     }
-  };
+  }, [selectedCohortId]);
 
-  const fetchSlotsAndApplicants = async () => {
+  const fetchSlotsAndApplicants = useCallback(async () => {
     // 예전엔 슬롯 → 면접관 → 지원자를 차례로 기다렸다(왕복 3번). 슬롯 응답이 면접관까지 담아 오고
     // 지원자는 동시에 받으므로 왕복 1번이면 된다. 자기소개서는 이 화면에서 안 쓰니 slim 으로 받는다.
     const [slotRes, appRes] = await Promise.all([
@@ -130,7 +123,14 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
       );
       setApplicants(passed);
     }
-  };
+  }, [selectedCohortId]);
+
+  useEffect(() => {
+    if (selectedCohortId) {
+      fetchSlotsAndApplicants();
+      fetchCohortNoticeSettings();
+    }
+  }, [selectedCohortId, fetchSlotsAndApplicants, fetchCohortNoticeSettings]);
 
   const handleCreateSlot = async () => {
     if (!slotDate || !slotTime) return;

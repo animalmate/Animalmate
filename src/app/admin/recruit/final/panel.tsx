@@ -2,7 +2,7 @@
 
 import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
@@ -34,23 +34,7 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    fetchCohorts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCohortId) {
-      fetchCohortAndApplicants();
-    }
-  }, [selectedCohortId]);
-
-  // 팀·기수를 바꾸면 선택을 푼다. 최종 합격 확정은 되돌릴 수 없는데, 앞 팀에서 고른 사람이
-  // 화면에 보이지 않는 채로 남아 함께 확정될 수 있다.
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [selectedTeam, selectedCohortId]);
-
-  const fetchCohorts = async () => {
+  const fetchCohorts = useCallback(async () => {
     try {
       const res = await fetch('/api/recruit/cohorts');
       const data = await res.json();
@@ -61,9 +45,9 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     } finally {
       setCohortsLoading(false);
     }
-  };
+  }, []);
 
-  const fetchCohortAndApplicants = async () => {
+  const fetchCohortAndApplicants = useCallback(async () => {
     // 서로 독립인 세 요청을 차례로 기다리면 배포 환경에서 1.5초가 그냥 지나간다.
     const [cRes, appRes, scoreRes] = await Promise.all([
       fetch(`/api/recruit/cohorts/${selectedCohortId}`),
@@ -78,7 +62,23 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     }
     if (appData.applicants) setApplicants(appData.applicants);
     if (scoreData.aggregations) setAggregations(scoreData.aggregations);
-  };
+  }, [selectedCohortId]);
+
+  useEffect(() => {
+    fetchCohorts();
+  }, [fetchCohorts]);
+
+  useEffect(() => {
+    if (selectedCohortId) {
+      fetchCohortAndApplicants();
+    }
+  }, [selectedCohortId, fetchCohortAndApplicants]);
+
+  // 팀·기수를 바꾸면 선택을 푼다. 최종 합격 확정은 되돌릴 수 없는데, 앞 팀에서 고른 사람이
+  // 화면에 보이지 않는 채로 남아 함께 확정될 수 있다.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [selectedTeam, selectedCohortId]);
 
   const sortedApplicants = [...applicants].sort((a, b) => {
     const avgA = aggregations[a.id]?.interviewScoreAvg ?? -1;

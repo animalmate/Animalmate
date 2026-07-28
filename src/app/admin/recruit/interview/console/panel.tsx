@@ -2,7 +2,7 @@
 
 import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
@@ -53,67 +53,35 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
 
   const QUICK_SCORES = ['5.0', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'];
 
-  useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    fetchCohorts();
-    fetchStaff();
-    // 화면을 떠날 때 아직 안 보낸 메모를 흘리지 않는다.
-    return () => flushMemo();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCohortId) {
-      fetchData();
-    }
-  }, [selectedCohortId]);
-
-  // 지원자를 바꿀 때 내 입력칸을 반드시 새로 맞춘다.
-  // 예전엔 초기화가 없어서, A 에게 쓴 점수·총평이 그대로 남아 B 의 기록으로 저장될 수 있었다.
-  // 이미 내가 채점한 지원자라면 그 값을 되살려, 덮어쓰는 줄 모르고 다시 매기는 일도 막는다.
-  useEffect(() => {
-    if (!selectedApplicantId) return;
-    flushMemo();
-    fetchPersonalMemo(selectedApplicantId);
-    setMessage('');
-    const mine = scores.find(
-      (s) =>
-        s.applicantId === selectedApplicantId &&
-        s.stage === 'interview' &&
-        s.scorerUserId === viewerUserId
-    );
-    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : NO_SCORE);
-    setMyComment(mine?.comment ?? '');
-  }, [selectedApplicantId, viewerUserId, scores]);
-
-  const fetchCohorts = async () => {
+  const saveMemo = useCallback(async (applicantId: string, content: string) => {
+    const seq = ++memoSeq.current;
+    setMemoState('saving');
     try {
-      const res = await fetch('/api/recruit/cohorts');
-      const data = await res.json();
-      if (data.cohorts && data.cohorts.length > 0) {
-        setCohorts(data.cohorts);
-        setSelectedCohortId(data.cohorts[0].id);
-      }
-    } finally {
-      setCohortsLoading(false);
+      const res = await fetch('/api/recruit/memos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicantId, content }),
+      });
+      // 나중에 보낸 요청이 이미 끝났다면 이 응답은 낡은 것이다 — 표시를 되돌리지 않는다.
+      if (seq !== memoSeq.current) return;
+      setMemoState(res.ok ? 'saved' : 'error');
+    } catch {
+      if (seq === memoSeq.current) setMemoState('error');
     }
-  };
+  }, []);
 
-  // 점수 기록에 이름을 붙이기 위한 운영진 명단(누가 몇 점을 줬는지 보이지 않으면 조율이 안 된다).
-  const fetchStaff = async () => {
-    const res = await fetch('/api/recruit/staff');
-    const data = await res.json();
-    if (Array.isArray(data.staff)) {
-      setStaffNames(
-        Object.fromEntries(data.staff.map((s: any) => [s.id, s.name as string])) as Record<string, string>
-      );
+  /** 대기 중인 메모를 지금 보낸다. 지원자를 바꾸거나 화면을 떠나도 마지막 타자가 사라지지 않게. */
+  const flushMemo = useCallback(() => {
+    if (memoTimer.current) {
+      clearTimeout(memoTimer.current);
+      memoTimer.current = null;
     }
-  };
+    const pending = pendingMemo.current;
+    pendingMemo.current = null;
+    if (pending) void saveMemo(pending.applicantId, pending.content);
+  }, [saveMemo]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     // 세 요청을 차례로 기다리면 점수를 저장할 때마다 화면이 1.5초씩 멈춘다.
     // 지원서 전문을 보여주는 화면이라 지원자는 slim 으로 받지 않는다.
     const [slotRes, appRes, scoreRes] = await Promise.all([
@@ -139,13 +107,75 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
         ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass'].includes(a.status)
       );
       setApplicants(interviewees);
-      if (interviewees.length > 0 && !selectedApplicantId) {
-        setSelectedApplicantId(interviewees[0].id);
+      // 보고 있던 지원자가 있으면 그대로 둔다. 갱신 함수로 넘겨야 selectedApplicantId 가
+      // 이 함수의 의존성에서 빠지고, 지원자를 바꿀 때마다 전체를 다시 받는 일이 없다.
+      if (interviewees.length > 0) {
+        setSelectedApplicantId((prev) => prev || interviewees[0].id);
       }
     }
 
     if (scoreData.scores) setScores(scoreData.scores);
     if (scoreData.viewerUserId) setViewerUserId(scoreData.viewerUserId);
+  }, [selectedCohortId]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    fetchCohorts();
+    fetchStaff();
+    // 화면을 떠날 때 아직 안 보낸 메모를 흘리지 않는다.
+    return () => flushMemo();
+  }, [flushMemo]);
+
+  useEffect(() => {
+    if (selectedCohortId) {
+      fetchData();
+    }
+  }, [selectedCohortId, fetchData]);
+
+  // 지원자를 바꿀 때 내 입력칸을 반드시 새로 맞춘다.
+  // 예전엔 초기화가 없어서, A 에게 쓴 점수·총평이 그대로 남아 B 의 기록으로 저장될 수 있었다.
+  // 이미 내가 채점한 지원자라면 그 값을 되살려, 덮어쓰는 줄 모르고 다시 매기는 일도 막는다.
+  useEffect(() => {
+    if (!selectedApplicantId) return;
+    flushMemo();
+    fetchPersonalMemo(selectedApplicantId);
+    setMessage('');
+    const mine = scores.find(
+      (s) =>
+        s.applicantId === selectedApplicantId &&
+        s.stage === 'interview' &&
+        s.scorerUserId === viewerUserId
+    );
+    setMyScore(mine ? parseFloat(mine.score).toFixed(1) : NO_SCORE);
+    setMyComment(mine?.comment ?? '');
+  }, [selectedApplicantId, viewerUserId, scores, flushMemo]);
+
+  const fetchCohorts = async () => {
+    try {
+      const res = await fetch('/api/recruit/cohorts');
+      const data = await res.json();
+      if (data.cohorts && data.cohorts.length > 0) {
+        setCohorts(data.cohorts);
+        setSelectedCohortId(data.cohorts[0].id);
+      }
+    } finally {
+      setCohortsLoading(false);
+    }
+  };
+
+  // 점수 기록에 이름을 붙이기 위한 운영진 명단(누가 몇 점을 줬는지 보이지 않으면 조율이 안 된다).
+  const fetchStaff = async () => {
+    const res = await fetch('/api/recruit/staff');
+    const data = await res.json();
+    if (Array.isArray(data.staff)) {
+      setStaffNames(
+        Object.fromEntries(data.staff.map((s: any) => [s.id, s.name as string])) as Record<string, string>
+      );
+    }
   };
 
   const fetchPersonalMemo = async (applicantId: string) => {
@@ -153,34 +183,6 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     const data = await res.json();
     setPersonalMemo(data.memo?.content ?? '');
     setMemoState('idle');
-  };
-
-  const saveMemo = async (applicantId: string, content: string) => {
-    const seq = ++memoSeq.current;
-    setMemoState('saving');
-    try {
-      const res = await fetch('/api/recruit/memos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applicantId, content }),
-      });
-      // 나중에 보낸 요청이 이미 끝났다면 이 응답은 낡은 것이다 — 표시를 되돌리지 않는다.
-      if (seq !== memoSeq.current) return;
-      setMemoState(res.ok ? 'saved' : 'error');
-    } catch {
-      if (seq === memoSeq.current) setMemoState('error');
-    }
-  };
-
-  /** 대기 중인 메모를 지금 보낸다. 지원자를 바꾸거나 화면을 떠나도 마지막 타자가 사라지지 않게. */
-  const flushMemo = () => {
-    if (memoTimer.current) {
-      clearTimeout(memoTimer.current);
-      memoTimer.current = null;
-    }
-    const pending = pendingMemo.current;
-    pendingMemo.current = null;
-    if (pending) void saveMemo(pending.applicantId, pending.content);
   };
 
   const handleMemoChange = (content: string) => {
