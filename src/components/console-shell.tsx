@@ -11,13 +11,3 @@ export function ConsoleShell({ actor, children }: { actor: Actor; children: Reac
     </div>
   );
 }
-
-// 화면 제목 행: 제목 + 우측 액션.
-export function PageTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="mb-5 flex items-center justify-between gap-3">
-      <h1 className="text-[22px] font-bold text-ink-900">{children}</h1>
-      {action}
-    </div>
-  );
-}

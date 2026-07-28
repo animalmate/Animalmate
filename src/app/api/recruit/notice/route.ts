@@ -5,6 +5,7 @@ import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { updateCohortNoticeAndSettings } from '@/recruit/notice';
 import { resolveApplyForm } from '@/recruit/apply-form';
 import { resolveDutyRoles } from '@/recruit/duty-rules';
+import { isOwnStorageUrl } from '@/storage/notice-images';
 import { pruneDutyAssignments } from '@/recruit/duties';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
@@ -16,6 +17,7 @@ export const dynamic = 'force-dynamic';
 
 // route 파일은 정해진 이름만 export 할 수 있어 지역 상수로 둔다.
 const DEFAULT_VENUES = ['학생회관 301호', '학생회관 302호'];
+const MAX_NOTICE_IMAGES = 10;
 
 // GET 은 비로그인 공개 공고 페이지(/recruit/notice)가 쓴다.
 // 따라서 **공개해도 되는 필드만** 내보낸다. 합격 축하 멘트(congratsMessage)·합격 후 안내
@@ -104,6 +106,28 @@ export async function POST(req: Request): Promise<Response> {
     checkLength('모집 공고', noticeContent, LIMITS.contentMd);
     checkLength('합격 축하 멘트', congratsMessage, LIMITS.contentMd);
     checkLength('합격 후 안내', postPassNotice, LIMITS.contentMd);
+
+    // 포스터 URL 은 요청 본문에서 그대로 DB 로 들어가고 있었다 — `isOwnStorageUrl` 이
+    // 바로 이걸 막으려고 만들어졌는데 어디에도 연결돼 있지 않았다.
+    // 공고는 비로그인에게 공개되는 페이지라, 남의 서버 이미지를 걸면 방문자 IP 가 그쪽으로 샌다.
+    if (noticeImages !== undefined) {
+      if (!Array.isArray(noticeImages) || noticeImages.some((u) => typeof u !== 'string')) {
+        return NextResponse.json({ error: 'invalid_images' }, { status: 400 });
+      }
+      if (noticeImages.length > MAX_NOTICE_IMAGES) {
+        return NextResponse.json(
+          { error: 'too_many_images', message: `포스터는 최대 ${MAX_NOTICE_IMAGES}장까지 올릴 수 있습니다.` },
+          { status: 400 }
+        );
+      }
+      const foreign = (noticeImages as string[]).filter((u) => !isOwnStorageUrl(u));
+      if (foreign.length > 0) {
+        return NextResponse.json(
+          { error: 'foreign_image', message: '포스터는 이 화면에서 업로드한 이미지만 쓸 수 있습니다.' },
+          { status: 400 }
+        );
+      }
+    }
 
     const before = await getCohortById(cohortId);
     if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
