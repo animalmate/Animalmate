@@ -15,7 +15,7 @@
 // 암호는 BACKUP_ENCRYPTION_KEY 환경변수로 준다(금고에 있는 값. .env 에 두지 않는다).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync, createWriteStream } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, createWriteStream, readFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,7 +44,8 @@ if (flag('--help') || flag('-h')) {
   node scripts/restore-backup.mjs --to <url> --confirm  실제 복원(--confirm 필수)
 
 옵션:
-  --keep <경로>   복호화된 .sql 을 파일로 남긴다(눈으로 확인할 때)
+  --keep <경로>       복호화된 .sql 을 파일로 남긴다(눈으로 확인할 때)
+  --key-file <경로>   복호화 암호를 파일에서 읽는다(어느 셸에서도 동작. 확인 후 파일을 지울 것)
 환경변수:
   BACKUP_ENCRYPTION_KEY  복호화 암호(금고)
   BACKUP_REPO_URL        백업 리포 주소(기본: ${BACKUP_REPO})`);
@@ -62,8 +63,22 @@ if (flag('--help') || flag('-h')) {
 async function readKey() {
   const fromEnv = process.env.BACKUP_ENCRYPTION_KEY;
   if (fromEnv) return fromEnv;
+
+  // 파일로 주는 길. 어느 셸에서도 똑같이 동작하고 셸 기록에 값이 남지 않는다.
+  const keyFile = value('--key-file');
+  if (keyFile) {
+    if (!existsSync(keyFile)) fail(`--key-file 이 가리키는 파일이 없습니다: ${keyFile}`);
+    const fromFile = readFileSync(keyFile, 'utf8').trim();
+    if (!fromFile) fail(`--key-file 이 비어 있습니다: ${keyFile}`);
+    return fromFile;
+  }
+
   if (!process.stdin.isTTY) {
-    fail('BACKUP_ENCRYPTION_KEY 가 없습니다. 금고에서 꺼내 환경변수로 주거나, 터미널에서 직접 실행하세요.');
+    fail(
+      'BACKUP_ENCRYPTION_KEY 가 없습니다. 아래 중 하나로 키를 주세요.\n' +
+        '  ① read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.mjs && unset K\n' +
+        '  ② node scripts/restore-backup.mjs --key-file ./key.txt'
+    );
   }
   const { createInterface } = await import('node:readline');
 
@@ -79,11 +94,38 @@ async function readKey() {
   );
   // 타이핑·붙여넣기 에코를 끈다. readline 은 입력을 output 으로 되돌려 쓰므로 그 쓰기를 막는다.
   if (canHide) rl.output.write = () => true;
-  const answer = await new Promise((resolve) => rl.question('', resolve));
+
+  // ⚠ Git Bash(MINGW64)에서는 Node 가 진짜 콘솔을 잡지 못한다(stdin 이 MSYS 파이프다).
+  //    isTTY 는 true 로 보이는데 readline 이 입력을 못 받고 곧바로 close 된다. 그때
+  //    question 콜백은 영영 오지 않고, 이벤트 루프가 비어 프로세스가 **아무 말 없이 끝난다.**
+  //    (2026-07-28 실제로 겪었다: 프롬프트만 찍히고 종료.)
+  //    close 를 함께 기다려서 그 경우를 잡아내고 무엇을 하라고 알려 준다.
+  const answer = await new Promise((resolve) => {
+    let done = false;
+    rl.question('', (a) => {
+      done = true;
+      resolve(a);
+    });
+    rl.on('close', () => {
+      if (!done) resolve('');
+    });
+  });
   rl.close();
   process.stdout.write('\n');
   const trimmed = answer.trim();
-  if (!trimmed) fail('입력이 비어 있습니다.');
+  if (!trimmed) {
+    fail(
+      '이 터미널에서는 키를 입력받을 수 없습니다(입력이 비었거나 터미널이 즉시 닫혔습니다).\n' +
+        '  Git Bash 는 Node 에 진짜 콘솔을 주지 않아 여기서 자주 발생합니다. 아래 중 하나를 쓰세요.\n\n' +
+        '  ① Git Bash 라면 — 키를 감춰 읽어 환경변수로 넘긴다(셸 기록에 값이 남지 않습니다):\n' +
+        '       read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.mjs && unset K\n\n' +
+        '  ② PowerShell 이라면 — 프롬프트가 정상 동작합니다(gpg 경로만 먼저 넓히세요):\n' +
+        '       $env:PATH = "C:\\Program Files\\Git\\usr\\bin;$env:PATH"\n' +
+        '       node scripts/restore-backup.mjs\n\n' +
+        '  ③ 키를 파일에 두고 넘긴다(확인 후 파일을 지우세요):\n' +
+        '       node scripts/restore-backup.mjs --key-file ./key.txt'
+    );
+  }
   return trimmed;
 }
 

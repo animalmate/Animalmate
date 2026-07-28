@@ -71,22 +71,36 @@
 
 준비물: `git`, `gpg`, Node 22+, (5단계까지 갈 때만) 로컬 PostgreSQL 17 + `psql`.
 
-> ⚠ **`gpg` 는 PowerShell PATH 에 없다.** Git for Windows 안에만 들어 있다
-> (`C:\Program Files\Git\usr\bin\gpg.exe`). 아래 명령은 **Git Bash** 에서 실행하는 것이 가장 쉽다.
-> PowerShell 을 쓰려면 그 세션에서 먼저 PATH 를 넓힌다:
-> `$env:PATH = "C:\Program Files\Git\usr\bin;$env:PATH"`
+> ⚠ **셸마다 되는 방법이 다르다.** 두 가지 제약이 겹친다.
+> - `gpg` 는 **PowerShell PATH 에 없다**(Git for Windows 안에만 있다).
+> - **Git Bash 는 Node 에 진짜 콘솔을 주지 않는다** — 스크립트가 키를 물어봐도 입력을 못 받는다.
+>
+> 그래서 셸에 맞는 명령을 골라 쓴다(아래 1단계).
 
 **1단계 — 최신 백업을 받아 내용만 확인한다 (DB 불필요, 여기까지가 최소 리허설)**
 
+**Git Bash 라면** — `read -s` 로 키를 감춰 읽어 그 명령에만 넘긴다:
+
 ```bash
+read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.mjs; unset K
+```
+
+**PowerShell 이라면** — gpg 경로를 먼저 넓히면 스크립트가 직접 물어본다:
+
+```powershell
+$env:PATH = "C:\Program Files\Git\usr\bin;$env:PATH"
 node scripts/restore-backup.mjs
 ```
 
-키를 물어보면 금고에 보관한 `BACKUP_ENCRYPTION_KEY` 를 붙여넣는다(입력은 화면에 보이지 않는다).
+**어느 쪽도 안 되면** — 키를 파일에 두고 넘긴 뒤 그 파일을 지운다:
 
-> **키를 명령줄에 붙여넣지 않는다.** `BACKUP_ENCRYPTION_KEY=… node …` 로 주면 그 값이
+```bash
+node scripts/restore-backup.mjs --key-file ./key.txt && rm key.txt
+```
+
+> **키를 명령줄에 그대로 붙여넣지 않는다.** `BACKUP_ENCRYPTION_KEY=실제값 node …` 로 주면 그 값이
 > 셸 기록 파일(PowerShell `ConsoleHost_history.txt`, bash `.bash_history`)에 **평문으로 남는다.**
-> 백업 전체를 여는 열쇠라 그렇게 두면 안 된다. 환경변수 방식은 CI 같은 자동화에서만 쓴다.
+> 백업 전체를 여는 열쇠라 그렇게 두면 안 된다. 위 세 방법은 모두 기록에 값을 남기지 않는다.
 
 이 명령은 백업 리포에서 최신 파일을 받아 복호화하고 **테이블 수와 테이블별 행 수만 출력**한다.
 DB 는 전혀 건드리지 않는다. 확인할 것:
@@ -98,7 +112,7 @@ DB 는 전혀 건드리지 않는다. 확인할 것:
 **2단계 — 덤프 원문을 눈으로 본다 (선택)**
 
 ```bash
-node scripts/restore-backup.mjs --keep ./check.sql
+read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.mjs --keep ./check.sql; unset K
 ```
 
 `check.sql` 은 **평문 개인정보**다. 확인이 끝나면 반드시 지운다: `rm check.sql`
@@ -112,8 +126,8 @@ createdb animalmate_restore_test
 **4단계 — 로컬 DB 에 복원한다**
 
 ```bash
-node scripts/restore-backup.mjs \
-  --to postgresql://postgres@localhost:5432/animalmate_restore_test --confirm
+read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.mjs \
+  --to postgresql://postgres@localhost:5432/animalmate_restore_test --confirm; unset K
 ```
 
 `--confirm` 이 없으면 대상만 확인하고 적용하지 않는다(사고 방지). 대상이 `.env` 의 운영 DB 와
