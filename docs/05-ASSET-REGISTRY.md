@@ -42,7 +42,7 @@
 | NAVER_CLIENT_ID/SECRET | 카페 앱 | Vercel 환경변수 + 금고 | 운영진 교체 시 | |
 | TOKEN_ENCRYPTION_KEY | refresh token 암호화 | Vercel 환경변수 + 금고 | 신중히(재암호화 필요) | |
 | CRON_SECRET | pg_cron→API 인증 | Supabase + Vercel + 금고 | 운영진 교체 시 | 양쪽 일치 |
-| BACKUP_ENCRYPTION_KEY | 백업 암호화(GPG 대칭) | GitHub Actions 시크릿 + 금고 | 신중히 | **잃으면 모든 백업이 열리지 않는다.** `.env`·Vercel 에 넣지 말 것(앱 런타임 변수 아님) |
+| BACKUP_ENCRYPTION_KEY | 백업 암호화(GPG 대칭) | GitHub Actions 시크릿 + 금고 | 신중히 · **⚠ 교체 필요(아래)** | **잃으면 모든 백업이 열리지 않는다.** `.env`·Vercel 에 넣지 말 것(앱 런타임 변수 아님) |
 | BACKUP_REPO_TOKEN | 백업 리포 push | GitHub Actions 시크릿 + 금고 | **만료일 주의** | fine-grained PAT, 대상 `animalmate-backups` 한정, Contents read/write + Metadata read. 만료되면 백업이 조용히 멈추므로 갱신일을 달력에 |
 | DIRECT_URL (Actions) | pg_dump 접속 + RLS 증명 | GitHub Actions 시크릿 + 금고 | DB 비밀번호 변경 시 | 세션 풀러(5432). 트랜잭션 풀러(6543)로는 pg_dump 불가 |
 | TEST_DATABASE_URL | 통합 테스트 대상 DB | `.env` + GitHub Actions 시크릿 + 금고 | 테스트 프로젝트 비밀번호 변경 시 | **운영이 아닌** `animalmate-test` 프로젝트. 운영 값을 넣으면 테스트가 하드 실패한다 |
@@ -51,6 +51,18 @@
 (워크플로가 자동으로 받는 토큰, `issues: write`)으로 이 리포에 이슈를 만들고 담당자에게 배정한다.
 배정 알림은 리포 워치 설정과 무관하게 반드시 가므로 "실패했는데 아무도 몰랐다"가 나오지 않는다.
 담당자는 리포 변수 `ALERT_ASSIGNEE` 로 바꾼다(미설정 시 `hanchaehun`) — 인수인계 때 여기만 고치면 된다.
+
+> ⚠ **`BACKUP_ENCRYPTION_KEY` 는 교체해야 한다(2026-07-28 노출).** 복원 리허설 중 이 키가 작업
+> 대화에 평문으로 남았다. 키 하나면 지원자 실명·전화·자기소개서가 든 **모든 백업이 열린다.**
+> 2026-07-29 확인 시점에 Actions 시크릿의 `updated_at` 이 최초 생성 시각 그대로라 **아직 교체 전이다**
+> (같은 값으로 다시 넣어도 이 시각은 갱신되므로, 그대로라는 것은 손대지 않았다는 뜻이다).
+>
+> 교체 절차:
+> 1. 새 키 발급(고엔트로피) → 금고에 **새 키/옛 키를 모두** 보관. 기존 백업은 **옛 키로만 열린다** —
+>    "언제까지의 백업이 어느 키인지"를 금고 메모에 함께 적는다. 옛 키를 버리면 그 전 백업이 전부 죽는다.
+> 2. `gh secret set BACKUP_ENCRYPTION_KEY --repo animalmate/Animalmate` 로 교체.
+> 3. `gh workflow run backup.yml --repo animalmate/Animalmate` 로 한 번 돌린다. 워크플로가 푸시 전에
+>    **복호화까지 검증**하므로, 성공하면 새 키가 실제로 왕복한다는 증명이 된다.
 
 Actions 에 `SMTP_*` 를 **넣지 않는다.** 메일 자격증명을 Actions 에 두면 잡이 실메일을 보낼 수
 있게 되는데, 이 프로젝트는 테스트 경로에서 메일이 새어 나간 사고를 이미 겪었고 그 뒤로
