@@ -100,6 +100,10 @@
   updated_by, updated_at, pii_checked bool)
 - `doc_chunks` (id, document_id, chunk_index, content, embedding vector)
   - 문서 저장 시 청크 전체 재생성(delete → insert). visibility는 조인으로 상속.
+  - ⚠ **pgvector 확장은 `extensions` 스키마에 있다**(0021, 2026-07-29 이전). `public` 이 아니다.
+    앱은 `postgres` 롤로 붙고 search_path 가 `"$user", public, extensions` 라 `::vector`·`<=>`·
+    `vector_cosine_ops` 를 스키마 없이 써도 해석된다. search_path 에서 `extensions` 를 빼면
+    챗봇 검색이 "type vector does not exist" 로 죽는다.
 - `chat_logs` (id, user_id?, role_at_time, question, answer, sources[], handed_off bool, created_at)
 
 ### 운영 공통

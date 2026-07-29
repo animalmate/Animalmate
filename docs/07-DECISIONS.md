@@ -494,3 +494,36 @@
    - 진짜 교훈은 두 개다. ① 캡처 속 이름은 grep 도 시크릿 스캐너도 못 잡으니 예방이 유일한 방어다.
      ② **경보를 올리기 전에 그 데이터가 무엇인지 먼저 확인한다.** 화면에 한글 이름이 보인다는
      사실만으로 실명이라고 단정하면, 하지 않아도 될 히스토리 재작성까지 하게 된다(이번이 그랬다).
+
+55. **Supabase 경고를 따라 pgvector 를 `public` → `extensions` 로 옮겼다.** (2026-07-29)
+   Security Advisor 의 `extension_in_public`(WARN). **RLS 경고가 아니었다** — 받은 메일을 "RLS 가
+   꺼졌다"로 읽고 조사에 들어갔지만, 조회해 보니 운영·테스트 양쪽 다 public 전 테이블 RLS 가
+   켜져 있었다(운영 29/29, 테스트 27/27, `test:rls:prod` 88 통과). 경고의 실체는 확장 위치였다.
+   - **보안 위험 자체는 이 프로젝트에 없었다.** 이 린트가 경고하는 공격은 "신뢰할 수 없는 롤이
+     `public` 에 같은 이름의 함수를 만들어 search_path 로 확장 함수를 가로채는 것"인데,
+     `anon`·`authenticated`·`PUBLIC` 모두 public 에 **CREATE 권한이 없다**(USAGE 만).
+   - **그런데도 지금 한 이유는 비용이다.** `doc_chunks` 가 운영 2행/테스트 0행으로 사실상 비어
+     있었다. 다음 할 일이 "챗봇 핵심 문서 5개 입력"이라 이 표는 곧 커진다 — 나중에 하면 같은
+     작업이 무거워진다. 경고를 무시할지 말지가 아니라, **언제 하면 제일 싼가**의 문제였다.
+   - 안전 근거: `vector` v0.8.2 는 `extrelocatable=true`. 운영·테스트 모두 앱이 `postgres` 롤로
+     붙고 search_path 가 이미 `extensions` 를 포함해, `src/rag/search.ts` 의 미자격 `::vector`·`<=>`
+     와 `schema.ts` 의 `vector_cosine_ops` 가 그대로 해석된다. 컬럼 타입과 HNSW 인덱스는 OID 로
+     묶여 있어 재생성이 필요 없다(이전 후 인덱스 정의 동일 확인).
+   - 검증 순서: 테스트 DB 이전 → 통합 141개 통과(이전 전 141과 동일) → 마이그레이션 0021 작성
+     → `db:migrate:test` 로 배선·멱등성 확인 → 운영 적용 → 풀러(6543) 경유 벡터 연산 확인.
+   - **`db:generate` 는 `ALTER EXTENSION` 을 만들어 주지 않는다.** RLS 와 같은 사정이라 SQL·저널
+     항목(`_journal.json` idx 21)·스냅샷(0020 복사 + id/prevId 갱신)을 손으로 넣었다. 넣은 뒤
+     `db:generate` 가 "No schema changes" 를 내는지로 배선을 확인했다(유령 0022 방지).
+   - 곁다리로 **0020 이 함께 적용됐다**(운영이 0019 에 멈춰 있었다). 드롭 대상 3곳이 모두 0행인
+     것과 `src/` 의 `rule_id`·`invites`·`recurring_rules` 참조가 전부 주석뿐인 것을 확인한 뒤 적용했고,
+     적용 후 배포본 대상 e2e 10개가 통과했다. `/api/health` 200 은 `loadActor` 를 안 타서 근거가 못 된다.
+
+56. **운영 DB 에만 `anon`/`authenticated` 로 public 전 테이블 ALL PRIVILEGES 가 부여돼 있다.** (2026-07-29, 미조치)
+   58건(SELECT·INSERT·UPDATE·DELETE·TRUNCATE 까지). 테스트 DB 는 0건 — Supabase 구버전 프로젝트의
+   기본값으로 보인다. 지금은 RLS 가 막고 있어 실피해가 없지만(anon SELECT 0행 증명됨),
+   **안전망이 한 겹뿐**이다. 새 테이블에 `ENABLE ROW LEVEL SECURITY` 한 줄을 빠뜨리는 순간
+   (= `db:generate` 가 만들어 주지 않는 바로 그 구문) 그 테이블은 anon key 로 읽기·쓰기까지 뚫린다.
+   - 회수해도 서비스 영향은 없다. 앱 코드는 anon key 를 전혀 쓰지 않고, 유일한 사용처가
+     `test/rls.security.test.ts`(거부 증명용)다.
+   - 다만 회수하면 그 테스트의 실패 양상이 "200 + 빈 배열" → "401 권한 거부"로 바뀌므로
+     단언문을 함께 고쳐야 한다. **그래서 이번 커밋에 넣지 않았다** — 별건으로 처리할 것.
