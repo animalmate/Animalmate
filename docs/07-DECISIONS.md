@@ -518,12 +518,27 @@
      것과 `src/` 의 `rule_id`·`invites`·`recurring_rules` 참조가 전부 주석뿐인 것을 확인한 뒤 적용했고,
      적용 후 배포본 대상 e2e 10개가 통과했다. `/api/health` 200 은 `loadActor` 를 안 타서 근거가 못 된다.
 
-56. **운영 DB 에만 `anon`/`authenticated` 로 public 전 테이블 ALL PRIVILEGES 가 부여돼 있다.** (2026-07-29, 미조치)
-   58건(SELECT·INSERT·UPDATE·DELETE·TRUNCATE 까지). 테스트 DB 는 0건 — Supabase 구버전 프로젝트의
-   기본값으로 보인다. 지금은 RLS 가 막고 있어 실피해가 없지만(anon SELECT 0행 증명됨),
-   **안전망이 한 겹뿐**이다. 새 테이블에 `ENABLE ROW LEVEL SECURITY` 한 줄을 빠뜨리는 순간
-   (= `db:generate` 가 만들어 주지 않는 바로 그 구문) 그 테이블은 anon key 로 읽기·쓰기까지 뚫린다.
-   - 회수해도 서비스 영향은 없다. 앱 코드는 anon key 를 전혀 쓰지 않고, 유일한 사용처가
-     `test/rls.security.test.ts`(거부 증명용)다.
-   - 다만 회수하면 그 테스트의 실패 양상이 "200 + 빈 배열" → "401 권한 거부"로 바뀌므로
-     단언문을 함께 고쳐야 한다. **그래서 이번 커밋에 넣지 않았다** — 별건으로 처리할 것.
+56. **`anon`/`authenticated` 의 public 권한을 회수해 방어선을 두 겹으로 만들었다.** (2026-07-29, 0022)
+   운영 DB 에만 anon·authenticated 에 public 전 테이블 ALL PRIVILEGES 가 부여돼 있었다
+   (27테이블 × 2롤, INSERT·DELETE·TRUNCATE 까지). Supabase 구버전 프로젝트의 기본값이다.
+   테스트 DB(신규 생성)는 0건이었다.
+   - **증상이 말해 주던 것**: 회수 전 anon SELECT 는 `HTTP 200 []` 를 반환했다. 200 은 요청이
+     **테이블까지 도달했고 RLS 가 마지막에 걸러냈다**는 뜻이다. 회수 후에는 `401 / 42501
+     (insufficient_privilege)` — 권한 계층에서 먼저 막힌다. 실피해는 없었지만 안전망이 한 겹뿐이었다.
+   - **왜 위험한가**: 새 테이블에 `ENABLE ROW LEVEL SECURITY` 를 한 줄 빠뜨리면(= `db:generate` 가
+     만들어 주지 않아 매번 손으로 넣어야 하는 그 구문) 그 테이블은 즉시 anon key 로 읽기·쓰기까지
+     뚫렸다. 2026-07-27 사고가 정확히 그 형태였다. 이제는 RLS 를 빠뜨려도 권한이 없어 막힌다.
+   - **기존 부여 회수만으로는 반쪽이었다.** public 스키마에 `ALTER DEFAULT PRIVILEGES` 가 걸려 있어
+     **앞으로 만드는 테이블이 다시 자동으로 권한을 받는다.** 그것까지 끊어야 한다 — 이게 이
+     마이그레이션의 핵심이고, 테스트 DB 에 기본권한이 애초에 없어서 부여도 0건이었던 이유다.
+   - **`service_role` 은 남겼다.** 서버 전용 키(`src/storage/notice-images.ts` 가 Storage REST 에 쓴다)라
+     유출되면 어차피 RLS 를 우회한다 — 회수해도 공격면이 줄지 않는다. 공개되는 것은 anon key 이고,
+     `authenticated` 는 그 anon key 로 Supabase Auth 가입을 하면 얻을 수 있어 실제 표적은 이 둘이다.
+   - **남은 구멍 하나(의도적)**: `by=supabase_admin` 기본권한은 그대로다. `postgres` 가 그 롤의
+     멤버가 아니라 손댈 수 없다(마이그레이션에서 시도 → `insufficient_privilege`, 예외로 넘김).
+     supabase_admin 이 public 에 테이블을 만들 때만 해당되는데 이 리포는 그런 일을 하지 않는다.
+     드리즐 마이그레이션도 대시보드 SQL 에디터도 `postgres` 로 돈다.
+   - **테스트 단언문은 고칠 필요가 없었다.** `test/rls.security.test.ts` 는 이미 4xx 를 "접근 거부 =
+     안전"으로 처리한다(위험한 것은 200 + 행 반환뿐). 착수 전에 파일을 읽고 확인했다.
+   - 검증: 테스트 DB 적용 후 통합 141 통과(동일), 운영 적용 후 anon 401 확인, RLS 82 통과,
+     배포본 e2e 10 통과.

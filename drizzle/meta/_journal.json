@@ -155,6 +155,13 @@
       "when": 1785285002175,
       "tag": "0021_move_vector_to_extensions",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785285722883,
+      "tag": "0022_revoke_anon_grants",
+      "breakpoints": true
     }
   ]
 }
