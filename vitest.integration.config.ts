@@ -21,6 +21,10 @@ export default defineConfig({
       'test/chatbot-eval.test.ts',
     ],
     setupFiles: ['./test/setup-db.ts'],
+    // 실행 하나가 테스트 DB 를 독점하게 한다(어드바이저리 락). CI 가 도는 중에 로컬에서
+    // 같은 명령을 돌리면 서로의 픽스처를 지워 둘 다 깨진다 — 2026-07-29 에 실제로 있었다.
+    // globalSetup 은 워커마다가 아니라 **실행당 한 번** 돈다. 자세한 사정은 global-lock.ts 주석.
+    globalSetup: ['./test/global-lock.ts'],
     environment: 'node',
     testTimeout: 30_000,
     hookTimeout: 30_000,
