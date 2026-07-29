@@ -74,11 +74,17 @@ export async function searchChunks(db: Db, actor: Actor, question: string, k = T
     .filter((h) => h.similarity >= MIN_SIMILARITY);
 }
 
-/** 검색 결과를 챗봇 프롬프트에 넣을 "자료" 블록 + 중복 제거된 출처 문서명. */
+/**
+ * 검색 결과를 챗봇 프롬프트에 넣을 "자료" 블록 + 중복 제거된 출처 문서명.
+ *
+ * ⚠ **모델에게 주는 자료에는 문서명을 넣지 않는다.** 예전에는 조각마다
+ * `[자료 1 · 출처: 회칙]` 처럼 붙였는데, 시스템 프롬프트로는 "출처를 쓰지 말라"고 하면서
+ * 자료에는 `출처: X` 를 top-k 번 먹이는 셈이라 모델이 그대로 따라 썼다(2026-07-29 QA).
+ * 출처 표시는 모델이 아니라 **검색 메타데이터(`sources`)로 UI 가 칩을 그린다**(결정 46).
+ * 그러니 모델은 문서명을 알 필요가 없다.
+ */
 export function buildContextBlock(hits: SearchHit[]): { context: string; sources: string[] } {
   const sources = [...new Set(hits.map((h) => h.title))];
-  const context = hits
-    .map((h, i) => `[자료 ${i + 1} · 출처: ${h.title}]\n${h.content}`)
-    .join('\n\n---\n\n');
+  const context = hits.map((h, i) => `[자료 ${i + 1}]\n${h.content}`).join('\n\n---\n\n');
   return { context, sources };
 }

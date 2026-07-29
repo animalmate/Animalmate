@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { askChatbot, isHandoff, HANDOFF_MESSAGE } from './chatbot';
+import { askChatbot, isHandoff, stripSourceMentions, HANDOFF_MESSAGE } from './chatbot';
+import { buildContextBlock } from './search';
 import type { SearchHit } from './search';
 import type { GenerateResult } from './gemini';
 import type { Actor } from '@/auth/permissions';
@@ -36,7 +37,20 @@ describe('askChatbot — 오케스트레이션', () => {
     });
     expect(res.handedOff).toBe(false);
     expect(res.answer).toContain('2만원');
+    // 본문에는 출처가 남지 않는다 — 칩은 UI 가 sources 로 그린다(결정 46).
+    expect(res.answer).not.toContain('출처');
+    expect(res.answer).toBe('한 학기 2만원이에요.');
     expect(res.sources).toEqual(['회비안내']);
+  });
+
+  it('모델이 출처 표기만 뱉으면 답한 것이 없으므로 핸드오프한다', async () => {
+    const res = await askChatbot(db, actor, '회비 얼마?', {
+      search: async () => [hit('회비안내', '2만원입니다.')],
+      generate: async () => gen({ text: '(출처: 회비안내)' }),
+      execTool: async () => ({}),
+    });
+    expect(res.answer).toBe(HANDOFF_MESSAGE);
+    expect(res.handedOff).toBe(true);
   });
 
   it('자료가 검색됐어도 모델이 핸드오프하면 출처를 달지 않는다', async () => {
@@ -115,5 +129,43 @@ describe('isHandoff', () => {
     expect(isHandoff('한 학기 2만원이에요.')).toBe(false);
     // 개인정보 거절("운영진에게 문의")은 핸드오프로 오판하지 않는다.
     expect(isHandoff('개인정보는 안내해 드릴 수 없어요. 운영진에게 문의해 주세요.')).toBe(false);
+  });
+});
+
+describe('stripSourceMentions — 본문에 섞인 출처 표기 제거', () => {
+  it('괄호형 출처 표기를 지운다', () => {
+    expect(stripSourceMentions('한 학기 2만원이에요. (출처: 회비안내)')).toBe('한 학기 2만원이에요.');
+    expect(stripSourceMentions('2만원입니다 [근거 - 회칙]')).toBe('2만원입니다');
+    expect(stripSourceMentions('2만원입니다 【참고: 회칙】')).toBe('2만원입니다');
+  });
+
+  it('줄 전체가 출처 표기면 그 줄을 지운다', () => {
+    expect(stripSourceMentions('2만원이에요.\n출처: 회비안내')).toBe('2만원이에요.');
+    expect(stripSourceMentions('2만원이에요.\n\n※ 참고 자료: 회칙, 회비안내')).toBe('2만원이에요.');
+  });
+
+  // 과하게 지우면 답변이 망가진다 — 구분자가 붙은 표기만 지운다.
+  it('정상 문장은 건드리지 않는다', () => {
+    const ok = '근거가 필요하면 운영진에게 문의해 주세요.';
+    expect(stripSourceMentions(ok)).toBe(ok);
+    const ok2 = '참고하실 내용은 (준비물 챙기기) 입니다.';
+    expect(stripSourceMentions(ok2)).toBe(ok2);
+    expect(stripSourceMentions(HANDOFF_MESSAGE)).toBe(HANDOFF_MESSAGE);
+  });
+
+  it('표기만 있으면 빈 문자열이 된다(호출부가 핸드오프로 떨어뜨린다)', () => {
+    expect(stripSourceMentions('(출처: 회칙)')).toBe('');
+  });
+});
+
+describe('buildContextBlock — 모델에게 문서명을 주지 않는다', () => {
+  it('자료 블록에는 문서명이 없고, sources 로만 나간다', () => {
+    const { context, sources } = buildContextBlock([hit('회비안내', '2만원입니다.'), hit('회칙', '봉사는 월 1회.')]);
+    // 문서명을 자료에 붙이면 모델이 그대로 따라 쓴다(2026-07-29 QA 의 원인).
+    expect(context).not.toContain('회비안내');
+    expect(context).not.toContain('출처');
+    expect(context).toContain('2만원입니다.');
+    expect(context).toContain('[자료 1]');
+    expect(sources).toEqual(['회비안내', '회칙']);
   });
 });
