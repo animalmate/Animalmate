@@ -6,11 +6,18 @@
 import { useEffect, useRef, useState } from 'react';
 
 const KEY = 'am:cursor-dog';
-const GROUND_MARGIN = 10; // 발밑을 뷰포트 하단에서 살짝 띄운다.
+/**
+ * 발밑을 뷰포트 하단에서 띄우는 기본값.
+ *
+ * 화면 맨 아래에 글자를 두는 페이지는 이 값을 키워 강아지가 **그 위에 서게** 한다.
+ * 강아지는 z<0 라 글자 뒤에 그려지지만, 몸통이 겹치면 얇은 회색 글씨는 그냥 안 읽힌다
+ * (2026-07-29 로그인 크레딧에서 실제로 그랬다 — 스크린샷으로 발견).
+ */
+const DEFAULT_GROUND_MARGIN = 10;
 
 type State = 'idle' | 'run' | 'jump' | 'lookup' | 'reach';
 
-export function CursorDog() {
+export function CursorDog({ groundMargin = DEFAULT_GROUND_MARGIN }: { groundMargin?: number } = {}) {
   const [hydrated, setHydrated] = useState(false);
   const [pointerFine, setPointerFine] = useState(false);
   const [reduced, setReduced] = useState(false);
@@ -55,7 +62,7 @@ export function CursorDog() {
     if (reduced) {
       dog.setAttribute(
         'transform',
-        `translate(${(window.innerWidth / 2).toFixed(2)} ${(window.innerHeight - GROUND_MARGIN).toFixed(2)}) scale(1 1)`,
+        `translate(${(window.innerWidth / 2).toFixed(2)} ${(window.innerHeight - groundMargin).toFixed(2)}) scale(1 1)`,
       );
       return;
     }
@@ -89,7 +96,7 @@ export function CursorDog() {
 
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const groundY = vh - GROUND_MARGIN;
+      const groundY = vh - groundMargin;
 
       // 이동: 커서 X를 목표로 감쇠 추종.
       const targetX = (cursor.on ? cursor.x : vw / 2) - 22;
@@ -198,7 +205,7 @@ export function CursorDog() {
       document.removeEventListener('mouseleave', onLeave);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [enabled, pointerFine, reduced]);
+  }, [enabled, pointerFine, reduced, groundMargin]);
 
   function toggle() {
     setEnabled((v) => {

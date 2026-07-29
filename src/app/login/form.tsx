@@ -6,7 +6,7 @@ import { useCooldown } from '@/lib/use-cooldown';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton } from '@/components/ui';
 import { CursorDog } from '@/components/cursor-dog';
 
-export function LoginForm() {
+export function LoginForm({ contact }: { contact: string | null }) {
   const router = useRouter();
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
@@ -42,8 +42,13 @@ export function LoginForm() {
 
   return (
     <>
-      <CursorDog />
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
+      {/* 맨 아래 크레딧 위에 서게 한다 — 기본값(10)이면 몸통이 글자를 덮어 안 읽힌다. */}
+      <CursorDog groundMargin={52} />
+      {/* 크레딧을 화면 맨 아래에 붙이려고 두 층으로 나눈다 — 위쪽(flex-1)이 남는 높이를 다 먹고
+          그 안에서 카드를 세로 가운데 두면, 크레딧은 자연히 바닥에 남는다. 내용이 길어져
+          화면을 넘기면 크레딧도 문서 끝으로 따라간다(고정 배치가 아니라 겹치지 않는다). */}
+      <main className="mx-auto flex min-h-screen max-w-md flex-col p-4">
+      <div className="flex flex-1 flex-col justify-center">
       <div className="mb-6 flex flex-col items-center text-center">
         <img src="/logo.png" alt="애니멀메이트" className="h-16 w-16 rounded-full" />
         <h1 className="mt-3 text-[22px] font-bold text-ink-900">로그인</h1>
@@ -100,12 +105,19 @@ export function LoginForm() {
           </>
         )}
       </Card>
-      {/* 제작자 크레딧 — 로그인 화면에만 둔다(로그인 뒤 화면은 운영 도구라 자리를 차지할 이유가 없다). */}
-      <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-400">
-        사이트제작 한채훈{' '}
-        <a href="mailto:sweetkid0194@gmail.com" className="underline underline-offset-2 hover:text-ink-500">
-          sweetkid0194@gmail.com
-        </a>
+      </div>
+      {/* 제작자 크레딧 — 로그인 화면에만 둔다(로그인 뒤 화면은 운영 도구라 자리를 차지할 이유가 없다).
+          연락처는 /privacy 와 같은 CONTACT_EMAIL 을 쓴다. 값이 없으면 주소를 지어내지 않고 이름만 남긴다. */}
+      <p className="pt-6 text-center text-[11px] leading-relaxed text-ink-400">
+        사이트제작 한채훈
+        {contact ? (
+          <>
+            {' '}
+            <a href={`mailto:${contact}`} className="underline underline-offset-2 hover:text-ink-500">
+              {contact}
+            </a>
+          </>
+        ) : null}
       </p>
       </main>
     </>
