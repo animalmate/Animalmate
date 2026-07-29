@@ -10,6 +10,7 @@ import {
   MAX_OCCURRENCES,
   type Occurrence,
   type SharedFields,
+  type ReservationKind,
 } from '@/publishing/reservations';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
@@ -21,8 +22,12 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const teamId = new URL(req.url).searchParams.get('teamId') ?? undefined;
-  return NextResponse.json({ reservations: await listReservations(db, { teamId, actor }) });
+  const q = new URL(req.url).searchParams;
+  const teamId = q.get('teamId') ?? undefined;
+  // 알 수 없는 값은 필터 없음으로 떨어뜨린다(전체). 권한은 listReservations 가 actor 로 따로 건다.
+  const rawKind = q.get('kind');
+  const kind: ReservationKind | undefined = rawKind === 'general' || rawKind === 'volunteer' ? rawKind : undefined;
+  return NextResponse.json({ reservations: await listReservations(db, { teamId, kind, actor }) });
 }
 
 export async function POST(req: Request): Promise<Response> {

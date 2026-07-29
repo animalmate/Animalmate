@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, InfoText, SecondaryButton, StatusBadge } from '@/components/ui';
+import { Button, Card, ErrorText, InfoText, SecondaryButton, Select, StatusBadge } from '@/components/ui';
 import { HelpButton } from '@/components/help-button';
 import { shortenValue } from '@/publishing/placeholder-catalog';
 
@@ -24,19 +24,55 @@ function fmt(iso: string | null): string {
   return d.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+interface Team {
+  id: string;
+  name: string;
+}
+
+/**
+ * 필터 값 → 조회 쿼리. 서버는 kind/teamId 를 **권한 스코프와 AND** 로 겹치므로,
+ * 여기서 남의 팀 id 를 넣어도 결과가 빌 뿐 새로 보이는 것은 없다.
+ *   ''            전체
+ *   'general'     일반 공지(회차 없는 건)
+ *   'volunteer'   봉사 공지 전체
+ *   'team:<id>'   그 팀의 봉사 공지
+ */
+function filterQuery(filter: string): string {
+  if (filter === 'general') return '?kind=general';
+  if (filter === 'volunteer') return '?kind=volunteer';
+  if (filter.startsWith('team:')) return `?kind=volunteer&teamId=${encodeURIComponent(filter.slice(5))}`;
+  return '';
+}
+
 export function ReservationsPanel() {
   const [rows, setRows] = useState<Reservation[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [filter, setFilter] = useState('');
 
-  async function load() {
-    const r = await apiGet<{ reservations: Reservation[] }>('/api/reservations');
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await apiGet<{ reservations: Reservation[] }>(`/api/reservations${filterQuery(filter)}`);
     setLoading(false);
     if (r.ok) setRows(r.data.reservations ?? []);
     else setError(errorMessage(r.data.error));
-  }
+  }, [filter]);
+
+  // 필터가 바뀌면 다시 조회한다. 목록을 클라이언트에서 거르지 않는 이유는, 서버가 이미
+  // 권한 스코프를 걸고 있어서 같은 자리에서 필터까지 처리하는 편이 규칙이 한 곳에 모이기 때문이다.
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // 팀 목록은 한 번만. 비회장단에게는 서버가 소속 팀만 돌려준다(/api/teams).
+  useEffect(() => {
+    void (async () => {
+      const r = await apiGet<{ teams: Team[] }>('/api/teams');
+      setTeamsLoading(false);
+      if (r.ok) setTeams(r.data.teams ?? []);
+    })();
   }, []);
 
   async function act(id: string, action: 'ready' | 'schedule' | 'cancel') {
@@ -72,12 +108,44 @@ export function ReservationsPanel() {
       <p className="rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5 text-[13px] leading-relaxed text-ink-700">
         예약한 시각이 되면 네이버 카페에 글이 자동으로 올라갑니다. 상태 딱지 보는 법은 위 <strong>도움말</strong>에 있어요.
       </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="queue-filter" className="text-[13px] font-medium text-ink-700">
+          종류
+        </label>
+        <Select
+          id="queue-filter"
+          uiSize="sm"
+          className="min-w-[10rem]"
+          loading={teamsLoading}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        >
+          <option value="">전체</option>
+          <option value="general">일반 공지</option>
+          {teams.length > 0 ? (
+            <optgroup label="봉사 공지">
+              <option value="volunteer">봉사 공지 전체</option>
+              {teams.map((t) => (
+                <option key={t.id} value={`team:${t.id}`}>
+                  {t.name}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            <option value="volunteer">봉사 공지</option>
+          )}
+        </Select>
+      </div>
       <ErrorText>{error}</ErrorText>
       {loading ? (
         <InfoText>불러오는 중…</InfoText>
       ) : rows.length === 0 ? (
         <Card>
-          <InfoText>아직 예약이 없습니다. "새 예약"으로 등록하세요.</InfoText>
+          <InfoText>
+            {filter === ''
+              ? '아직 예약이 없습니다. "새 예약"으로 등록하세요.'
+              : '이 종류의 예약이 없습니다. 위 "종류"를 전체로 바꿔 보세요.'}
+          </InfoText>
         </Card>
       ) : (
         <ul className="space-y-3">

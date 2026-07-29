@@ -1,7 +1,7 @@
 // 예약(scheduled_post) 생성/조회 — 일반 공지(개인 소유) + 봉사 공지(팀 소유 + event 통합).
 // 예약 큐 화면·작성 폼의 서버 진입점. 권한은 post.create(운영진 이상).
 
-import { and, asc, eq, gte, inArray, lt, ne, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { scheduledPosts, events, boards } from '@/db/schema';
 import { composeTeamLeaders } from '@/org/team-leaders';
@@ -411,30 +411,52 @@ export async function autoDetermineStatus(db: Db, id: string): Promise<{ status:
   return { status: post.status === 'failed' ? 'failed' : nextStatus, missing };
 }
 
+/** 예약 큐 화면의 종류 필터. 봉사 공지는 event 를 갖고, 일반 공지는 갖지 않는다(생성 시 갈린다). */
+export type ReservationKind = 'general' | 'volunteer';
+
 /**
  * 예약 큐: 발행일 순.
- * - teamId 지정 시 해당 팀 소유만.
  * - actor 가 회장단·시스템관리자가 아니면 자기 소속 팀 예약 + 본인 개인 예약만(자기 팀만 관리 원칙).
- * - 회장단·시스템관리자(또는 actor 미지정)는 전체.
+ * - kind/teamId 는 **화면 필터**다. 권한 스코프와 AND 로 겹치므로 남의 팀을 지정하면
+ *   결과가 빌 뿐 새로 보이는 것은 없다(필터가 권한을 넓히지 못한다).
+ * - kind='general' → event 없는 건, 'volunteer' → event 있는 건. teamId 는 팀 소유로 좁힌다.
  */
-export async function listReservations(db: Db, opts: { teamId?: string; actor?: Actor } = {}): Promise<ReservationRow[]> {
-  let where: SQL | undefined = undefined;
+export async function listReservations(
+  db: Db,
+  opts: { teamId?: string; kind?: ReservationKind; actor?: Actor } = {}
+): Promise<ReservationRow[]> {
+  const conds: (SQL | undefined)[] = [];
+
+  // ① 권한 스코프 — 회장단·시스템관리자(또는 actor 미지정)는 전체.
   if (opts.actor && !isPrivileged(opts.actor.role)) {
-    // 비회장단: 자기 소속 팀 예약 + 본인 개인 예약만(teamId 쿼리로 남의 팀을 볼 수 없게 무시).
     const teamIds = opts.actor.teams.map((t) => t.teamId);
-    const conds = [and(eq(scheduledPosts.ownerType, 'personal'), eq(scheduledPosts.ownerId, opts.actor.userId))];
-    if (teamIds.length) conds.push(and(eq(scheduledPosts.ownerType, 'team'), inArray(scheduledPosts.ownerId, teamIds)));
-    where = or(...conds);
-  } else if (opts.teamId) {
-    where = and(eq(scheduledPosts.ownerType, 'team'), eq(scheduledPosts.ownerId, opts.teamId));
+    const scope = [and(eq(scheduledPosts.ownerType, 'personal'), eq(scheduledPosts.ownerId, opts.actor.userId))];
+    if (teamIds.length) scope.push(and(eq(scheduledPosts.ownerType, 'team'), inArray(scheduledPosts.ownerId, teamIds)));
+    conds.push(or(...scope));
   }
+
+  // ② 화면 필터 — 위 스코프와 AND 로 겹친다.
+  if (opts.teamId) conds.push(and(eq(scheduledPosts.ownerType, 'team'), eq(scheduledPosts.ownerId, opts.teamId)));
+  if (opts.kind === 'general') conds.push(isNull(scheduledPosts.eventId));
+  else if (opts.kind === 'volunteer') conds.push(isNotNull(scheduledPosts.eventId));
+
+  const where = conds.length > 0 ? and(...conds) : undefined;
   const rows = await db
     .select({ post: scheduledPosts, event: events, boardName: boards.name })
     .from(scheduledPosts)
     .leftJoin(events, eq(events.id, scheduledPosts.eventId))
     .leftJoin(boards, eq(boards.menuid, scheduledPosts.boardMenuid))
     .where(where)
-    .orderBy(asc(scheduledPosts.publishAt));
+    // 큐 위쪽은 **앞으로 할 일**이어야 한다. 예전에는 publish_at 오름차순이라 이미 업로드된 글이
+    // 맨 위를 차지했고, 새로 만든 예약을 보려면 끝까지 스크롤해야 했다(2026-07-29 QA).
+    .orderBy(
+      // ① 발행 완료는 아래로.
+      sql`(${scheduledPosts.status} = 'published')`,
+      // ② 미발행끼리는 발행 임박 순. 시각 미정(NULL)은 맨 뒤 — 아직 예약이라 부를 수 없는 것들이다.
+      sql`CASE WHEN ${scheduledPosts.status} = 'published' THEN NULL ELSE ${scheduledPosts.publishAt} END ASC NULLS LAST`,
+      // ③ 발행 완료끼리는 최근 발행 순(방금 나간 글을 먼저 확인한다).
+      desc(scheduledPosts.publishAt)
+    );
 
   // 팀 소유 예약의 {{팀장단}}(자동+수동)을 팀별로 한 번씩 구성해 "발행 시 미치환 키"를 큐에서 바로 보여준다.
   const teamIds = [...new Set(rows.filter((r) => r.post.ownerType === 'team' && r.post.status !== 'published').map((r) => r.post.ownerId))];
