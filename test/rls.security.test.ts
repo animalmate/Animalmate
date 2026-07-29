@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { describe, it, expect } from 'vitest';
 import postgres from 'postgres';
+import { RLS_ENV_READY } from './rls-env';
 
 // ── 목적 ───────────────────────────────────────────────────────────────
 // CLAUDE.md 규칙 #8: 전 테이블 RLS 활성화(정책 미부여 = 기본 거부). anon key 로는 어떤
@@ -15,9 +16,11 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
-const haveEnv = Boolean(SUPABASE_URL && ANON_KEY && DIRECT_URL);
-// 환경변수가 없으면(로컬 무설정) 건너뛴다. CI 에서는 시크릿을 주입해 반드시 실행한다.
-const suite = haveEnv ? describe : describe.skip;
+// 환경변수가 없으면(로컬 무설정) 건너뛴다. **CI 에서는 skip 을 금지한다(하드 실패)** —
+// 시크릿이 사라지면 이 잡이 조용히 초록이 되고, 하필 이 잡은 2026-07-27 사고를 잡으라고
+// 만든 것이라 가장 필요할 때 아무것도 못 잡는다. 대상이 정말 운영인지도 함께 검사한다
+// (테스트 DB 를 상대로 82개가 통과해도 증명한 것이 없다). 자세한 사정은 rls-env.ts 주석 참고.
+const suite = RLS_ENV_READY ? describe : describe.skip;
 
 type PublicTable = { tablename: string; rowsecurity: boolean };
 
@@ -69,7 +72,7 @@ async function anonInsert(table: string) {
 }
 
 // 테이블 목록을 모듈 로드 시점에 수집(top-level await) → 각 테이블별 테스트를 동적으로 생성.
-const tables: PublicTable[] = haveEnv ? await listPublicTables() : [];
+const tables: PublicTable[] = RLS_ENV_READY ? await listPublicTables() : [];
 
 suite('RLS 기본 거부 — 전 public 테이블', () => {
   it('public 테이블이 1개 이상 수집된다(수집 자체가 동작하는지 확인)', () => {
