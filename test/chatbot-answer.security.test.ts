@@ -12,8 +12,11 @@ import { createDocument, deleteDocument } from '@/rag/documents';
 import { askChatbot } from '@/rag/chatbot';
 import type { Actor } from '@/auth/permissions';
 import { TEST_DATABASE_URL } from './db-url';
+import { GEMINI_READY } from './gemini-env';
 
-const suite = process.env.GEMINI_API_KEY ? describe : describe.skip;
+// 키만 보면 부족하다 — 모델 ID 가 없으면 src/rag/gemini.ts 가 던진다. CI 에서는
+// 설정이 없으면 skip 이 아니라 하드 실패한다(gemini-env.ts 주석 참고).
+const suite = GEMINI_READY ? describe : describe.skip;
 
 const PREFIX = 'CHATANSWER_';
 const EMAIL = 'chatanswer@example.invalid';

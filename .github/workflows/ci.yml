@@ -34,11 +34,22 @@ jobs:
       # 통합 테스트는 행을 만들고 지운다. 대상은 **반드시** 테스트 전용 프로젝트다 —
       # test/db-url.ts 가 운영 ref 를 감지하면 하드 실패시킨다. 여기에 운영 DATABASE_URL/
       # DIRECT_URL 을 넣지 말 것(넣으면 그 가드가 무력해지는 게 아니라, 테스트가 죽는다).
+      #
+      # ⚠ GEMINI_* 는 **셋 다** 있어야 RAG 테스트가 돈다. 키만 넣으면 부족하다 —
+      #   src/rag/gemini.ts:19,24 가 모델 ID 가 없으면 던진다. 그리고 키가 없으면
+      #   rag-visibility(6개)·chatbot-answer(3개)가 describe.skip 으로 **조용히 빠지면서
+      #   초록이 된다**(가짜 초록). 2026-07-29 까지 실제로 그 상태였다 —
+      #   GEMINI_API_KEY 가 리포 시크릿에 아예 없어서 CI 는 계속 132/141 만 돌고 있었고,
+      #   pgvector 경로(0021 로 확장을 옮긴 그 경로)를 아무도 검증하지 않았다.
+      #   판별법은 **테스트 개수**다 — 로그가 `141` 이 아니라 `132 passed | 9 skipped` 면 빠진 것이다.
+      #   모델 ID 는 비밀이 아니므로 시크릿이 아니라 평문으로 둔다(값은 .env·Vercel 과 같아야 한다).
       - name: 통합 테스트(테스트 DB)
         run: npm run test:integration
         env:
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.1-flash-lite
+          GEMINI_EMBEDDING_MODEL: gemini-embedding-2
 
   # ── ② RLS 기본 거부 증명 (대상: **운영 DB**) ────────────────────────────────
   # 이 잡만 운영을 본다. 증명해야 할 대상이 운영의 RLS 이기 때문이다 — 테스트 DB 에서 통과해도
