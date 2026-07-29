@@ -100,6 +100,13 @@ export function LoginForm() {
           </>
         )}
       </Card>
+      {/* 제작자 크레딧 — 로그인 화면에만 둔다(로그인 뒤 화면은 운영 도구라 자리를 차지할 이유가 없다). */}
+      <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-400">
+        사이트제작 한채훈{' '}
+        <a href="mailto:sweetkid0194@gmail.com" className="underline underline-offset-2 hover:text-ink-500">
+          sweetkid0194@gmail.com
+        </a>
+      </p>
       </main>
     </>
   );
