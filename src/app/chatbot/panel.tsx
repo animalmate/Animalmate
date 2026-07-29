@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { apiPost } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
 import { Markdown } from '@/components/markdown';
 import { Icon } from '@/components/icon';
 import { ChatDog, type DogMood } from '@/components/chat-dog';
@@ -23,13 +23,43 @@ interface AskResponse {
 
 const SUGGESTIONS = ['다음 봉사 언제예요?', '회비는 얼마예요?', '동아리 가입은 어떻게 해요?'];
 
+/** GET /api/chatbot/history — 초기화 경계 이후의 내 대화(오래된 순). */
+interface HistoryItem {
+  question: string;
+  answer: string;
+  sources: string[];
+  handedOff: boolean;
+}
+
 export function ChatbotPanel() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [mood, setMood] = useState<DogMood>('idle'); // 강아지 반응: idle → thinking → answer
   const [answerNonce, setAnswerNonce] = useState(0); // answer 진입마다 점프 재생
+  const [restoring, setRestoring] = useState(true); // 지난 대화를 불러오는 중
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 지난 대화 복원 — 나갔다 들어와도 이미 받은 답을 다시 묻지 않아도 된다.
+  // ⚠ 이 기록은 화면 복원용이며 모델에게는 보내지 않는다(보내면 매 턴 입력 토큰이 늘어 비용이 커진다).
+  useEffect(() => {
+    void (async () => {
+      const r = await apiGet<{ history?: HistoryItem[] }>('/api/chatbot/history');
+      setRestoring(false);
+      if (!r.ok) return; // 복원 실패는 조용히 넘어간다 — 새 대화는 그대로 할 수 있다
+      const restored = (r.data.history ?? []).flatMap((h): Msg[] => [
+        { role: 'user', text: h.question },
+        { role: 'bot', text: h.answer, sources: h.handedOff ? [] : h.sources },
+      ]);
+      if (restored.length > 0) setMsgs(restored);
+    })();
+  }, []);
+
+  async function clearHistory() {
+    if (typeof window !== 'undefined' && !window.confirm('지금까지의 대화를 화면에서 지울까요?')) return;
+    const r = await fetch('/api/chatbot/history', { method: 'DELETE' });
+    if (r.ok) setMsgs([]);
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -72,15 +102,32 @@ export function ChatbotPanel() {
             <ChatDog mood={mood} answerNonce={answerNonce} size={52} />
           </span>
         ) : null}
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-[22px] font-bold text-ink-900">동아리 챗봇</h1>
           <p className="text-[13px] text-ink-500">동아리 안내 문서를 바탕으로 답해요. 봉사 일정도 물어볼 수 있어요.</p>
         </div>
+        {msgs.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => void clearHistory()}
+            className="shrink-0 self-start rounded-full border border-ink-200 bg-white px-3 py-1.5 text-[12.5px] text-ink-600 transition-colors hover:border-coral-300 hover:text-coral-700"
+          >
+            대화 초기화
+          </button>
+        ) : null}
       </div>
 
       {/* 대화 영역 */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto rounded-2xl bg-cream-25 p-3 sm:p-4">
-        {msgs.length === 0 ? (
+        {restoring && msgs.length === 0 ? (
+          // 복원 중에는 빈 화면(추천 질문)을 먼저 보여주지 않는다 — 곧 지난 대화가 뜨는데
+          // "무엇이 궁금한가요?"가 깜빡 지나가면 기록이 없어진 것처럼 보인다.
+          <div className="flex justify-center py-10">
+            <span className="inline-flex gap-1 py-1" aria-label="지난 대화 불러오는 중">
+              <Dot /> <Dot delay={150} /> <Dot delay={300} />
+            </span>
+          </div>
+        ) : msgs.length === 0 ? (
           <div className="flex flex-col items-center gap-4 py-10 text-center">
             <ChatDog mood={mood} answerNonce={answerNonce} size={104} />
             <p className="text-[14px] text-ink-500">무엇이 궁금한가요?</p>

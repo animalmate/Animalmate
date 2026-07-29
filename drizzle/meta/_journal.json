@@ -162,6 +162,13 @@
       "when": 1785285722883,
       "tag": "0022_revoke_anon_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785295407484,
+      "tag": "0023_sleepy_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

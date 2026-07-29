@@ -21,7 +21,7 @@
 
 ## 테이블
 ### 조직/계정
-- `users` (id, email, name, phone?, session_version, withdrawn_at?, created_at)
+- `users` (id, email, name, phone?, session_version, withdrawn_at?, chat_cleared_at?, created_at)
   - `session_version`: 세션 세대(0010). 발급된 JWT 에 이 값을 담고 요청마다 대조 — 값을 1 올리면
     그 계정의 **모든 기기 세션이 즉시 무효**. 세션 테이블 불필요. 올라가는 경우 3가지(07-DECISIONS 11·13):
     ① 회원 관리 > "모든 기기에서 로그아웃" ② **비활성화** ③ **강등**(승격·재활성화는 올리지 않는다).
@@ -105,6 +105,12 @@
     `vector_cosine_ops` 를 스키마 없이 써도 해석된다. search_path 에서 `extensions` 를 빼면
     챗봇 검색이 "type vector does not exist" 로 죽는다.
 - `chat_logs` (id, user_id?, role_at_time, question, answer, sources[], handed_off bool, created_at)
+  - 챗봇 화면은 재방문 시 이 표를 읽어 지난 대화를 복원한다(0023). **모델에게는 보내지 않는다** —
+    이전 대화를 프롬프트에 실으면 매 턴 입력 토큰이 늘어 API 비용이 커진다.
+  - "대화 초기화"는 `users.chat_cleared_at` 에 **경계 시각만** 남기고 이 행들은 지우지 않는다.
+    지우면 `quota.ts` 가 행 수로 세는 일일 상한(기본 30건)을 버튼 한 번으로 무한 우회할 수 있고,
+    감사 기록·챗봇 평가 데이터도 사라진다. 경계는 반드시 **DB 시계(`now()`)** 로 찍는다
+    (앱 시계로 찍으면 시계 차이만큼 초기화 직후 메시지가 사라진다 — 07-DECISIONS 61).
 
 ### 운영 공통
 - `audit_logs` (id, actor_user_id, action, target_table, target_id,

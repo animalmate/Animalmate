@@ -90,6 +90,14 @@ export const users = pgTable('users', {
    */
   sessionVersion: integer('session_version').notNull().default(0),
   /**
+   * 챗봇 대화 "초기화" 경계. 이 시각 **이후** chat_logs 만 화면에 복원한다.
+   *
+   * 왜 행을 지우지 않는가: `quota.ts` 가 **chat_logs 행 수로** 인당 일일 사용량을 센다.
+   * 초기화가 삭제라면 버튼 한 번으로 일일 상한(기본 30건)을 무한히 우회할 수 있다.
+   * 감사 기록·챗봇 평가 데이터도 함께 사라진다. 그래서 경계 시각만 남기고 행은 보존한다.
+   */
+  chatClearedAt: timestamp('chat_cleared_at', { withTimezone: true }),
+  /**
    * 탈퇴 시각. 값이 있으면 **탈퇴한 계정**이며 로그인·복구가 불가능하다.
    *
    * 왜 행을 지우지 않는가: scheduled_posts·post_templates·documents·join_codes·recruit_cohorts 의
