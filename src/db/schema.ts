@@ -116,7 +116,8 @@ export const memberships = pgTable('memberships', {
 
 /** 팀장단 1인(공지에 삽입되는 연락처 + 관리 권한 계정). 개인정보 — 런타임 입력이며 코드/시드에 넣지 않는다(규칙 #4). */
 // teams.leaders = 봉사 공지 {{팀장단}}에 덧붙는 "미가입자 수동 항목"(이름·전화만 있는 사람).
-// 가입 계정 팀장단은 team_members(position=leader)로 관리하고 여기 두지 않는다. 표시 순서상 자동 명단 뒤에 붙는다.
+// 가입 계정 팀장단은 team_members(position=leader)로 관리하고 여기 두지 않는다.
+// 표시 순서는 출처와 무관하게 직함 순(팀장→부팀장→기타)이다 — mergeLeaders 가 합친 뒤 정렬한다.
 export interface TeamLeader {
   label: string; // 팀장 / 부팀장 등
   name: string;

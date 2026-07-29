@@ -27,17 +27,15 @@ export function rankLabel(label: string | null | undefined): number {
 
 /**
  * 자동 명단(가입 팀장단) + 수동 명단(미가입자)을 합쳐 표시용 목록으로.
- * - 자동은 직함 순(팀장→부팀장→기타), 그다음 이름순.
- * - 수동은 그 뒤에 붙이되, 전화번호가 이미 명단에 있으면(같은 사람) 버린다.
+ * - **출처와 무관하게** 직함 순(팀장→부팀장→기타), 같은 순위면 이름순.
+ * - 전화번호가 이미 명단에 있으면(같은 사람) 버린다. 남는 쪽은 자동(가입 계정)이다.
  * - 이름·전화가 모두 비면 제외(공지에 보여줄 게 없음).
  */
 export function mergeLeaders(members: TeamLeader[], extras: TeamLeader[]): TeamLeader[] {
-  const sortedMembers = [...members].sort(
-    (a, b) => rankLabel(a.label) - rankLabel(b.label) || a.name.localeCompare(b.name, 'ko')
-  );
   const out: TeamLeader[] = [];
   const seenPhones = new Set<string>();
-  for (const e of [...sortedMembers, ...extras]) {
+  // 자동을 먼저 훑어야 같은 전화일 때 가입 계정 쪽이 남는다(이름·전화의 정본은 users 다).
+  for (const e of [...members, ...extras]) {
     if (!e.name.trim() && !e.phone.trim()) continue; // 보여줄 내용 없음
     const p = normalizePhone(e.phone);
     if (p) {
@@ -46,7 +44,13 @@ export function mergeLeaders(members: TeamLeader[], extras: TeamLeader[]): TeamL
     }
     out.push(e);
   }
-  return out;
+  // 정렬은 **합친 뒤 한 번에** 한다. 자동만 정렬하고 수동을 뒤에 붙이면, 가입자가 부팀장뿐인
+  // 팀에서 "부팀장(자동) → 팀장(수동) → 부팀장(수동)" 이 나온다(2026-07-29 QA 에서 5팀이 그랬다).
+  // 공지를 읽는 사람에게 중요한 것은 직함 순서지, 그 사람이 앱에 가입했는지가 아니다.
+  // sort 는 안정 정렬이라 순위·이름이 같으면 자동이 앞에 남는다.
+  return out.sort(
+    (a, b) => rankLabel(a.label) - rankLabel(b.label) || a.name.localeCompare(b.name, 'ko')
+  );
 }
 
 /** 팀의 {{팀장단}} 문구를 DB 에서 구성한다(자동 + 수동, 중복 제거). 없으면 빈 문자열. */
