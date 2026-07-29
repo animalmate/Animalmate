@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, InfoText, SecondaryButton, Select, StatusBadge } from '@/components/ui';
 import { HelpButton } from '@/components/help-button';
+import { Modal } from '@/components/modal';
+import { PreviewButton, ReservationPreview } from '@/components/reservation-preview';
+import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { shortenValue } from '@/publishing/placeholder-catalog';
 
 interface Reservation {
@@ -29,6 +32,19 @@ interface Team {
   name: string;
 }
 
+/** GET /api/reservations/[id] — 미리보기에 필요한 본문과 서버 치환값. 권한은 그 라우트가 검사한다. */
+interface Detail {
+  post: { title: string; contentMd: string };
+  vars: Record<string, string>;
+}
+
+/** 미리보기 모달 상태. 목록에는 본문이 없어 열 때 한 건만 받아온다(큐가 길어도 payload 가 늘지 않는다). */
+interface PreviewState {
+  row: Reservation;
+  detail: Detail | null;
+  error: string;
+}
+
 /**
  * 필터 값 → 조회 쿼리. 서버는 kind/teamId 를 **권한 스코프와 AND** 로 겹치므로,
  * 여기서 남의 팀 id 를 넣어도 결과가 빌 뿐 새로 보이는 것은 없다.
@@ -51,6 +67,7 @@ export function ReservationsPanel() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [preview, setPreview] = useState<PreviewState | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,6 +101,20 @@ export function ReservationsPanel() {
       return;
     }
     void load();
+  }
+
+  // 미리보기: 목록에는 본문이 없으므로 열 때 그 한 건만 받아온다.
+  async function openPreview(row: Reservation) {
+    setPreview({ row, detail: null, error: '' });
+    const r = await apiGet<Detail>(`/api/reservations/${row.id}`);
+    // 그 사이 사용자가 닫았거나 다른 건을 열었으면 늦게 온 응답을 버린다.
+    setPreview((cur) =>
+      cur && cur.row.id === row.id
+        ? r.ok
+          ? { ...cur, detail: r.data }
+          : { ...cur, error: errorMessage(r.data.error) }
+        : cur
+    );
   }
 
   // 취소는 되돌릴 수 없는데 '수정' 바로 옆 버튼이라 잘못 누르기 쉽다 —
@@ -200,22 +231,45 @@ export function ReservationsPanel() {
                     <div className="text-xs text-ink-500">업로드된 글은 수정 불가입니다. 변경 사항은 카페 댓글로 안내하세요.</div>
                   </div>
                 ) : null}
-                {r.status !== 'published' ? (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <a href={`/reservations/${r.id}/edit`}>
-                      <SecondaryButton>수정</SecondaryButton>
-                    </a>
-                    {r.status === 'failed' ? (
-                      <SecondaryButton onClick={() => act(r.id, 'schedule')}>재시도(업로드 대기)</SecondaryButton>
-                    ) : null}
-                    <SecondaryButton onClick={() => cancel(r)}>취소</SecondaryButton>
-                  </div>
-                ) : null}
+                {/* 미리보기는 업로드된 글에도 준다 — 실제로 무엇이 나갔는지 확인할 수 있어야 한다. */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <PreviewButton onClick={() => void openPreview(r)} />
+                  {r.status !== 'published' ? (
+                    <>
+                      <a href={`/reservations/${r.id}/edit`}>
+                        <SecondaryButton>수정</SecondaryButton>
+                      </a>
+                      {r.status === 'failed' ? (
+                        <SecondaryButton onClick={() => act(r.id, 'schedule')}>재시도(업로드 대기)</SecondaryButton>
+                      ) : null}
+                      <SecondaryButton onClick={() => cancel(r)}>취소</SecondaryButton>
+                    </>
+                  ) : null}
+                </div>
               </Card>
             </li>
           ))}
         </ul>
       )}
+      {preview ? (
+        <Modal title="미리보기" onClose={() => setPreview(null)}>
+          {preview.error ? (
+            <ErrorText>{preview.error}</ErrorText>
+          ) : preview.detail ? (
+            // 서버가 준 vars 를 그대로 쓴다 — 발행 워커가 쓰는 값과 같으므로 이 화면이 곧 실제 게시물이다.
+            <ReservationPreview
+              title={renderTemplate(preview.detail.post.title, preview.detail.vars)}
+              body={renderTemplate(preview.detail.post.contentMd, preview.detail.vars)}
+              missing={placeholderKeys(preview.detail.post.title, preview.detail.post.contentMd).filter(
+                (k) => !preview.detail!.vars[k]
+              )}
+              meta={`${fmt(preview.row.publishAt)}${preview.row.boardName ? ` · ${preview.row.boardName}` : ''}`}
+            />
+          ) : (
+            <InfoText>불러오는 중…</InfoText>
+          )}
+        </Modal>
+      ) : null}
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton, Select } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { Modal } from '@/components/modal';
+// 미리보기는 예약 큐와 공용 — 두 곳이 갈라지지 않게 한 곳에 둔다.
+import { PreviewButton, ReservationPreview } from '@/components/reservation-preview';
 import { TimeSelect } from '@/components/time-select';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { dateVars, kstDateStr } from '@/publishing/placeholders';
@@ -76,51 +78,6 @@ function PlaceholderGuide() {
       <p className="border-t border-cream-200 bg-cream-25 px-4 py-2.5 text-[12px] leading-relaxed text-ink-500">
         장소처럼 늘 똑같은 내용은 표시 없이 그냥 글자로 적으면 됩니다.
       </p>
-    </div>
-  );
-}
-
-/** 미리보기 버튼 — 분홍(coral) 그라디언트 얇은 테두리. 높이는 입력칸(h-control)에 맞춘다. */
-function PreviewButton({ onClick }: { onClick: () => void }) {
-  return (
-    <span className="inline-block h-control shrink-0 rounded-xl bg-gradient-to-r from-coral-300 via-coral-500 to-coral-300 p-[1.5px]">
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex h-full items-center rounded-[10.5px] bg-white px-3.5 text-[13px] font-semibold text-coral-700 transition-colors hover:bg-coral-50"
-      >
-        미리보기
-      </button>
-    </span>
-  );
-}
-
-/** 한 일정이 실제로 카페에 올라갈 모습(제목 + 본문). 채워지지 않은 값이 있으면 함께 알려준다. */
-function OccurrencePreview({
-  title,
-  body,
-  missing,
-  meta,
-}: {
-  title: string;
-  body: string;
-  missing: string[];
-  meta: string;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="text-[13px] text-ink-500">{meta}</div>
-      <div className="space-y-2 rounded-xl bg-cream-100 p-3">
-        <div className="font-medium text-ink-900">{title || '(제목 없음)'}</div>
-        <pre className="whitespace-pre-wrap font-sans text-sm text-ink-700">{body || '(본문 없음)'}</pre>
-      </div>
-      {missing.length > 0 ? (
-        <div className="text-[13px] text-warning-700">
-          아직 비어 있음: {missing.map((k) => `{{${k}}}`).join(', ')} — 채우지 않으면 이 예약은 업로드되지 않습니다.
-        </div>
-      ) : (
-        <div className="text-[13px] text-ink-500">이대로 카페에 올라갑니다.</div>
-      )}
     </div>
   );
 }
@@ -414,7 +371,7 @@ export function NewReservationForm() {
 
       {openPreview !== null && rows[openPreview] ? (
         <Modal title={`${openPreview + 1}번째 일정 미리보기`} onClose={() => setOpenPreview(null)}>
-          <OccurrencePreview {...previewOf(rows[openPreview])} />
+          <ReservationPreview {...previewOf(rows[openPreview])} />
         </Modal>
       ) : null}
     </div>
