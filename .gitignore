@@ -51,3 +51,7 @@ eval/results/
 /*.jpg
 /*.jpeg
 /*.webp
+
+# QA 워크스루 임시 산출물(세션 토큰·스크린샷). 커밋 금지.
+.qa-*
+.env.qa
