@@ -114,7 +114,8 @@ export async function askChatbot(db: Db, actor: Actor, question: string, deps: A
     result = await gen({ system: SYSTEM_PROMPT, contents, tools: CHATBOT_TOOLS });
   }
 
-  // 출처 표기는 여기서 걷어낸다 — 본문은 답변만 남고, 출처 칩은 UI 가 sources 로 그린다(결정 46).
+  // 출처 표기는 여기서 걷어낸다 — 본문에는 답만 남는다. sources 는 화면에 그리지 않고
+  // chat_logs 에만 남는다(결정 69). 모델이 본문에 쓰지 못하게 하는 규칙은 그대로 유지한다.
   // 모델이 출처 표기만 뱉었다면(지우고 나면 빈 문자열) 답한 것이 없으므로 핸드오프로 떨어뜨린다.
   const answer = stripSourceMentions(result.text) || HANDOFF_MESSAGE;
   const grounded = hits.length > 0 || toolDataProduced;

@@ -7,6 +7,7 @@ import { chatLogs } from '@/db/schema';
 import { getCurrentActor } from '@/auth/current-user';
 import { askChatbot } from '@/rag/chatbot';
 import { checkQuota, type QuotaReason } from '@/rag/quota';
+import { findSensitiveIds } from '@/rag/pii';
 import { internalError } from '@/http/errors';
 import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
 
@@ -27,6 +28,22 @@ export async function POST(req: Request): Promise<Response> {
     const q = String(question ?? '').trim();
     if (!q) return NextResponse.json({ error: 'empty_question' }, { status: 400 });
     checkLength('질문', q, LIMITS.question);
+
+    // 입력창 안내("개인정보는 입력하지 마세요")의 **서버 쪽 짝**. 안내만으로는 막히지 않는다.
+    // 쿼터·생성·로그보다 **먼저** 끊어야 의미가 있다 — 여기를 지나면 질문이 chat_logs 에 남고
+    // 답변 생성을 위해 Google 로도 전송된다. 되돌릴 수 없는 경로라 그 앞에서 멈춘다.
+    // 전화·이메일은 대화에 정상적으로 나오므로 막지 않는다(findSensitiveIds 주석 참고).
+    const sensitive = findSensitiveIds(q);
+    if (sensitive.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'pii_in_question',
+          // 어떤 값이 걸렸는지는 되풀이하지 않는다 — 응답에 다시 실으면 그 자체가 유출 경로다.
+          message: '질문에 주민등록번호·카드·계좌번호로 보이는 숫자가 있어요. 그 부분을 빼고 다시 물어봐 주세요.',
+        },
+        { status: 400 }
+      );
+    }
 
     const quota = await checkQuota(db, actor);
     if (!quota.allowed) {

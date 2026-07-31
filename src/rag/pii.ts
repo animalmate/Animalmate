@@ -56,6 +56,22 @@ export function detectPii(text: string): PiiFinding[] {
   return found;
 }
 
+/**
+ * 챗봇 **질문**에 들어와선 안 되는 식별번호만 골라낸다(주민등록번호·카드·계좌).
+ *
+ * 왜 전부가 아니라 셋만인가: 전화·이메일은 대화에 정상적으로 나온다
+ * ("운영진 메일 어디예요?", "010 으로 연락 오나요?"). 그것까지 막으면 멀쩡한 질문이
+ * 거부되어, 실사용 첫날에 챗봇이 고장 난 것처럼 보인다. 반면 주민등록번호·카드·계좌는
+ * 동아리 챗봇 질문에 들어갈 이유가 **없고**, 들어오면 `chat_logs` 에 그대로 남는 데다
+ * 답변 생성을 위해 Google 로도 전송된다(개인정보처리방침에 고지된 경로다).
+ * 그래서 이 셋만 **질문 단계에서 끊는다** — 화면 안내(입력창 문구)의 서버 쪽 짝이다.
+ *
+ * 문서 저장 파이프라인은 지금처럼 `detectPii` 전체를 쓴다(거기서는 경고이지 차단이 아니다).
+ */
+export function findSensitiveIds(text: string): PiiFinding[] {
+  return detectPii(text).filter((f) => f.kind === 'rrn' || f.kind === 'card' || f.kind === 'account');
+}
+
 /** 감지 결과가 있으면 사용자에게 보여줄 한 줄 요약. */
 export function piiWarning(findings: PiiFinding[]): string | null {
   if (findings.length === 0) return null;

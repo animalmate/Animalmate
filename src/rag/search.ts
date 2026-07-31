@@ -80,8 +80,10 @@ export async function searchChunks(db: Db, actor: Actor, question: string, k = T
  * ⚠ **모델에게 주는 자료에는 문서명을 넣지 않는다.** 예전에는 조각마다
  * `[자료 1 · 출처: 회칙]` 처럼 붙였는데, 시스템 프롬프트로는 "출처를 쓰지 말라"고 하면서
  * 자료에는 `출처: X` 를 top-k 번 먹이는 셈이라 모델이 그대로 따라 썼다(2026-07-29 QA).
- * 출처 표시는 모델이 아니라 **검색 메타데이터(`sources`)로 UI 가 칩을 그린다**(결정 46).
  * 그러니 모델은 문서명을 알 필요가 없다.
+ *
+ * 돌려주는 `sources` 는 **화면에 그리지 않는다**(2026-07-31, 결정 69 — 대화가 검색 결과처럼
+ * 읽혔다). `chat_logs` 에만 남겨, 답이 이상할 때 무엇을 집어 왔는지 되짚고 평가셋을 돌리는 값이다.
  */
 export function buildContextBlock(hits: SearchHit[]): { context: string; sources: string[] } {
   const sources = [...new Set(hits.map((h) => h.title))];
