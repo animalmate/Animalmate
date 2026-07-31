@@ -78,16 +78,27 @@ suite('예약 큐 스코프 — 팀장은 자기 팀+개인만, 회장단은 전
 
   const titles = (rows: { title: string }[]) => rows.map((r) => r.title).sort();
 
-  it('팀A 팀장(개인=본인): A팀 예약 + 내 개인 예약만', async () => {
+  // 2026-07-31 사용자 지적: 큐는 "동아리가 언제 무엇을 올리는지" 한자리에서 보는 화면이라
+  // 운영진이 남의 팀 예약을 못 보면 겹치는 공지·빠진 공지를 아무도 미리 알아챌 수 없다.
+  // 보는 범위만 넓히고 고치는 범위는 그대로다(아래 '고치는 범위' 테스트).
+  const ALL = ['A팀 봉사', 'A팀 예약', 'B팀 봉사', 'B팀 예약', '내 개인 예약'];
+
+  it('팀A 팀장: 팀과 무관하게 전체를 본다', async () => {
     const actor: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader' }] };
     const rows = (await listReservations(db, { actor })).filter((r) => r.boardMenuid === MENUID);
-    expect(titles(rows)).toEqual(['A팀 봉사', 'A팀 예약', '내 개인 예약']);
+    expect(titles(rows)).toEqual(ALL);
   });
 
-  it('팀B 팀장(다른 사용자): B팀 예약만(개인·A팀 안 보임)', async () => {
+  it('팀B 팀장(다른 사용자): 소속과 무관하게 전체를 본다', async () => {
     const actor: Actor = { userId: crypto.randomUUID(), role: 'staff', membershipActive: true, teams: [{ teamId: teamBId, position: 'leader' }] };
     const rows = (await listReservations(db, { actor })).filter((r) => r.boardMenuid === MENUID);
-    expect(titles(rows)).toEqual(['B팀 봉사', 'B팀 예약']);
+    expect(titles(rows)).toEqual(ALL);
+  });
+
+  it('팀이 없는 운영진도 전체를 본다', async () => {
+    const actor: Actor = { userId: crypto.randomUUID(), role: 'staff', membershipActive: true, teams: [] };
+    const rows = (await listReservations(db, { actor })).filter((r) => r.boardMenuid === MENUID);
+    expect(titles(rows)).toEqual(ALL);
   });
 
   it('회장단: 전체', async () => {
@@ -116,11 +127,21 @@ suite('예약 큐 스코프 — 팀장은 자기 팀+개인만, 회장단은 전
     expect(titles(rows)).toEqual(['A팀 봉사']);
   });
 
-  // 필터는 화면 편의일 뿐 권한을 넓히지 못한다 — 권한 스코프와 AND 로 겹치므로 결과가 빌 뿐이다.
-  it('팀A 팀장이 B팀을 지정해도 B팀 예약은 보이지 않는다(필터가 권한을 넓히지 못한다)', async () => {
+  it('팀A 팀장이 B팀으로 걸러 보는 것도 된다(보는 범위가 전체이므로)', async () => {
     const actor: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader' }] };
     const rows = (await listReservations(db, { actor, teamId: teamBId })).filter((r) => r.boardMenuid === MENUID);
-    expect(rows).toHaveLength(0);
+    expect(titles(rows)).toEqual(['B팀 봉사', 'B팀 예약']);
+  });
+
+  // 넓힌 것은 **운영진 이상**뿐이다. 부원이 들어와도 남의 것은 안 보이고, 필터로도 넓힐 수 없다.
+  // (라우트가 이미 staff+ 로 막지만, 스코프 자체가 방어선이어야 한다.)
+  it('부원은 본인 개인 것만 — teamId 를 지정해도 넓어지지 않는다', async () => {
+    const actor: Actor = { userId, role: 'member', membershipActive: true, teams: [] };
+    const mine = (await listReservations(db, { actor })).filter((r) => r.boardMenuid === MENUID);
+    expect(titles(mine)).toEqual(['내 개인 예약']);
+
+    const filtered = (await listReservations(db, { actor, teamId: teamBId })).filter((r) => r.boardMenuid === MENUID);
+    expect(filtered).toHaveLength(0);
   });
 
   // 2026-07-29 QA: publish_at 오름차순이라 이미 업로드된 글이 맨 위를 차지했고, 새로 만든 예약을

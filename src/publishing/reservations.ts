@@ -6,7 +6,7 @@ import type { Db } from '@/db/types';
 import { scheduledPosts, events, boards } from '@/db/schema';
 import { composeTeamLeaders } from '@/org/team-leaders';
 import { dateVars, kstDateStr } from './placeholders';
-import { isPrivileged, type Actor } from '@/auth/permissions';
+import { isStaffPlus, type Actor } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { getTemplate, renderTemplate } from './post-templates';
@@ -416,9 +416,9 @@ export type ReservationKind = 'general' | 'volunteer';
 
 /**
  * 예약 큐: 발행일 순.
- * - actor 가 회장단·시스템관리자가 아니면 자기 소속 팀 예약 + 본인 개인 예약만(자기 팀만 관리 원칙).
- * - kind/teamId 는 **화면 필터**다. 권한 스코프와 AND 로 겹치므로 남의 팀을 지정하면
- *   결과가 빌 뿐 새로 보이는 것은 없다(필터가 권한을 넓히지 못한다).
+ * - 운영진 이상은 팀과 무관하게 전체를 본다(2026-07-31). 부원이면 본인 개인 것만.
+ * - kind/teamId 는 **화면 필터**다. 권한 스코프와 AND 로 겹치므로 필터가 권한을 넓히지 못한다
+ *   (부원이 남의 팀을 지정하면 결과가 빌 뿐이다).
  * - kind='general' → event 없는 건, 'volunteer' → event 있는 건. teamId 는 팀 소유로 좁힌다.
  */
 export async function listReservations(
@@ -427,8 +427,13 @@ export async function listReservations(
 ): Promise<ReservationRow[]> {
   const conds: (SQL | undefined)[] = [];
 
-  // ① 권한 스코프 — 회장단·시스템관리자(또는 actor 미지정)는 전체.
-  if (opts.actor && !isPrivileged(opts.actor.role)) {
+  // ① 권한 스코프 — **운영진 이상은 팀과 무관하게 전체를 본다.**
+  //    큐는 "동아리가 언제 무엇을 올리는지" 한자리에서 보는 화면이다. 남의 팀 예약이 안 보이면
+  //    같은 시각에 겹치는 공지나 빠진 공지를 아무도 미리 알아챌 수 없다(2026-07-31 사용자 지적).
+  //    **고치는 범위는 그대로다** — 수정·취소는 updateReservation/cancelPost 의 `post.modify` 가
+  //    소유자(본인·소속 팀) + 회장단으로 계속 막는다. 보는 범위와 고치는 범위를 따로 둔다(결정 49 와 같은 원칙).
+  //    부원이 넘어오면 본인 것만 — 라우트가 이미 staff+ 로 막지만 여기서도 좁혀 둔다(방어).
+  if (opts.actor && !isStaffPlus(opts.actor.role)) {
     const teamIds = opts.actor.teams.map((t) => t.teamId);
     const scope = [and(eq(scheduledPosts.ownerType, 'personal'), eq(scheduledPosts.ownerId, opts.actor.userId))];
     if (teamIds.length) scope.push(and(eq(scheduledPosts.ownerType, 'team'), inArray(scheduledPosts.ownerId, teamIds)));

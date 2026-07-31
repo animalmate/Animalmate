@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus, isPrivileged, ownsResource } from '@/auth/permissions';
+import { isStaffPlus } from '@/auth/permissions';
 import { getReservation, updateReservation, SlotTakenError } from '@/publishing/reservations';
 import { loadPublishVars } from '@/publishing/final-render';
 import { PermissionError } from '@/auth/guard';
@@ -17,10 +17,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const detail = await getReservation(db, id);
   if (!detail) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  // 비회장단은 소유(본인/소속 팀) 예약만 열람(자기 팀만 관리 원칙).
-  if (!isPrivileged(actor.role) && !ownsResource(actor, { ownerType: detail.post.ownerType, ownerId: detail.post.ownerId })) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  }
+  // 열람은 운영진 이상 전부(팀 무관) — 큐에 보이는 건 열어 볼 수 있어야 한다(2026-07-31).
+  // 고치는 것은 아래 PATCH 의 `post.modify` 가 따로 막는다(소유자 + 회장단).
   // 수정 화면 미리보기용 치환 변수(팀장단 명단 등). 장소·정원은 폼의 현재 입력값으로 클라이언트가 덮어쓴다.
   const vars = await loadPublishVars(db, detail.post);
   return NextResponse.json({ ...detail, vars });
