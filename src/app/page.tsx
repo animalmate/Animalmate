@@ -32,6 +32,14 @@ const RECRUIT_BOARD: Shortcut = {
   desc: '공고부터 최종 발표까지 진행해요',
   icon: 'userPlus',
 };
+// 지원자에게 실제로 보이는 공개 공고. 운영진·회장단 모두 "지금 뭐가 나가 있나"를 확인할 일이 잦아
+// 홈에서 바로 열 수 있게 둔다(2026-07-31 사용자 요청). 로그인 없이도 열리는 페이지다.
+const RECRUIT_NOTICE_PUBLIC: Shortcut = {
+  href: '/recruit/notice',
+  label: '모집 공고 보기',
+  desc: '지원자에게 보이는 공고를 확인해요',
+  icon: 'external',
+};
 const BOARD_SHORTCUTS: Shortcut[] = [
   { href: '/documents', label: '문서', desc: '챗봇이 답할 안내 문서를 관리해요', icon: 'layers' },
   { href: '/admin/members', label: '회원·팀 관리', desc: '역할·팀·직함을 지정해요', icon: 'users' },
@@ -74,7 +82,7 @@ export default async function HomePage() {
   const board = isPrivileged(actor.role);
   const shortcuts = [
     ...(staff ? STAFF_SHORTCUTS : []),
-    ...(staff ? [board ? RECRUIT_BOARD : RECRUIT_STAFF] : []),
+    ...(staff ? [board ? RECRUIT_BOARD : RECRUIT_STAFF, RECRUIT_NOTICE_PUBLIC] : []),
     ...(board ? BOARD_SHORTCUTS : []),
   ];
   const externals = EXTERNAL_LINKS.filter((l) => !l.staffOnly || staff); // 부원은 드라이브 제외

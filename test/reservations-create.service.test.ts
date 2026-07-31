@@ -113,7 +113,53 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
     const byId = new Map(rows.map((r) => [r.postId, r]));
     expect(byId.get(ids[0]!)!.capacity).toBe(35); // 회차별 지정이 우선
     expect(byId.get(ids[1]!)!.capacity).toBe(20); // 양식 기본값
-    expect(byId.get(ids[0]!)!.place).toBe('양주 쉼터'); // 장소는 양식 기본값
+    expect(byId.get(ids[0]!)!.place).toBe('양주 쉼터'); // 장소도 비웠으면 양식 기본값
+  });
+
+  // 2026-07-31: 장소가 **양식에서만** 왔다. 그래서 "양식 선택 안 함"으로 만든 봉사 예약은
+  // 장소가 비어 곧바로 미완성(작성중)이 됐고, 만들자마자 수정 화면으로 가야 했다.
+  it('양식 없이도 회차별 장소로 예약이 완성된다', async () => {
+    const { ids } = await createReservationsMulti(
+      db,
+      leaderOfA(),
+      { kind: 'volunteer', teamId: teamAId, boardMenuid: MENUID, title: '양식 없는 봉사', contentMd: '장소 {{장소}}' },
+      [{ publishAt: new Date('2026-11-02T11:00:00Z'), eventDate: '2026-11-09', meetTime: '10:00', capacity: 12, place: '의정부 보호소' }]
+    );
+    createdPosts.push(...ids);
+
+    const [row] = await db
+      .select({ place: events.place, capacity: events.capacity })
+      .from(scheduledPosts)
+      .innerJoin(events, eq(events.id, scheduledPosts.eventId))
+      .where(inArray(scheduledPosts.id, ids));
+    expect(row!.place).toBe('의정부 보호소');
+    expect(row!.capacity).toBe(12);
+  });
+
+  it('양식이 있어도 회차별 장소가 우선한다(정원과 같은 규칙)', async () => {
+    const tpl = await createTemplate(db, board(), {
+      ownerType: 'team',
+      ownerId: teamAId,
+      name: 'RC-TEST 장소우선',
+      titleTemplate: '봉사',
+      bodyTemplate: '장소 {{장소}}',
+      defaultPlace: '양주 쉼터',
+      defaultCapacity: 20,
+    });
+    const { ids } = await createReservationsMulti(
+      db,
+      leaderOfA(),
+      { kind: 'volunteer', teamId: teamAId, boardMenuid: MENUID, title: '봉사', contentMd: '장소 {{장소}}', templateId: tpl.id },
+      [{ publishAt: new Date('2026-11-03T11:00:00Z'), eventDate: '2026-11-10', meetTime: '10:00', place: '서대문 내품애센터' }]
+    );
+    createdPosts.push(...ids);
+
+    const [row] = await db
+      .select({ place: events.place })
+      .from(scheduledPosts)
+      .innerJoin(events, eq(events.id, scheduledPosts.eventId))
+      .where(inArray(scheduledPosts.id, ids));
+    expect(row!.place).toBe('서대문 내품애센터');
   });
 
   it('소속 팀 없는 운영진: 봉사 예약 생성 거부', async () => {

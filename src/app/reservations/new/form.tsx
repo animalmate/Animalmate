@@ -32,7 +32,8 @@ interface Row {
   publishTime: string;
   eventDate: string; // 봉사 일자
   meetTime: string; // 집합 시간
-  capacity: string; // 회차별 정원(비우면 양식의 기본 정원)
+  capacity: string; // 회차별 정원(양식을 고르면 그 값이 채워진다)
+  place: string; // 회차별 봉사 장소(양식을 고르면 그 값이 채워진다)
 }
 /** 양식에서 가져오는 기본값(집합 시간·업로드 시각·정원)만 미리 채운 빈 일정. 날짜 두 개만 고르면 된다. */
 const emptyRow = (d: Partial<Row> = {}): Row => ({
@@ -41,6 +42,7 @@ const emptyRow = (d: Partial<Row> = {}): Row => ({
   eventDate: '',
   meetTime: '',
   capacity: '',
+  place: '',
   ...d,
 });
 /** 두 칸으로 나눠 받은 발행 시각 → datetime-local 문자열. 둘 중 하나라도 비면 빈 값. */
@@ -139,7 +141,8 @@ export function NewReservationForm() {
       if (selectedTeam?.leaders) vars['팀장단'] = selectedTeam.leaders;
       const cap = r.capacity || (selectedTemplate?.defaultCapacity != null ? String(selectedTemplate.defaultCapacity) : '');
       if (cap) vars['정원'] = capacityText(cap);
-      if (selectedTemplate?.defaultPlace) vars['장소'] = selectedTemplate.defaultPlace; // 예전 양식 호환
+      const place = r.place || selectedTemplate?.defaultPlace || '';
+      if (place) vars['장소'] = place;
     } else if (publishLocal) {
       Object.assign(vars, dateVars(kstDateStr(new Date(publishLocal))));
     }
@@ -153,13 +156,14 @@ export function NewReservationForm() {
     return { title: t, body: b, missing: placeholderKeys(t, b), meta: board ? `${when} · ${board}` : when };
   }
 
-  /** 양식이 정해 둔 기본값(집합 시간·업로드 시각·정원). 양식이 없으면 빈 값. */
+  /** 양식이 정해 둔 기본값(집합 시간·업로드 시각·정원·장소). 양식이 없으면 빈 값. */
   function defaultsOf(tpl: Template | null): Partial<Row> {
     if (!tpl) return {};
     return {
       meetTime: tpl.defaultMeetTime ?? '',
       publishTime: tpl.defaultPublishTime ?? '',
       capacity: tpl.defaultCapacity != null ? String(tpl.defaultCapacity) : '',
+      place: tpl.defaultPlace ?? '',
     };
   }
 
@@ -177,6 +181,7 @@ export function NewReservationForm() {
         meetTime: r.meetTime || (d.meetTime ?? ''),
         publishTime: r.publishTime || (d.publishTime ?? ''),
         capacity: r.capacity || (d.capacity ?? ''),
+        place: r.place || (d.place ?? ''),
       }))
     );
   }
@@ -196,8 +201,15 @@ export function NewReservationForm() {
         eventDate: kind === 'volunteer' ? r.eventDate || null : null,
         meetTime: kind === 'volunteer' ? r.meetTime || null : null,
         capacity: kind === 'volunteer' ? r.capacity || null : null,
+        place: kind === 'volunteer' ? r.place.trim() || null : null,
       }));
     if (occurrences.length === 0) return setError('업로드 시각(또는 봉사 일자)을 최소 1개 입력하세요.');
+    // 장소·정원이 비면 만들자마자 '작성중'이 되어 공지가 나가지 않는다. 만들기 전에 막는다
+    // (예전에는 양식을 안 고르면 장소를 넣을 칸 자체가 없어서 반드시 이렇게 됐다).
+    if (kind === 'volunteer') {
+      if (occurrences.some((o) => !o.place)) return setError('봉사 장소를 입력하세요. 비어 있으면 공지가 올라가지 않습니다.');
+      if (occurrences.some((o) => !o.capacity)) return setError('정원을 입력하세요. 비어 있으면 공지가 올라가지 않습니다.');
+    }
     setBusy(true);
     const r = await apiPost<{ ids: string[]; skipped?: { publishAt: string; conflictTitle: string }[] }>('/api/reservations', {
       kind,
@@ -339,16 +351,29 @@ export function NewReservationForm() {
                   </Field>
                 </div>
                 {kind === 'volunteer' ? (
-                  <div className="w-20">
-                    <Field label="정원">
-                      <Input
-                        inputMode="numeric"
-                        value={r.capacity}
-                        onChange={(e) => setRow(i, 'capacity', e.target.value.replace(/\D/g, ''))}
-                        placeholder="20"
-                      />
-                    </Field>
-                  </div>
+                  <>
+                    {/* 장소는 예전에 양식에서만 왔다 — 양식을 안 고르면 넣을 칸이 없어
+                        만들자마자 '작성중'이 됐다(2026-07-31). 정원과 같은 자리에 둔다. */}
+                    <div className="w-44">
+                      <Field label="봉사 장소">
+                        <Input
+                          value={r.place}
+                          onChange={(e) => setRow(i, 'place', e.target.value)}
+                          placeholder="양주 쉼터"
+                        />
+                      </Field>
+                    </div>
+                    <div className="w-20">
+                      <Field label="정원">
+                        <Input
+                          inputMode="numeric"
+                          value={r.capacity}
+                          onChange={(e) => setRow(i, 'capacity', e.target.value.replace(/\D/g, ''))}
+                          placeholder="20"
+                        />
+                      </Field>
+                    </div>
+                  </>
                 ) : null}
                 <PreviewButton onClick={() => setOpenPreview(i)} />
               </div>

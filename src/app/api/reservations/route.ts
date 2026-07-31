@@ -50,13 +50,16 @@ export async function POST(req: Request): Promise<Response> {
     checkLength('본문', shared.contentMd, LIMITS.contentMd);
     const rawOcc: unknown[] = Array.isArray(b.occurrences) ? b.occurrences : [];
     const occurrences: Occurrence[] = rawOcc.map((o) => {
-      const oo = o as { publishAt?: string; eventDate?: string; meetTime?: string; capacity?: string | number };
+      const oo = o as { publishAt?: string; eventDate?: string; meetTime?: string; capacity?: string | number; place?: string };
       const cap = oo.capacity != null && String(oo.capacity).trim() !== '' ? Number(oo.capacity) : null;
+      const place = typeof oo.place === 'string' ? oo.place.trim() : '';
+      checkLength('장소', place, LIMITS.place);
       return {
         publishAt: parseDate(oo.publishAt),
         eventDate: oo.eventDate || null,
         meetTime: oo.meetTime || null,
         capacity: cap != null && Number.isInteger(cap) && cap > 0 ? cap : null,
+        place: place || null,
       };
     });
     if (occurrences.length === 0) return NextResponse.json({ error: 'no_occurrences' }, { status: 400 });

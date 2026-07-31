@@ -182,6 +182,7 @@ export interface Occurrence {
   eventDate?: string | null; // 봉사 공지일 때
   meetTime?: string | null;
   capacity?: number | null; // 회차별 정원. 비우면 양식의 기본 정원을 쓴다.
+  place?: string | null; // 회차별 장소. 비우면 양식의 기본 장소를 쓴다.
 }
 
 /**
@@ -270,8 +271,11 @@ export async function createReservationsMulti(
             publishAt: occ.publishAt ?? null,
             eventDate: occ.eventDate ?? null,
             meetTime: occ.meetTime ?? null,
-            place: template?.defaultPlace ?? null,
-            capacity: occ.capacity ?? template?.defaultCapacity ?? null, // 회차별 지정 > 양식 기본값
+            // 회차별 지정 > 양식 기본값. 장소도 정원과 같은 규칙이다 —
+            // 예전에는 장소가 **양식에서만** 왔다. 그래서 "양식 선택 안 함"으로 만든 봉사 예약은
+            // 장소가 비어 곧바로 미완성(작성중)이 됐고, 만들자마자 수정 화면으로 가야 했다(2026-07-31).
+            place: occ.place ?? template?.defaultPlace ?? null,
+            capacity: occ.capacity ?? template?.defaultCapacity ?? null,
           }
         : { kind: 'general', boardMenuid: shared.boardMenuid, title, contentMd, publishAt: occ.publishAt ?? null };
     const post = await createReservation(db, actor, input);
