@@ -6,6 +6,7 @@ import { and, eq, like } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { users, memberships, auditLogs } from '@/db/schema';
 import { expireInactiveMemberships } from '@/auth/inactivity-expiry';
+import { loadActor, LAST_SEEN_TOUCH_INTERVAL_MS } from '@/auth/auth-service';
 import type { Db } from '@/db/types';
 import { TEST_DATABASE_URL } from './db-url';
 
@@ -112,5 +113,44 @@ suite('미접속 자동 만료(expireInactiveMemberships)', () => {
       .from(users)
       .where(like(users.email, 'inactive-%@example.invalid'));
     expect(leftovers).toHaveLength(0);
+  });
+
+  // ⚠ 이 테스트가 **이 기능 전체의 생명줄**이다.
+  // loadActor 의 갱신 실패는 일부러 삼킨다(활동 기록 때문에 로그인이 막히면 안 되므로).
+  // 그래서 갱신이 조용히 안 되고 있어도 아무 증상이 없다가, **1년 뒤 전원이 만료된다.**
+  // 실제로 써지는지를 여기서 못 박는다.
+  //
+  it('loadActor 가 last_seen_at 을 갱신한다 — 하루 지났을 때만 (전부 롤백)', async () => {
+    await expect(
+      db.transaction(async (tx) => {
+        const scoped = tx as unknown as Db;
+        const long = new Date(Date.now() - LAST_SEEN_TOUCH_INTERVAL_MS - 60_000); // 하루하고 1분 전
+
+        const [stale] = await tx
+          .insert(users)
+          .values({ email: 'inactive-touch@example.invalid', name: '갱신대상', lastSeenAt: long })
+          .returning();
+        const [fresh] = await tx
+          .insert(users)
+          .values({ email: 'inactive-nottouch@example.invalid', name: '최근', lastSeenAt: new Date() })
+          .returning();
+        const freshBefore = fresh!.lastSeenAt!;
+
+        const seenOf = async (id: string) => {
+          const [r] = await tx.select({ v: users.lastSeenAt }).from(users).where(eq(users.id, id));
+          return r?.v ?? null;
+        };
+
+        expect(await loadActor(scoped, stale!.id)).not.toBeNull();
+        // 하루가 지났으면 갱신된다.
+        expect((await seenOf(stale!.id))!.getTime()).toBeGreaterThan(long.getTime());
+
+        // 하루가 안 지났으면 쓰지 않는다 — 매 요청 UPDATE 를 얹지 않기 위한 조건이다.
+        await loadActor(scoped, fresh!.id);
+        expect((await seenOf(fresh!.id))!.getTime()).toBe(freshBefore.getTime());
+
+        throw ROLLBACK;
+      })
+    ).rejects.toBe(ROLLBACK);
   });
 });
