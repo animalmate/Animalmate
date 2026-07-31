@@ -143,6 +143,54 @@ export async function cancelPost(db: DB, actor: Actor, id: string): Promise<void
   });
 }
 
+export class NoEventError extends Error {
+  readonly status = 400;
+  constructor() {
+    super('이 예약에는 봉사 회차가 없습니다(일반 공지).');
+    this.name = 'NoEventError';
+  }
+}
+
+/**
+ * 봉사 회차만 취소 — **발행된 뒤에도 할 수 있다.**
+ *
+ * 왜 따로 필요한가: `cancelPost` 는 발행된 예약을 거부한다(카페 글을 되돌릴 수 없으니 맞는 규칙).
+ * 그런데 **봉사 자체가 취소되면 챗봇 안내는 즉시 멈춰야 한다.** 챗봇의 봉사 목록은
+ * "취소 아님 + 장소 있음"으로 회차를 고르므로(07-DECISIONS 24), 회차가 살아 있는 한
+ * 계속 "다가오는 봉사"로 안내한다. 2026-07-31 에 테스트로 올린 글의 회차가 실제로 그렇게
+ * 안내됐고, 발행된 예약이라 화면에서 손댈 방법이 아예 없었다.
+ *
+ * 예약글(scheduled_posts)은 **남긴다** — 카페에 실제로 나갔다는 기록이라 지우면 이력이 사라진다.
+ * 카페 글 자체는 API 로 지울 수 없다. 사람이 카페에서 지우거나 댓글로 알려야 한다.
+ */
+export async function cancelEvent(db: DB, actor: Actor, id: string): Promise<void> {
+  const post = await getPost(db, id);
+  if (!post) throw new Error(`scheduled_post not found: ${id}`);
+  requireAuthorized(actor, { kind: 'post.modify', owner: ownershipOf(post) });
+  const eventId = post.eventId;
+  if (!eventId) throw new NoEventError();
+
+  await db.transaction(async (tx) => {
+    const [before] = await tx.select().from(events).where(eq(events.id, eventId)).limit(1);
+    if (!before || before.status === 'canceled') return; // 이미 취소됨 — 두 번 눌러도 탈이 없게.
+
+    await tx.update(events).set({ status: 'canceled' }).where(eq(events.id, eventId));
+    await recordAudit(
+      tx,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: 'event.cancel',
+        targetTable: 'events',
+        targetId: eventId,
+        before: { status: before.status, place: before.place },
+        // 이미 카페에 나간 공지의 회차를 취소한 것인지 남긴다 — 사후에 "왜 안내가 달랐나"를 되짚는 근거.
+        after: { status: 'canceled', postId: id, postStatus: post.status },
+        severity: 'high',
+      })
+    );
+  });
+}
+
 /** ready → scheduled(발행 대기 큐 진입). */
 export async function schedulePost(db: DB, actor: Actor, id: string): Promise<ScheduledPost> {
   const post = await getPost(db, id);

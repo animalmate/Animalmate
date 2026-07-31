@@ -357,7 +357,14 @@ export interface ReservationRow {
   ownerType: string;
   ownerId: string;
   failReason: string | null; // failed 일 때 실패 사유
-  event: { eventDate: string | null; meetTime: string | null; place: string | null; capacity: number | null } | null;
+  // status 는 화면이 "봉사 취소 표시" 버튼을 보일지 정하는 데 쓴다(이미 취소된 회차엔 안 보인다).
+  event: {
+    status: string;
+    eventDate: string | null;
+    meetTime: string | null;
+    place: string | null;
+    capacity: number | null;
+  } | null;
   missing: string[]; // draft 일 때 부족한 필수 필드
   /** 이 글이 쓰는 플레이스홀더와 발행 시 들어갈 값(value=null 이면 미치환 = 발행 차단). */
   placeholders: UsedPlaceholder[];
@@ -493,7 +500,13 @@ export async function listReservations(
       ownerId: post.ownerId,
       failReason: post.failReason ?? null,
       event: event
-        ? { eventDate: event.eventDate, meetTime: event.meetTime, place: event.place, capacity: event.capacity }
+        ? {
+            status: event.status,
+            eventDate: event.eventDate,
+            meetTime: event.meetTime,
+            place: event.place,
+            capacity: event.capacity,
+          }
         : null,
       missing,
       placeholders,

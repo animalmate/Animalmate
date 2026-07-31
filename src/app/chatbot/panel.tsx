@@ -9,17 +9,15 @@ interface Msg {
   role: 'user' | 'bot';
   text: string;
   pending?: boolean;
-  /** 답변 근거가 된 문서 이름들. 모델이 본문에 쓴 것이 아니라 **검색 메타데이터**다(07-DECISIONS 46). */
-  sources?: string[];
 }
 
 interface AskResponse {
   answer?: string;
-  handedOff?: boolean;
-  sources?: string[];
   message?: string;
   error?: string;
 }
+// 서버는 `sources`·`handedOff` 도 함께 돌려주지만 화면은 읽지 않는다(출처 표시를 걷어냈다 — 결정 69).
+// 값은 chat_logs 에 남아 있어 나중에 되짚을 수 있다.
 
 const SUGGESTIONS = ['다음 봉사 언제예요?', '회비는 얼마예요?', '동아리 가입은 어떻게 해요?'];
 
@@ -27,8 +25,6 @@ const SUGGESTIONS = ['다음 봉사 언제예요?', '회비는 얼마예요?', '
 interface HistoryItem {
   question: string;
   answer: string;
-  sources: string[];
-  handedOff: boolean;
 }
 
 export function ChatbotPanel() {
@@ -49,7 +45,7 @@ export function ChatbotPanel() {
       if (!r.ok) return; // 복원 실패는 조용히 넘어간다 — 새 대화는 그대로 할 수 있다
       const restored = (r.data.history ?? []).flatMap((h): Msg[] => [
         { role: 'user', text: h.question },
-        { role: 'bot', text: h.answer, sources: h.handedOff ? [] : h.sources },
+        { role: 'bot', text: h.answer },
       ]);
       if (restored.length > 0) setMsgs(restored);
     })();
@@ -79,13 +75,9 @@ export function ChatbotPanel() {
       ? data.answer ?? ''
       : data.message ?? (data.error === 'too_long' ? '질문이 너무 길어요. 짧게 나눠서 물어봐 주세요.' : '지금은 답할 수 없어요. 잠시 후 다시 시도해 주세요.');
 
-    // 근거 문서를 못 찾아 핸드오프한 답변에는 출처를 붙이지 않는다 — 붙이면
-    // "자료를 보고 모른다고 한 것"처럼 읽혀서 사실과 어긋난다.
-    const sources = r.ok && !data.handedOff ? (data.sources ?? []) : [];
-
     setMsgs((m) => {
       const next = m.slice(0, -1); // pending 제거
-      return [...next, { role: 'bot', text: answer, sources }];
+      return [...next, { role: 'bot', text: answer }];
     });
     setBusy(false);
     setMood('answer'); // 대답하며 폴짝
@@ -157,10 +149,7 @@ export function ChatbotPanel() {
                       <Dot /> <Dot delay={150} /> <Dot delay={300} />
                     </span>
                   ) : (
-                    <>
-                      <Markdown>{m.text}</Markdown>
-                      <Sources names={m.sources} />
-                    </>
+                    <Markdown>{m.text}</Markdown>
                   )}
                 </div>
               </div>
@@ -208,30 +197,13 @@ export function ChatbotPanel() {
   );
 }
 
-/**
- * 출처 칩 — 답변 아래에 근거 문서 이름을 붙인다.
- *
- * 왜 모델이 아니라 여기서 그리는가(07-DECISIONS 46): 예전에는 시스템 프롬프트가 "출처를 답변에
- * 쓰라"고 했다가, 모델이 문장 사이에 "(출처: …)"를 흘려 넣어 읽기 나빠지고 없는 문서명을
- * 지어내기도 했다. 지금 시스템 프롬프트는 본문에 출처를 쓰지 못하게 하고, 표시는 **검색이
- * 실제로 집어 온 문서 목록(sources 메타데이터)** 으로만 한다. 지어낼 수 없는 값이다.
- */
-function Sources({ names }: { names?: string[] }) {
-  if (!names || names.length === 0) return null;
-  return (
-    <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-2.5">
-      <span className="text-[11px] font-semibold text-ink-400">근거 문서</span>
-      {names.map((n) => (
-        <span
-          key={n}
-          className="inline-flex items-center rounded-full bg-cream-100 px-2.5 py-1 text-[11.5px] font-medium text-ink-600"
-        >
-          {n}
-        </span>
-      ))}
-    </div>
-  );
-}
+// 출처 칩("근거 문서" + 문서 이름)은 **화면에서 걷어냈다**(2026-07-31 사용자 지시, 07-DECISIONS 69).
+// 물어본 사람이 원한 것은 답이지 어느 문서에서 나왔는지가 아니었다. 답변마다 문서 이름이 붙으니
+// 대화가 아니라 검색 결과처럼 읽혔다. 07-DECISIONS 46 의 "본문이 아니라 UI 가 그린다"는
+// **본문에 쓰지 않는다는 쪽만 남고**, 그리는 쪽은 없앤다.
+//
+// `sources` 자체는 계속 `chat_logs` 에 저장한다 — 답이 이상할 때 무엇을 집어 왔는지 되짚고
+// 평가셋(`npm run eval`)을 돌리려면 필요한 값이다. 화면에만 안 나온다.
 
 function Dot({ delay = 0 }: { delay?: number }) {
   return <span className="inline-block h-2 w-2 animate-bounce rounded-full bg-ink-300" style={{ animationDelay: `${delay}ms` }} />;

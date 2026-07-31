@@ -16,7 +16,7 @@ interface Reservation {
   publishAt: string | null;
   cafeArticleUrl: string | null;
   failReason: string | null;
-  event: { eventDate: string | null; place: string | null; capacity: number | null } | null;
+  event: { status: string; eventDate: string | null; place: string | null; capacity: number | null } | null;
   missing: string[];
   placeholders: { key: string; value: string | null }[];
 }
@@ -92,7 +92,7 @@ export function ReservationsPanel() {
     })();
   }, []);
 
-  async function act(id: string, action: 'ready' | 'schedule' | 'cancel') {
+  async function act(id: string, action: 'ready' | 'schedule' | 'cancel' | 'cancel_event') {
     setError('');
     const r = await apiPost<{ missing?: string[] }>(`/api/reservations/${id}/action`, { action });
     if (!r.ok) {
@@ -123,6 +123,22 @@ export function ReservationsPanel() {
     const when = r.publishAt ? fmt(r.publishAt) : '업로드 시각 미정';
     if (typeof window !== 'undefined' && !window.confirm(`"${r.title}" 예약을 취소할까요?\n(${when} 업로드 예정 — 취소하면 되돌릴 수 없습니다)`)) return;
     void act(r.id, 'cancel');
+  }
+
+  // 이미 카페에 나간 공지의 봉사를 취소로 표시한다. 카페 글은 그대로 남으므로,
+  // 무엇이 되고 무엇이 안 되는지 눌리기 전에 분명히 말한다.
+  function cancelEventOf(r: Reservation) {
+    const when = r.event?.eventDate ? r.event.eventDate : '날짜 미정';
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `${when} 봉사를 취소로 표시할까요?\n\n` +
+          `· 챗봇과 안내에서 바로 빠집니다.\n` +
+          `· 이미 카페에 올라간 글은 지워지지 않습니다 — 카페에서 직접 지우거나 댓글로 알리세요.`
+      )
+    )
+      return;
+    void act(r.id, 'cancel_event');
   }
 
   return (
@@ -245,7 +261,17 @@ export function ReservationsPanel() {
                       <SecondaryButton onClick={() => cancel(r)}>취소</SecondaryButton>
                     </>
                   ) : null}
+                  {/* 업로드된 뒤에도 **봉사 자체가 취소되는 일**은 생긴다. 카페 글은 못 지우지만
+                      챗봇과 안내는 즉시 멈춰야 한다 — 회차가 살아 있으면 계속 "다가오는 봉사"로 안내된다. */}
+                  {r.status === 'published' && r.event && r.event.status !== 'canceled' ? (
+                    <SecondaryButton onClick={() => cancelEventOf(r)}>봉사 취소 표시</SecondaryButton>
+                  ) : null}
                 </div>
+                {r.event?.status === 'canceled' ? (
+                  <div className="text-xs text-ink-500">
+                    이 봉사는 <strong>취소</strong>로 표시돼 있습니다. 챗봇과 안내에 나오지 않습니다.
+                  </div>
+                ) : null}
               </Card>
             </li>
           ))}

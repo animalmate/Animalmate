@@ -6,7 +6,7 @@ import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { teams, users, boards, scheduledPosts, events, postTemplates, auditLogs } from '@/db/schema';
 import { createReservation, createReservationsMulti, SlotTakenError } from '@/publishing/reservations';
-import { cancelPost } from '@/publishing/scheduled-posts';
+import { cancelPost, cancelEvent } from '@/publishing/scheduled-posts';
 import { createTemplate } from '@/publishing/post-templates';
 import { PermissionError } from '@/auth/guard';
 import type { Actor } from '@/auth/permissions';
@@ -135,6 +135,44 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
     expect(gonePost).toBeUndefined();
     const [ev] = await db.select({ status: events.status }).from(events).where(eq(events.id, eventId));
     expect(ev!.status).toBe('canceled');
+  });
+
+  // 2026-07-31: 발행된 예약은 cancelPost 가 거부한다(카페 글을 되돌릴 수 없으니 맞다). 그런데
+  // 봉사가 취소되면 챗봇 안내는 멈춰야 하는데 손댈 방법이 아예 없었다 — 테스트로 올린 글의
+  // 회차가 실제로 "다가오는 봉사"로 계속 안내됐다.
+  it('발행된 예약도 봉사 회차만 취소할 수 있다(예약글은 남는다)', async () => {
+    const post = await createReservation(db, board(), vol(teamAId));
+    createdPosts.push(post.id);
+    const eventId = post.eventId!;
+    await db.update(scheduledPosts).set({ status: 'published' }).where(eq(scheduledPosts.id, post.id));
+
+    // 예약 자체를 지우는 길은 여전히 막혀 있다.
+    await expect(cancelPost(db, board(), post.id)).rejects.toThrow();
+
+    await cancelEvent(db, board(), post.id);
+
+    const [ev] = await db.select({ status: events.status }).from(events).where(eq(events.id, eventId));
+    expect(ev!.status).toBe('canceled'); // 챗봇 목록에서 빠진다
+    // 카페에 나갔다는 기록은 남아야 한다.
+    const [stillThere] = await db
+      .select({ status: scheduledPosts.status })
+      .from(scheduledPosts)
+      .where(eq(scheduledPosts.id, post.id));
+    expect(stillThere!.status).toBe('published');
+  });
+
+  it('회차 취소를 두 번 눌러도 탈이 없다', async () => {
+    const post = await createReservation(db, board(), vol(teamAId));
+    createdPosts.push(post.id);
+    await cancelEvent(db, board(), post.id);
+    await expect(cancelEvent(db, board(), post.id)).resolves.toBeUndefined();
+  });
+
+  it('남의 팀 예약의 회차는 팀장이 취소할 수 없다', async () => {
+    const post = await createReservation(db, board(), vol(teamBId));
+    createdPosts.push(post.id);
+    const leaderA: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader' }] };
+    await expect(cancelEvent(db, leaderA, post.id)).rejects.toBeInstanceOf(PermissionError);
   });
   // 팀별 발행 시각이 30분 간격으로 정해져 있어, 같은 분에 두 건이 잡히면 슬롯 중복 예약이다.
   // (이 검사는 발행 워커의 점유를 대신하지 않는다 — 발행 시점 겹침은 점유가 막는다.)
