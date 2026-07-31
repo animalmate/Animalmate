@@ -182,7 +182,8 @@
     — 지원자별 **개인** 메모(작성자당 1개). `screen_notes` (context_key PK, content, updated_by?, updated_at)
     — 화면별 **공용** 메모지. `recruit_mapping_presets` (id, name uq, mapping jsonb, created_by, updated_at) — CSV 매핑.
   - **상태 자동 전환**: 면접 점수 최초 저장 시 doc_pass→interview_done, 점수 0개로 감소 시 interview_done→doc_pass
-    (같은 트랜잭션). 면접불참(interview_noshow)은 회장단 수동. 순수 함수 `nextStatusOnScoreChange` 로 분리(단위 테스트).
+    (같은 트랜잭션). 면접불참(interview_noshow)은 **면접관(운영진)이 면접 콘솔에서 표시**하고 되돌릴 수도 있다
+    (2026-07-31, 07-DECISIONS 67). 순수 함수 `nextStatusOnScoreChange` 로 분리(단위 테스트).
   - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 5회 + 실패 10회 시 1시간 차단
     (`rate_limits` 재사용, 버킷 `recruit_lookup`/`recruit_lookup_fail`). **시도 입력값(이름·전화)은 저장하지 않는다**
     — 비지원자 PII 수집 금지(규칙 #4/#5). 결정 #8의 "시도 로그"는 카운터로 대체(07-DECISIONS 25).

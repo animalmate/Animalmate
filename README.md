@@ -72,6 +72,7 @@ UptimeRobot ──5분──► /api/health (일시정지 방지 + 감시)
 | [`docs/05-ASSET-REGISTRY.md`](docs/05-ASSET-REGISTRY.md) | 자산 대장(계정·키 위치·갱신, 값은 미기재) |
 | [`design/docs/06-DESIGN.md`](design/docs/06-DESIGN.md) | 디자인 시스템·UI 프리미티브 규칙 |
 | [`docs/07-DECISIONS.md`](docs/07-DECISIONS.md) | 보안·아키텍처 결정 기록(왜 그렇게 했는지) |
+| [`docs/08-USER-GUIDES.md`](docs/08-USER-GUIDES.md) | 화면 도움말·회장단 체크리스트 (**자동 생성** — 원문은 `src/guides/content.ts`) |
 | [`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md) | F9 신입 모집 기술 설계·실행 계획 |
 | [`docs/10-STATUS.md`](docs/10-STATUS.md) | **현황 스냅샷** — 무엇이 되고 무엇이 안 되는지(외부 조언자용) |
 
@@ -202,12 +203,10 @@ RLS 테스트는 GitHub 리포 Settings > Secrets and variables > Actions의 `SU
 `SUPABASE_ANON_KEY`, `DIRECT_URL`(**Repository secret**으로 등록 — Environment secret은
 워크플로에 `environment:` 선언이 없어 안 읽힌다)을 쓴다. 2026-07-27 등록 완료.
 
-> **초록불이 곧 검증은 아니다.** 통합 테스트는 env가 없으면 스스로 `describe.skip`으로 건너뛴다.
-> 시크릿이 비었거나 **이름이 한 글자라도 틀리면 실패가 아니라 조용한 skip**이 되어, 아무것도
-> 검증하지 않은 채 CI가 통과한다. 판별은 **"RLS 보안 테스트" 단계 소요시간**으로 한다 —
-> **약 13초 = 전부 skip**, **6~8분 = 실제 실행**(로컬은 ~50초, CI는 서울 리전 왕복 지연으로 느리다).
-> 조회: `curl -s https://api.github.com/repos/animalmate/Animalmate/actions/runs/<id>/jobs`
-> (리포가 public이라 인증 없이 읽힌다.)
+> **초록불이 곧 검증은 아니다** — 그래서 조용한 skip 을 막아 뒀다(2026-07-29, 07-DECISIONS 57).
+> 예전에는 시크릿 이름이 한 글자만 틀려도 실패가 아니라 `describe.skip` 이 되어, 아무것도 검증하지
+> 않은 채 CI 가 통과했다. 지금은 `test/db-url.ts`·`gemini-env.ts`·`rls-env.ts` 가 **CI 에서는
+> 하드 실패**한다(로컬만 skip 허용). 의심되면 소요시간이 아니라 **테스트 개수**로 판별한다.
 
 ## 라이선스
 

@@ -61,12 +61,14 @@ slots·applicants cascade → scores·memos cascade. screen_notes·presets 는 c
 received ──(회장단 서류확정)──▶ doc_pass 또는 doc_fail
 doc_pass ──(운영진이 면접 점수 최초 저장)──▶ interview_done      [자동]
 interview_done ──(그 지원자 면접 점수가 0개로 감소)──▶ doc_pass    [자동, 역방향]
-doc_pass/interview_done ──(회장단 수동 '면접불참')──▶ interview_noshow
+doc_pass/interview_done ──(면접관이 콘솔에서 '면접에 안 왔어요')──▶ interview_noshow ──(되돌리기)──▶ doc_pass
 interview_done ──(회장단 최종확정)──▶ final_pass 또는 final_fail
 ```
 - **면접완료는 버튼이 아니라 사실의 반영**: 면접 점수(stage=interview) 행이 1개 이상이면 interview_done,
   0개면 doc_pass 로 자동 복귀. 이 전이는 `recordInterviewScore`/`deleteScore` 서비스가 **같은 트랜잭션**에서 수행.
-- **면접불참**(interview_noshow): 배정됐으나 면접을 못 본 사람을 회장단이 수동 표시. "면접 기록 없음"과 구분.
+- **면접불참**(interview_noshow): 배정됐으나 면접에 오지 않은 사람. **면접관(운영진)이 면접 콘솔에서** 표시한다
+  — 그 자리에서 본 사실이라 회장단이 옮겨 적을 이유가 없다(2026-07-31, 07-DECISIONS 67). 되돌리기도 같은 자리.
+  "면접 기록 없음"(배정됐는데 아무도 채점 안 함)과는 다른 사실이다.
   - 상호작용 규칙: noshow 상태에서 나중에 면접 점수가 저장되면 **사실이 이김 → interview_done**으로 전환.
     (배정만 됐다가 실제로 면접을 본 경우.)
 - **최종 결정 화면 경고**: `slot_id`가 있는데 면접 점수가 0개인 지원자(=interview_noshow 아님)를
