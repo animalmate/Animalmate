@@ -8,44 +8,50 @@ import { isStaffPlus, isPrivileged } from '@/auth/permissions';
 
 export const dynamic = 'force-dynamic';
 
+// desc 는 **짧은 명사구**로 쓴다("~해요" 금지). 카드가 한 줄을 넘으면 그 칸만 키가 커져
+// 격자가 들쭉날쭉해 보인다(2026-07-31 사용자 지적).
 interface Shortcut {
   href: string;
   label: string;
   desc: string;
   icon: string;
+  /** 브라우저 새 탭으로 연다. 콘솔 밖(공개 페이지)으로 나가는 링크에만 쓴다. */
+  newTab?: boolean;
 }
 
 const STAFF_SHORTCUTS: Shortcut[] = [
-  { href: '/reservations', label: '예약', desc: '공지 예약을 만들고 관리해요', icon: 'megaphone' },
-  { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식을 저장해요', icon: 'doc' },
+  { href: '/reservations', label: '예약', desc: '공지 예약 관리', icon: 'megaphone' },
+  { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식 저장', icon: 'doc' },
 ];
 // 신입 모집은 역할에 따라 들어가는 문이 다르다 — 운영진이 맡는 일은 채점, 회장단은 절차 전체.
 const RECRUIT_STAFF: Shortcut = {
   href: '/admin/recruit/screening',
   label: '신입모집',
-  desc: '지원자 서류를 채점해요',
+  desc: '지원자 서류 채점',
   icon: 'userPlus',
 };
 const RECRUIT_BOARD: Shortcut = {
   href: '/admin/recruit/notice-edit',
   label: '신입모집',
-  desc: '공고부터 최종 발표까지 진행해요',
+  desc: '공고부터 최종 발표까지',
   icon: 'userPlus',
 };
 // 지원자에게 실제로 보이는 공개 공고. 운영진·회장단 모두 "지금 뭐가 나가 있나"를 확인할 일이 잦아
 // 홈에서 바로 열 수 있게 둔다(2026-07-31 사용자 요청). 로그인 없이도 열리는 페이지다.
+// 콘솔 밖으로 나가는 링크라 **새 탭**으로 연다 — 보던 화면을 잃지 않게.
 const RECRUIT_NOTICE_PUBLIC: Shortcut = {
   href: '/recruit/notice',
   label: '모집 공고 보기',
-  desc: '지원자에게 보이는 공고를 확인해요',
+  desc: '모집 공고 확인',
   icon: 'external',
+  newTab: true,
 };
 const BOARD_SHORTCUTS: Shortcut[] = [
-  { href: '/documents', label: '문서', desc: '챗봇이 답할 안내 문서를 관리해요', icon: 'layers' },
-  { href: '/admin/members', label: '회원·팀 관리', desc: '역할·팀·직함을 지정해요', icon: 'users' },
-  { href: '/admin/join-codes', label: '가입코드', desc: '학기별 가입코드를 발급해요', icon: 'key' },
-  { href: '/admin/boards', label: '게시판', desc: '카페 게시판을 연결해요', icon: 'board' },
-  { href: '/admin/chatbot', label: '챗봇 설정', desc: '사용량·한도를 관리해요', icon: 'info' },
+  { href: '/documents', label: '문서', desc: '챗봇 안내 문서 관리', icon: 'layers' },
+  { href: '/admin/members', label: '회원·팀 관리', desc: '역할·팀·직함 지정', icon: 'users' },
+  { href: '/admin/join-codes', label: '가입코드', desc: '학기별 가입코드 발급', icon: 'key' },
+  { href: '/admin/boards', label: '게시판', desc: '카페 게시판 연결', icon: 'board' },
+  { href: '/admin/chatbot', label: '챗봇 설정', desc: '사용량·한도 관리', icon: 'info' },
 ];
 
 // 외부 바로가기(새 탭). staffOnly 는 서버에서 걸러 부원의 HTML 에 URL 자체가 나가지 않는다(규칙 #6).
@@ -128,7 +134,12 @@ export default async function HomePage() {
         {shortcuts.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {shortcuts.map((s) => (
-              <a key={s.href} href={s.href} className="no-underline">
+              <a
+                key={s.href}
+                href={s.href}
+                {...(s.newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                className="no-underline"
+              >
                 <Card className="flex min-h-[92px] items-center gap-3.5 transition-colors hover:border-blue-300">
                   <span className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-blue-50 text-blue-600">
                     <Icon name={s.icon} size={22} />

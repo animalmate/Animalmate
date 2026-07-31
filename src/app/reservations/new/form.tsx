@@ -356,11 +356,7 @@ export function NewReservationForm() {
                         만들자마자 '작성중'이 됐다(2026-07-31). 정원과 같은 자리에 둔다. */}
                     <div className="w-44">
                       <Field label="봉사 장소">
-                        <Input
-                          value={r.place}
-                          onChange={(e) => setRow(i, 'place', e.target.value)}
-                          placeholder="양주 쉼터"
-                        />
+                        <Input value={r.place} onChange={(e) => setRow(i, 'place', e.target.value)} />
                       </Field>
                     </div>
                     <div className="w-20">
