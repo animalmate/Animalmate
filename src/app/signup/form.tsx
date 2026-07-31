@@ -73,7 +73,8 @@ export function SignupForm() {
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
             </Field>
             <Field label="전화번호" hint="그냥 -없이 입력하세요. 나중에 고칠 수 있어요.">
-              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-1234-5678" autoComplete="tel" />
+              {/* 예시도 안내("-없이")와 같은 모양으로 둔다 — 둘이 어긋나면 어느 쪽을 따를지 헷갈린다. */}
+              <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01012345678" autoComplete="tel" />
             </Field>
             <Field label="가입코드" hint="동아리 카페 공지의 학기 가입코드">
               <Input value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="가입코드" />
