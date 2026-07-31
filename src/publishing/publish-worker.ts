@@ -88,7 +88,16 @@ export async function runPublishWorker(db: DB, deps: WorkerDeps = {}): Promise<P
 
   if (due.length === 0) {
     summary.finishedAt = new Date().toISOString();
-    await recordSummary(db, summary);
+    // 할 일이 없으면 audit 을 남기지 않는다.
+    //
+    // 왜: 이 워커는 매분 돈다. 빈 요약을 그대로 쌓으면 하루 1,440줄이고, 2026-07-31 기준
+    // 최근 7일 audit_logs 는 크론 11,543줄 대 사람 965줄로 사람이 한 일이 완전히 묻혀 있었다.
+    // 그중 cron.publish 10,060줄에서 실제로 뭔가 한 것은 **1줄**이었다. 회장단이 "누가 이 회원을
+    // 탈퇴시켰나" 를 되짚는 표인데 99.99% 가 "할 일 없었음" 이면 그 표는 못 쓴다.
+    //
+    // 관제(크론이 돌긴 했는가)는 이걸로 증명하지 않아도 된다 — pg_cron 이 cron.job_run_details 에
+    // 매 실행을 status 와 함께 남기고 있고(2026-07-23 이후 전량 보존), 라우트도 이 요약을 그대로
+    // 응답에 실어 Vercel 로그에 남긴다. 실제로 발행·실패·대기가 있었던 사이클은 아래에서 그대로 기록된다.
     return summary;
   }
 

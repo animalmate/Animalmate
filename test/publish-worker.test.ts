@@ -72,6 +72,30 @@ suite('발행 워커 — dry-run 오케스트레이션 + 요약', () => {
     await sql.end({ timeout: 5 });
   });
 
+  // 이 워커는 매분 돈다. 빈 요약까지 남기면 하루 1,440줄이 쌓여 사람이 한 일이 묻힌다
+  // (2026-07-31 운영 실측: cron.publish 10,060줄 중 실제로 뭔가 한 것은 1줄).
+  // now 를 과거로 줘서 다른 파일이 남긴 due 글이 있어도 "할 일 없음"이 되게 한다.
+  it('할 일이 없는 사이클은 audit 을 남기지 않는다', async () => {
+    const countAudits = async (): Promise<number> =>
+      (
+        await db
+          .select()
+          .from(auditLogs)
+          .where(and(eq(auditLogs.action, 'cron.publish'), gte(auditLogs.createdAt, testStart)))
+      ).length;
+
+    const before = await countAudits();
+    const summary = await runPublishWorker(db, {
+      dryRun: true,
+      now: new Date('2020-01-01T00:00:00Z'),
+      sleep: async () => {},
+      ...NO_REAL_MAIL,
+    });
+
+    expect(summary.processed).toBe(0);
+    expect(await countAudits()).toBe(before);
+  });
+
   it('dry-run: due 게시물 발행 → published + 요약(dryRun=true, 실카페 미호출)', async () => {
     const id = await makeDuePost();
     const summary = await runPublishWorker(db, { dryRun: true, sleep: async () => {}, ...NO_REAL_MAIL });
