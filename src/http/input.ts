@@ -16,6 +16,7 @@ export const LIMITS = {
   phone: 30,
   label: 50, // 팀장단 직위
   question: 1000, // 챗봇 질문
+  joinCode: 64, // 가입코드(실제로는 6~12자). 비인증 경로라 길이를 묶어 둔다.
 } as const;
 
 export class InputTooLongError extends Error {

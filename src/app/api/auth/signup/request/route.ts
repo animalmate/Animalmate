@@ -18,6 +18,7 @@ export async function POST(req: Request): Promise<Response> {
     await consumeRateLimit(db, RULES.signupRequest, ip);
     const { email, joinCode } = await req.json();
     checkLength('이메일', String(email ?? ''), LIMITS.email);
+    checkLength('가입코드', String(joinCode ?? ''), LIMITS.joinCode);
 
     // ② 가입코드 먼저. 코드는 부원 전원이 아는 공용 값이라 이 검사는 **주소에 대해 아무것도
     //    알려주지 않는다** — 열거 방지(응답 통일)는 아래 ③ 이후 경로에서만 성립하면 된다.

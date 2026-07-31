@@ -53,10 +53,18 @@ describe('RULES', () => {
 
   it('가입코드 대입 방어는 IP 전체 요청이 아니라 **오답 전용 버킷**이 맡는다', () => {
     // 정상 가입자와 공격자가 같은 통을 나눠 쓰면 둘 중 하나를 포기해야 한다.
-    // 오답만 세면 공격자 예산은 그대로 좁고(≤10) 코드를 아는 사람은 몇 명이든 걸리지 않는다.
+    // 오답만 세므로 코드를 아는 사람은 몇 명이든 이 통을 건드리지 않는다.
     expect(RULES.signupCodeFail.bucket).toBe('signup_code_fail');
-    expect(RULES.signupCodeFail.max).toBeLessThanOrEqual(10);
     expect(RULES.signupCodeFail.bucket).not.toBe(RULES.signupRequest.bucket);
+  });
+
+  it('오답 통도 IP 단위라 한자리 인원(30명)의 오타를 감당하되, 무제한은 아니다', () => {
+    // 코드를 불러 주면 `0`/`O` 처럼 여러 명이 똑같이 틀린다 — 통이 좁으면 정직한 오타가
+    // "코드가 틀렸다" 대신 429 를 본다. 반대로 상한이 없으면 대입 오라클이 열린다.
+    expect(RULES.signupCodeFail.max).toBeGreaterThanOrEqual(CLUB_SIZE);
+    expect(RULES.signupCodeFail.max).toBeLessThanOrEqual(100);
+    // 가입코드는 최소 6자 [A-Z0-9] ≈ 22억 가지다. 이 정도 시도로는 무차별 대입이 성립하지 않는다.
+    expect(RULES.signupCodeFail.max).toBeLessThan(36 ** 6 / 1_000_000);
   });
 
   it('OTP 무차별 대입은 **주소 단위**로 막는다(IP 를 바꿔 가며 시도해도 대상 주소로 묶이게)', () => {
