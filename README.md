@@ -75,6 +75,7 @@ UptimeRobot ──5분──► /api/health (일시정지 방지 + 감시)
 | [`docs/08-USER-GUIDES.md`](docs/08-USER-GUIDES.md) | 화면 도움말·회장단 체크리스트 (**자동 생성** — 원문은 `src/guides/content.ts`) |
 | [`docs/09-RECRUIT-DESIGN.md`](docs/09-RECRUIT-DESIGN.md) | F9 신입 모집 기술 설계·실행 계획 |
 | [`docs/10-STATUS.md`](docs/10-STATUS.md) | **현황 스냅샷** — 무엇이 되고 무엇이 안 되는지(외부 조언자용) |
+| [`docs/11-INCIDENT-RESPONSE.md`](docs/11-INCIDENT-RESPONSE.md) | **장애 대응** — 증상별 조치. 앞쪽은 회장단용, 뒤쪽은 개발자용 |
 
 ## 로컬 실행
 
