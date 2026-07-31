@@ -21,7 +21,10 @@
 
 ## 테이블
 ### 조직/계정
-- `users` (id, email, name, phone?, session_version, withdrawn_at?, chat_cleared_at?, created_at)
+- `users` (id, email, name, phone?, session_version, withdrawn_at?, chat_cleared_at?, last_seen_at?, created_at)
+  - `last_seen_at`: 마지막으로 로그인 상태에서 사이트를 쓴 시각(0024 추가). **멤버십 자동 만료의 기준.**
+    `loadActor` 가 갱신하되 **하루에 한 번만** 쓴다(그 길목은 모든 화면이 지나므로 매번 쓰면 다 느려진다).
+    해상도가 '일' 이면 충분한 이유는 만료 기준이 1년이라서다.
   - `session_version`: 세션 세대(0010). 발급된 JWT 에 이 값을 담고 요청마다 대조 — 값을 1 올리면
     그 계정의 **모든 기기 세션이 즉시 무효**. 세션 테이블 불필요. 올라가는 경우 3가지(07-DECISIONS 11·13):
     ① 회원 관리 > "모든 기기에서 로그아웃" ② **비활성화** ③ **강등**(승격·재활성화는 올리지 않는다).
@@ -35,7 +38,9 @@
     `audit_logs.actor_user_id`(ON DELETE SET NULL)를 지우면 "누가 했는지"가 사라지기 때문(규칙 #4).
     원래 이메일을 남기지 않으므로 **같은 주소로 재가입 가능**(별개의 새 계정). 07-DECISIONS 30.
 - `memberships` (user_id, role, board_position?, term_start, term_end, status[active|expired])
-  - 크론이 매일 term_end 경과 건을 expired로 강등. 회장단만 memberships를 변경 가능.
+  - 크론이 매일 **1년 미접속** 건을 expired로 강등(`users.last_seen_at` 기준). 회장단만 memberships를 변경 가능.
+  - ⚠ `term_end` 는 **더 이상 읽히지 않는다**(2026-07-31 이후). 가입 시 값이 들어가지만 만료 판정에
+    쓰이지 않는다 — 컬럼은 이력 보존을 위해 남겨 두었다.
 - `teams` (id, name, kind[activity|functional], is_active, leaders jsonb)
   - leaders(0006): **앱 미가입자 전용** 수동 팀장단 [{label,name,phone}] (공지 `{{팀장단}}`에 자동 명단 뒤로 덧붙음).
     가입 팀장단은 여기 두지 않고 team_members(position=leader)로 관리. 같은 전화번호는 공지에서 자동 명단과 중복 제거.
@@ -231,9 +236,12 @@
   - 신청/확정 상태 없음(신청은 카페 댓글).
 
 - **memberships**: `active` → `expired`. 전이 경로 3개 —
-  ① **임기 만료(자동)**: 일일 크론이 `term_end < 오늘(KST)` 인 active 행을 `expired` 로 바꾸고
-     `users.session_version` 을 올려 세션을 끊는다(`src/auth/term-expiry.ts`, 07-DECISIONS 47).
-     마지막 날은 유효 — `term_end === 오늘` 은 만료가 아니다.
+  ① **미접속 만료(자동)**: 일일 크론이 `coalesce(users.last_seen_at, users.created_at)` 가
+     **1년 넘게 지난** active 행을 `expired` 로 바꾸고 `users.session_version` 을 올려 세션을 끊는다
+     (`src/auth/inactivity-expiry.ts`, 07-DECISIONS 82). 딱 1년째는 아직 유효(경계에서 일찍 뺏지 않는다).
+     한 번도 안 들어온 계정은 **가입 시각** 기준. 판단 근거가 둘 다 없으면 만료시키지 않는다.
+     내리면 활성 회장단·시스템관리자가 0이 되는 경우에는 **내리지 않고 메일로 알린다**(콘솔 잠금 방지).
+     ~~`term_end` 경과 기준~~ 은 폐기 — 연장 수단이 없어 전원이 동시에 강등되는 구조였다.
   ② **비활성화(수동)**: 회장단이 회원 관리에서 접근을 회수(복구 가능).
   ③ **탈퇴**: 되돌릴 수 없음 + 개인정보 삭제(07-DECISIONS 30).
 

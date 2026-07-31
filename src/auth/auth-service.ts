@@ -179,6 +179,8 @@ export async function loadActor(db: DB, userId: string, sessionVersion?: number)
         name: users.name,
         sessionVersion: users.sessionVersion,
         withdrawnAt: users.withdrawnAt,
+        // 이미 읽고 있는 행에 컬럼 하나를 얹는 것이라 추가 왕복이 없다(session_version 과 같은 이유).
+        lastSeenAt: users.lastSeenAt,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -198,8 +200,35 @@ export async function loadActor(db: DB, userId: string, sessionVersion?: number)
   if (u.withdrawnAt) return null;
   // "모든 기기에서 로그아웃" 이후 발급된 토큰만 통과한다.
   if (sessionVersion !== undefined && sessionVersion !== u.sessionVersion) return null;
+  // 여기까지 왔다는 것은 "이 사람이 지금 로그인 상태로 사이트를 쓰고 있다"는 뜻이다 —
+  // 멤버십 자동 만료의 기준이 되는 활동 흔적을 여기서 남긴다(필수원칙 #2).
+  await touchLastSeen(db, userId, u.lastSeenAt);
+
   let role: Role = 'member';
   for (const r of ms) if (ROLE_RANK[r.role] > ROLE_RANK[role]) role = r.role;
   const teams: ActorTeam[] = tms.map((t) => ({ teamId: t.teamId, position: t.position }));
   return { userId, name: u.name, role, membershipActive: ms.length > 0, teams };
+}
+
+/** 활동 흔적을 하루에 한 번만 갱신한다. 이 값의 해상도는 '일' 이면 충분하다. */
+export const LAST_SEEN_TOUCH_INTERVAL_MS = 24 * 3600 * 1000;
+
+/**
+ * `users.last_seen_at` 갱신. **하루가 지났을 때만 쓴다.**
+ *
+ * 요청마다 UPDATE 하면 로그인 상태의 모든 화면에 쓰기 왕복이 하나씩 붙는다 — 이 함수가 있는
+ * loadActor 는 페이지 HTML 과 그 화면이 부르는 API 가 각각 지나는 길목이라 비용이 곱으로 얹힌다.
+ * 만료 기준이 '1년' 이라 하루 오차는 아무 의미가 없으므로, 하루에 한 번이면 충분하다.
+ *
+ * 실패해도 조용히 넘어간다 — 활동 기록을 못 남긴 것 때문에 로그인 자체가 막히면 안 된다.
+ * 다음 요청에서 다시 시도하고, 그동안 값은 어제 것으로 남아 있을 뿐이다.
+ */
+async function touchLastSeen(db: DB, userId: string, lastSeenAt: Date | null): Promise<void> {
+  const now = Date.now();
+  if (lastSeenAt && now - lastSeenAt.getTime() < LAST_SEEN_TOUCH_INTERVAL_MS) return;
+  try {
+    await db.update(users).set({ lastSeenAt: new Date(now) }).where(eq(users.id, userId));
+  } catch (e) {
+    console.error('[auth] last_seen_at 갱신 실패(무시하고 계속)', e);
+  }
 }

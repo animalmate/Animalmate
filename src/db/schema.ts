@@ -107,6 +107,19 @@ export const users = pgTable('users', {
    * 원래 이메일은 남기지 않으므로 같은 주소로 새로 가입할 수 있다(별개의 새 계정).
    */
   withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+  /**
+   * 마지막으로 로그인 상태로 사이트를 쓴 시각. **멤버십 자동 만료의 기준**이다(필수원칙 #2).
+   *
+   * 왜 임기(term_end)가 아니라 이것인가(2026-07-31 개정, 07-DECISIONS 82): 학기마다 임기를 다시
+   * 박으려면 사람이 매 학기 연장해 줘야 하는데, 그 화면이 없으면 **아무도 손대지 않은 채 전원이
+   * 동시에 강등된다**(실제로 회장단·시스템관리자 2계정이 그 상태였다). 활동을 기준으로 삼으면
+   * 쓰는 사람은 자동으로 갱신되고, 안 쓰는 사람만 조용히 정리된다 — 사람 손이 필요 없다.
+   *
+   * 갱신은 `loadActor` 가 한다(로그인 상태의 모든 요청이 지나는 길목). 요청마다 쓰지 않고
+   * 하루 지났을 때만 쓴다 — 이 값의 해상도는 '일' 이면 충분하고, 그 길목에 매번 UPDATE 를
+   * 얹으면 모든 화면이 느려진다.
+   */
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
