@@ -97,9 +97,16 @@ export const RULES = {
    * 여기 남은 목적은 자동화 도배뿐이라, 사람 속도(10분에 30건 = 분당 3건)면 충분히 좁다.
    */
   recruitApply: { bucket: 'recruit_apply', windowSeconds: 600, max: 30 },
-  /** F9 신입 모집 비로그인 지원자 조회 - 무차별 대입 방지 (분당 5회) */
+  /** F9 신입 모집 비로그인 지원자 조회 — **총량**(IP 단위, 분당 5회). 쏟아지는 요청 자체를 막는다. */
   recruitLookup: { bucket: 'recruit_lookup', windowSeconds: 60, max: 5 },
-  /** F9 신입 모집 비로그인 지원자 조회 - 실패 10회 시 1시간 차단 */
+  /**
+   * F9 결과 조회 **열거 방지** — 식별자는 IP 가 아니라 **조회 대상(이름)의 HMAC**이다
+   * (2026-07-31, 결정 80. 키 생성은 `src/recruit/lookup-key.ts`).
+   *
+   * 열거 공격은 "특정인의 전화번호를 맞히는" 일이라 대상 단위로 세는 것이 맞다 —
+   * IP 를 바꿔 가며 한 사람을 노려도 한 통에 모여 막히고(IP 기준보다 강하다),
+   * 발표 직후 한 공인 IP 뒤 수십 명이 서로의 예산을 깎지도 않는다.
+   */
   recruitLookupFail: { bucket: 'recruit_lookup_fail', windowSeconds: 3600, max: 10 },
 } as const satisfies Record<string, LimitRule>;
 

@@ -2,10 +2,12 @@ import 'dotenv/config';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, like } from 'drizzle-orm';
 import * as schema from '@/db/schema';
-import { users, recruitCohorts, recruitApplicants } from '@/db/schema';
+import { users, recruitCohorts, recruitApplicants, rateLimits } from '@/db/schema';
+import { RULES } from '@/http/rate-limit';
 import { lookupApplicantResult } from '@/recruit/lookup';
+import { lookupFailKey } from '@/recruit/lookup-key';
 import { findApplicantInCohort } from '@/recruit/applicants';
 import { TEST_DATABASE_URL } from './db-url';
 
@@ -17,9 +19,20 @@ const EMAIL = 'qa-public@example.invalid';
 const NAME = 'QA재지원자';
 const PHONE = '01055556666';
 
-// 조회는 IP 당 분당 5회다. 테스트마다 IP 를 달리해 서로의 한도를 깎지 않게 한다.
+// 조회 **총량**은 IP 당 분당 5회다. 호출마다 다른 값을 줘 서로의 한도를 깎지 않게 한다.
+//
+// ⚠ 예전엔 `10.99.${++ipSeq}.1` 이었는데, ipSeq 는 **프로세스마다 1부터 다시 시작**한다 —
+// 즉 실행이 바뀌어도 같은 값이 그대로 재사용됐다. 그래서 카운터가 실행을 건너뛰며 쌓였고,
+// 2026-07-31 QA 때 테스트 DB 에서 `10.99.3.1` 의 실패 카운터가 **10 중 9까지** 차 있었다
+// (한 번만 더 돌렸으면 이유 없이 429 로 깨졌다). 실행마다 다른 값을 쓰고 끝에 지운다.
+// 실제 IP 형식일 필요는 없다 — 레이트 리밋 식별자 문자열일 뿐이다.
+const RUN_TAG = `qa-lookup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 let ipSeq = 0;
-const nextIp = () => `10.99.${++ipSeq}.1`;
+const nextIp = () => `${RUN_TAG}-${++ipSeq}`;
+
+/** 이 테스트가 조회에 쓰는 이름 전부 — 실패 카운터 정리 대상. */
+const LOOKUP_NAMES = [NAME, '없는사람'];
+const SECRET = process.env.SESSION_SECRET ?? '';
 
 suite('공개 접수·조회 (실 DB)', () => {
   let sql: ReturnType<typeof postgres>;
@@ -32,6 +45,19 @@ suite('공개 접수·조회 (실 DB)', () => {
     const cs = await db.select({ id: recruitCohorts.id }).from(recruitCohorts).where(inArray(recruitCohorts.label, [OLD_LABEL, NEW_LABEL]));
     for (const c of cs) await db.delete(recruitCohorts).where(eq(recruitCohorts.id, c.id)); // applicants cascade
     await db.delete(users).where(eq(users.email, EMAIL));
+
+    // 실패 카운터는 **이름**으로 묶인다(결정 80). IP 를 매번 바꾸는 것으로는 더 이상 초기화되지
+    // 않으므로, 이 테스트가 만든 카운터는 이 테스트가 지운다. 안 지우면 조회에 실패하는 이름
+    // ('없는사람')이 실행마다 1씩 쌓여, 같은 1시간 안에 열 번쯤 돌린 뒤부터 null 대신
+    // RateLimitError 가 나서 **테스트가 이유 없이 깨진 것처럼 보인다.**
+    const keys = LOOKUP_NAMES.map((n) => lookupFailKey(n, SECRET));
+    await db
+      .delete(rateLimits)
+      .where(and(eq(rateLimits.bucket, RULES.recruitLookupFail.bucket), inArray(rateLimits.identifier, keys)));
+    // 총량 카운터도 이 실행 몫만 지운다(RUN_TAG 접두사). 안 지우면 실행마다 행이 쌓인다.
+    await db
+      .delete(rateLimits)
+      .where(and(eq(rateLimits.bucket, RULES.recruitLookup.bucket), like(rateLimits.identifier, `${RUN_TAG}%`)));
   }
 
   beforeAll(async () => {

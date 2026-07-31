@@ -50,6 +50,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: gemini-3.1-flash-lite
           GEMINI_EMBEDDING_MODEL: gemini-embedding-2
+          # 결과 조회 실패 카운터가 이름을 HMAC 으로 묶는 데 쓴다(결정 80). **비밀이 아니다** —
+          # 여기서는 카운터 식별자를 만드는 용도뿐이라 값이 무엇이든 상관없고, 다만
+          # 없으면 lookup-key 가 하드 실패한다(키 없이 해시하면 이름이 되돌아가므로 일부러 던진다).
+          # 운영 SESSION_SECRET 을 여기에 넣지 말 것 — 세션 위조에 쓰이는 값이다.
+          SESSION_SECRET: ci-dummy-not-a-real-secret
 
   # ── ② RLS 기본 거부 증명 (대상: **운영 DB**) ────────────────────────────────
   # 이 잡만 운영을 본다. 증명해야 할 대상이 운영의 RLS 이기 때문이다 — 테스트 DB 에서 통과해도
