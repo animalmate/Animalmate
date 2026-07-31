@@ -23,6 +23,17 @@ export function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // onClose 는 호출부에서 인라인 화살표(`onClose={() => setX(null)}`)로 넘어온다 = 렌더마다 새 함수다.
+  // 이걸 아래 effect 의 의존성에 두면 **부모가 리렌더될 때마다 정리 → 재실행**이 돌고, 재실행이
+  // 초점을 팝업 첫 요소(헤더의 닫기 버튼)로 끌어간다. 그래서 팝업 안 입력창에 한 글자를 칠 때마다
+  // 초점이 튀어 더 입력할 수 없었다 — 한글은 조합 중이던 자모가 그대로 확정된다("ㅌ" 만 남는다).
+  // 탈퇴 확인창 2곳(`/admin/members`, `/profile`)이 이것 때문에 아예 쓸 수 없었다(2026-07-31).
+  // 최신 함수는 ref 로 들고, effect 는 **열릴 때·닫힐 때 한 번씩만** 돈다.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     // 열기 직전에 어디 있었는지 기억해 두고, 닫을 때 그 자리로 초점을 돌려준다.
     // 이게 없으면 팝업을 닫은 뒤 초점이 <body> 로 떨어져, 키보드 사용자는 페이지 맨 위부터
@@ -31,7 +42,7 @@ export function Modal({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       // 초점 가두기: aria-modal 은 보조기기에만 "뒤는 없는 셈 치라"고 알릴 뿐,
@@ -68,7 +79,8 @@ export function Modal({
       document.body.style.overflow = prevOverflow;
       opener?.focus?.();
     };
-  }, [onClose]);
+    // 의존성 없음이 의도다 — 위 주석 참고. onClose 는 onCloseRef 로 최신 값을 읽는다.
+  }, []);
 
   return (
     <div
