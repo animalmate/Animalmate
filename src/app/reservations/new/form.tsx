@@ -335,7 +335,7 @@ export function NewReservationForm() {
                 ) : null}
                 <div className="w-32">
                   <Field label="업로드 시각">
-                    <TimeSelect value={r.publishTime} onChange={(v) => setRow(i, 'publishTime', v)} />
+                    <TimeSelect value={r.publishTime} onChange={(v) => setRow(i, 'publishTime', v)} warnEarlyMorning />
                   </Field>
                 </div>
                 {kind === 'volunteer' ? (

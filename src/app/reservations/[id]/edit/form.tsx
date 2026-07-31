@@ -125,7 +125,7 @@ export function EditReservationForm({ id }: { id: string }) {
             <Input type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} />
           </Field>
           <Field label="업로드 시각">
-            <TimeSelect value={publishTime} onChange={setPublishTime} />
+            <TimeSelect value={publishTime} onChange={setPublishTime} warnEarlyMorning />
           </Field>
         </div>
         {hasEvent ? (

@@ -216,7 +216,7 @@ export function TemplatesPanel({ isBoard = false }: { isBoard?: boolean }) {
               <TimeSelect value={defaultMeetTime} onChange={setDefaultMeetTime} />
             </Field>
             <Field label="업로드 시각" hint="봉사 며칠 전에 올릴지는 예약에서 날짜로 고릅니다">
-              <TimeSelect value={defaultPublishTime} onChange={setDefaultPublishTime} />
+              <TimeSelect value={defaultPublishTime} onChange={setDefaultPublishTime} warnEarlyMorning />
             </Field>
           </div>
         </div>
