@@ -89,12 +89,24 @@ export function ConsoleNav({ role }: { role: string }) {
 
   return (
     <header className="relative border-b border-ink-200 bg-white">
-      <div className="mx-auto flex h-[60px] max-w-[1120px] items-center gap-2 px-3 sm:px-4">
+      {/* 헤더만 본문(1120)보다 넓게 쓴다. 회장단은 메뉴가 10개라 1120 안에 들어가지 않아서,
+          좁히면 마지막 메뉴(챗봇설정)가 넓은 화면에서도 잘린다. 본문과 나란히 맞추는 것보다
+          메뉴가 다 보이는 편이 낫다 — 로고·본문 시작선은 원래도 정확히 맞지 않았다. */}
+      <div className="mx-auto flex h-[60px] max-w-[1400px] items-center gap-2 px-3 sm:px-4">
         <a href="/" className="flex items-center gap-2 no-underline shrink-0 mr-1">
           <img src="/logo.png" alt="애니멀메이트" className="h-8 w-8 rounded-full" />
           <strong className="text-[17px] font-bold text-ink-900 hidden sm:inline">애니멀메이트</strong>
         </a>
-        {menus.length > 0 ? <nav className="hidden gap-0.5 md:flex shrink-0 overflow-x-auto">{menus.map((m) => link(m))}</nav> : null}
+        {/* 메뉴 줄은 **줄어들 수 있어야** 한다. `shrink-0` 이면 아무리 좁아도 제 너비를 고집해서
+            헤더가 화면을 넘고, 그러면 오른쪽 끝의 `로그아웃` 이 잘린 채 페이지에 가로 스크롤이 생긴다
+            (2026-07-31 QA: 회장단 계정 기준 1280px 에서 56px, 1366px 에서 13px 초과 — 노트북에서 흔한 폭이다.
+            메뉴가 10개인 회장단만 넘치므로 그동안 안 보였다). `overflow-x-auto` 는 원래 이걸 대비해
+            적혀 있었는데 `shrink-0` 이 함께 있어 한 번도 작동하지 않았다 — 줄어들 수 있어야 안에서 스크롤된다. */}
+        {menus.length > 0 ? (
+          <nav className="hidden min-w-0 gap-0.5 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {menus.map((m) => link(m))}
+          </nav>
+        ) : null}
         <span className="flex-1 min-w-[8px]" />
         <div className="hidden sm:block shrink-0">
           <RoleBadge role={role} />
