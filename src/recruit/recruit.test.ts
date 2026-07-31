@@ -4,6 +4,7 @@ import {
   canConfirmDoc,
   canConfirmFinal,
   canTransition,
+  canMarkAttendance,
 } from './status';
 import { parseCsv, mapRowToApplicant, detectDuplicates } from './csv';
 // scores.ts 가 아니라 score-rules.ts 에서 가져온다 — scores.ts 는 db/client 를 import 하므로
@@ -264,5 +265,37 @@ describe('실전 규모 집계(50명) — 누락·표본 부족 판정', () => {
       }))
     );
     expect(rounded['solo']!.interviewScoreAvg).toBe(7.7);
+  });
+});
+
+// 면접 출결 — **운영진이 쓰는 경로**의 권한 경계.
+// 합격 여부 결정은 회장단 몫이라 bulk_status·update_status 는 회장단 전용으로 막혀 있다.
+// 출결로 그 문을 우회할 수 있으면 그 게이트가 무의미해진다(2026-07-31 QA 에서 실제로 열려 있었다).
+describe('canMarkAttendance (운영진 출결 경로의 경계)', () => {
+  it('면접 단계 지원자만 불참으로 표시할 수 있다', () => {
+    expect(canMarkAttendance('doc_pass', true)).toBe(true);
+    expect(canMarkAttendance('interview_done', true)).toBe(true);
+  });
+
+  it('불참 되돌리기는 불참으로 표시된 사람에게만 열린다', () => {
+    expect(canMarkAttendance('interview_noshow', false)).toBe(true);
+  });
+
+  it('**received 를 doc_pass 로 올릴 수 없다** — 그건 회장단의 서류 합격 확정이다', () => {
+    // canTransition 은 이 전이를 허용한다(서류 확정의 정상 경로라서). 출결 경로는 달라야 한다.
+    expect(canTransition('received', 'doc_pass')).toBe(true);
+    expect(canMarkAttendance('received', false)).toBe(false);
+  });
+
+  it('최종 확정된 지원자는 출결로 건드릴 수 없다', () => {
+    for (const s of ['final_pass', 'final_fail'] as const) {
+      expect(canMarkAttendance(s, true)).toBe(false);
+      expect(canMarkAttendance(s, false)).toBe(false);
+    }
+  });
+
+  it('서류 불합격자를 출결로 되살릴 수 없다', () => {
+    expect(canMarkAttendance('doc_fail', false)).toBe(false);
+    expect(canMarkAttendance('doc_fail', true)).toBe(false);
   });
 });

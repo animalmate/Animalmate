@@ -43,6 +43,23 @@ export function canConfirmFinal(status: RecruitStatus): boolean {
 }
 
 /**
+ * 면접 출결(불참) 표시가 가능한가 — **운영진이 쓰는 경로**라 일반 전이 규칙보다 좁아야 한다.
+ *
+ * 왜 canTransition 으로는 부족한가: 불참 취소(noshow=false)의 도착지가 `doc_pass` 인데,
+ * canTransition 은 `received → doc_pass` 도 허용한다 — 그게 **서류 합격 확정**의 정상 경로다.
+ * 그래서 출결 API 에 canTransition 만 걸면, 운영진이 아직 심사도 안 된 지원자를 서류 합격으로
+ * 올릴 수 있다. 합격 여부 결정은 회장단 몫이고(09-RECRUIT-DESIGN §4), 그래서 `bulk_status`·
+ * `update_status` 는 회장단 전용으로 막혀 있다 — 출결로 그 문을 우회할 수 있으면 의미가 없다.
+ * (2026-07-31 QA 에서 발견. 화면에서 도달할 수 없다는 것은 방어가 아니다 — 규칙 #6.)
+ *
+ * 출결은 "면접에 왔는가"라는 **사실의 기록**이므로 면접 단계에 있는 사람에게만 연다.
+ * 되돌리기는 불참으로 표시된 사람에게만 — 그래야 되돌아갈 자리가 원래 자리(면접 전)다.
+ */
+export function canMarkAttendance(from: RecruitStatus, noshow: boolean): boolean {
+  return noshow ? from === 'doc_pass' || from === 'interview_done' : from === 'interview_noshow';
+}
+
+/**
  * 회장단이 수동으로 지정할 수 있는 상태 전이인지 판정한다(09-RECRUIT-DESIGN §3).
  *
  * 왜 필요한가: 위 가드 두 개는 정의만 있고 아무 데서도 호출되지 않아서, 서버가 상태 전이를

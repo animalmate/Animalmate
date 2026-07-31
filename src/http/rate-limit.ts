@@ -85,8 +85,18 @@ export const RULES = {
    * 가입 여부와 무관하게 같은 지점에서 적용해야 리밋 자체가 열거 신호가 되지 않는다.
    */
   mailToAddress: { bucket: 'mail_to_address', windowSeconds: 3600, max: 5 },
-  /** F9 신입 모집 비로그인 지원서 제출 - 도배 및 디도스 방지 (10분 5회) */
-  recruitApply: { bucket: 'recruit_apply', windowSeconds: 600, max: 5 },
+  /**
+   * F9 신입 모집 비로그인 지원서 제출 — 도배·디도스 방지.
+   *
+   * 여기도 **한 IP 뒤에 여러 명이 있는 것이 정상**이다(가입과 같은 이유 — 학교 WiFi·통신사 CGNAT).
+   * 모집 기간에 지원자가 한 IP 뒤에서 몰리면 예전 값(10분 5회)은 6번째부터 막았고,
+   * 그 사람은 **지원 자체를 못 한다**(가입과 달리 되돌아올 이유도 없는 사람이다).
+   *
+   * 값을 올려도 중복 지원은 늘지 않는다 — 실제 중복 방어는 IP 가 아니라 **이름+전화 409**
+   * (같은 기수 내 동일인 차단)이고, 모든 필드에 길이 상한이 걸려 있어 용량 공격도 막혀 있다.
+   * 여기 남은 목적은 자동화 도배뿐이라, 사람 속도(10분에 30건 = 분당 3건)면 충분히 좁다.
+   */
+  recruitApply: { bucket: 'recruit_apply', windowSeconds: 600, max: 30 },
   /** F9 신입 모집 비로그인 지원자 조회 - 무차별 대입 방지 (분당 5회) */
   recruitLookup: { bucket: 'recruit_lookup', windowSeconds: 60, max: 5 },
   /** F9 신입 모집 비로그인 지원자 조회 - 실패 10회 시 1시간 차단 */

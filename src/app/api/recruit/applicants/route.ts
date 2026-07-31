@@ -13,7 +13,7 @@ import {
   updateApplicantTeam,
   bulkUpdateApplicantTeam,
 } from '@/recruit/applicants';
-import { canTransition, type RecruitStatus } from '@/recruit/status';
+import { canTransition, canMarkAttendance, type RecruitStatus } from '@/recruit/status';
 import { internalError } from '@/http/errors';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { db } from '@/db/client';
@@ -134,6 +134,20 @@ export async function PATCH(req: Request): Promise<Response> {
       if (!target) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
       const next: RecruitStatus = body.noshow ? 'interview_noshow' : 'doc_pass';
+      // ⚠ 여기서 canTransition 만 믿으면 안 된다. 불참 취소의 도착지가 doc_pass 라
+      // `received → doc_pass`(= 서류 합격 확정, 회장단 권한)가 이 운영진 경로로 열린다.
+      // canMarkAttendance 가 출결에 허용된 출발 상태를 따로 못 박는다(2026-07-31 QA).
+      if (!canMarkAttendance(target.status as RecruitStatus, body.noshow)) {
+        return NextResponse.json(
+          {
+            error: 'invalid_transition',
+            message: body.noshow
+              ? '면접 단계 지원자만 불참으로 표시할 수 있습니다.'
+              : '불참으로 표시된 지원자만 되돌릴 수 있습니다.',
+          },
+          { status: 409 }
+        );
+      }
       if (!canTransition(target.status as RecruitStatus, next)) {
         return NextResponse.json(
           {
