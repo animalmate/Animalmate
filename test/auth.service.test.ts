@@ -6,7 +6,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { joinCodes, emailCodes, users, memberships, auditLogs } from '@/db/schema';
-import { issueJoinCode, validateJoinCode, getActiveJoinCode } from '@/auth/join-codes';
+import { issueJoinCode, validateJoinCode, getActiveJoinCode, DuplicateJoinCodeError } from '@/auth/join-codes';
 import {
   requestSignup,
   verifySignup,
@@ -28,7 +28,7 @@ const FRESH_EMAIL = 'fresh-enum@example.invalid';
 const COOLDOWN_EMAIL = 'cooldown-enum@example.invalid';
 const ALL_TEST_EMAILS = [ADMIN_EMAIL, NEW_EMAIL, FRESH_EMAIL, COOLDOWN_EMAIL];
 // 이 테스트가 발급하는 가입코드. 정리는 반드시 이 목록으로만 한정한다(실제 코드 삭제 사고 방지).
-const TEST_JOIN_CODES = ['FIRSTAAA', 'SECONDBB'];
+const TEST_JOIN_CODES = ['FIRSTAAA', 'SECONDBB', 'DUPTEST1'];
 
 function captureMailer(): { mailer: Mailer; sent: OtpMail[]; plain: { to: string | string[]; subject: string }[] } {
   const sent: OtpMail[] = [];
@@ -102,6 +102,26 @@ suite('인증 — 가입코드 + 이메일 OTP', () => {
     expect(await validateJoinCode(db, 'SECONDBB')).toBe(true);
     expect(await validateJoinCode(db, 'FIRSTAAA')).toBe(false); // 이전 코드 비활성
     expect(first.id).not.toBe(second.id);
+  });
+
+  // 2026-07-31 실제 사고: 지난 학기 코드를 그대로 다시 넣었더니 code UNIQUE 위반이 라우트 catch 를
+  // 빠져나가 500 이 됐고, 화면에는 "오류가 발생했어요" 만 떴다. 가입이 막힌 채로 원인을 알 수 없었다.
+  it('이미 쓰인 코드로 발급하면 이유를 말해 주고, 기존 활성 코드는 그대로 산다', async () => {
+    const before = await issueJoinCode(db, board, { semesterLabel: '2026-2', code: 'DUPTEST1' });
+
+    await expect(issueJoinCode(db, board, { semesterLabel: '2026-3', code: 'DUPTEST1' })).rejects.toBeInstanceOf(
+      DuplicateJoinCodeError
+    );
+
+    // 실패한 발급이 기존 코드를 비활성으로 남겨 두면 가입이 조용히 막힌다 — 롤백을 확인한다.
+    const active = await getActiveJoinCode(db);
+    expect(active!.id).toBe(before.id);
+    expect(await validateJoinCode(db, 'DUPTEST1')).toBe(true);
+
+    // 뒤 테스트들은 SECONDBB 가 활성인 상태를 전제한다. 활성 코드는 항상 1개(부분 유니크 인덱스)라
+    // 먼저 내리고 올린다 — 순서를 바꾸면 인덱스 위반으로 깨진다.
+    await db.update(joinCodes).set({ isActive: false }).where(eq(joinCodes.code, 'DUPTEST1'));
+    await db.update(joinCodes).set({ isActive: true }).where(eq(joinCodes.code, 'SECONDBB'));
   });
 
   it('잘못된 가입코드로 requestSignup → invalid_join_code', async () => {

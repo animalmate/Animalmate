@@ -76,6 +76,7 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     bad_menuid: 'menuid 는 1 이상의 정수여야 합니다.',
     bad_owner_type: '올바르지 않은 소유 구분입니다.',
     invalid_join_code_format: '가입코드는 6자 이상의 영문 대문자와 숫자로만 만들 수 있습니다.',
+    duplicate_join_code: '이미 쓰인 가입코드예요. 다른 코드를 넣거나, 코드 칸을 비워 자동 생성하세요.',
     embed_failed: '문서 색인(임베딩)에 실패했어요. 잠시 후 다시 시도하고, 계속되면 개발자에게 문의해 주세요(서버 설정 확인 필요).',
     bad_visibility: '공개 범위가 올바르지 않아요.',
     bad_phone: '전화번호 형식이 올바르지 않아요. 예: 010-1234-5678',

@@ -32,6 +32,23 @@ export class InvalidJoinCodeError extends Error {
   }
 }
 
+// 이미 한 번 쓰인 코드 값으로 다시 발급하려 할 때. 코드는 `code` 컬럼이 UNIQUE 라서
+// 그냥 INSERT 하면 드라이버의 23505 가 라우트 catch 를 그대로 빠져나가 500 으로 나갔고,
+// 화면에는 "오류가 발생했어요" 만 떠서 무엇이 잘못됐는지 알 수 없었다(2026-07-31 실제 발생).
+export class DuplicateJoinCodeError extends Error {
+  readonly status = 409;
+  constructor() {
+    super('이미 쓰인 가입코드입니다. 다른 코드를 넣거나, 코드 칸을 비워 자동 생성하세요.');
+    this.name = 'DuplicateJoinCodeError';
+  }
+}
+
+/** postgres 드라이버 오류가 join_codes.code 의 unique 위반인지. 순수 판별(테스트 가능). */
+export function isDuplicateCodeError(e: unknown): boolean {
+  const err = e as { code?: unknown; constraint_name?: unknown } | null;
+  return err?.code === '23505' && err?.constraint_name === 'join_codes_code_unique';
+}
+
 /** 직접 지정한 가입코드를 정규화(대문자·공백 제거)하고 형식을 강제한다. */
 export function normalizeJoinCode(raw: string): string {
   const code = raw.trim().toUpperCase();
@@ -62,14 +79,27 @@ export async function issueJoinCode(db: Db, actor: Actor, args: IssueArgs): Prom
   const code = args.code ? normalizeJoinCode(args.code) : generateJoinCode();
 
   return db.transaction(async (tx) => {
+    // 직접 넣은 코드가 이미 쓰인 값이면 여기서 멈춘다. 지난 학기 코드를 그대로 다시 넣는 건
+    // 흔한 조작이라, 실패했을 때 이유를 말해 줘야 한다.
+    if (args.code) {
+      const [dup] = await tx.select({ id: joinCodes.id }).from(joinCodes).where(eq(joinCodes.code, code)).limit(1);
+      if (dup) throw new DuplicateJoinCodeError();
+    }
+
     const prev = await getActiveJoinCode(tx);
     if (prev) {
       await tx.update(joinCodes).set({ isActive: false }).where(eq(joinCodes.id, prev.id));
     }
-    const [row] = await tx
+    const inserted = await tx
       .insert(joinCodes)
       .values({ code, semesterLabel: args.semesterLabel, isActive: true, createdBy: actor.userId })
-      .returning();
+      .returning()
+      .catch((e: unknown) => {
+        // 위 검사와 INSERT 사이의 경쟁(동시 발급). 사용자에게는 같은 이야기다.
+        if (isDuplicateCodeError(e)) throw new DuplicateJoinCodeError();
+        throw e;
+      });
+    const [row] = inserted;
     await recordAudit(
       tx,
       buildAuditEntry({

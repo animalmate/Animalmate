@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { issueJoinCode, getActiveJoinCode, InvalidJoinCodeError } from '@/auth/join-codes';
+import { issueJoinCode, getActiveJoinCode, InvalidJoinCodeError, DuplicateJoinCodeError } from '@/auth/join-codes';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
 import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
@@ -33,6 +33,7 @@ export async function POST(req: Request): Promise<Response> {
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof InvalidJoinCodeError) return NextResponse.json({ error: 'invalid_join_code_format', message: e.message }, { status: 400 });
+    if (e instanceof DuplicateJoinCodeError) return NextResponse.json({ error: 'duplicate_join_code', message: e.message }, { status: 409 });
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
     return internalError('POST /api/admin/join-codes', e);
   }
