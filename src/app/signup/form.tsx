@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiPost, errorMessage } from '@/lib/api';
+import { apiPost, errorMessage, waitMessage } from '@/lib/api';
 import { useCooldown } from '@/lib/use-cooldown';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton } from '@/components/ui';
 import { CursorDog } from '@/components/cursor-dog';
@@ -27,9 +27,11 @@ export function SignupForm() {
     const r = await apiPost('/api/auth/signup/request', { email: email.trim(), joinCode: joinCode.trim() });
     setBusy(false);
     if (r.status === 429) {
+      // 리밋에 걸리면 **메일이 나가지 않는다.** 예전에는 여기서 코드 입력 단계로 넘겼는데,
+      // 그러면 오지 않을 코드를 기다리며 빈 화면을 보게 된다. 단계는 그대로 두고 대기 시간을 알린다.
+      // (재전송 버튼은 쿨다운으로 잠가 둔다 — 눌러도 같은 429 만 돌아온다.)
       cooldown.start(r.data.retryAfter ?? 60);
-      setStep('code');
-      return;
+      return setError(waitMessage(r.data.retryAfter));
     }
     if (!r.ok) return setError(errorMessage(r.data.error));
     setStep('code');

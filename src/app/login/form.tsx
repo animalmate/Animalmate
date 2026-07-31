@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiPost, errorMessage } from '@/lib/api';
+import { apiPost, errorMessage, waitMessage } from '@/lib/api';
 import { useCooldown } from '@/lib/use-cooldown';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton } from '@/components/ui';
 import { CursorDog } from '@/components/cursor-dog';
@@ -21,9 +21,9 @@ export function LoginForm({ contact }: { contact: string | null }) {
     const r = await apiPost('/api/auth/login/request', { email: email.trim() });
     setBusy(false);
     if (r.status === 429) {
+      // 가입 화면과 같은 이유 — 리밋에 걸리면 메일이 나가지 않으므로 코드 단계로 넘기지 않는다.
       cooldown.start(r.data.retryAfter ?? 60);
-      setStep('code');
-      return;
+      return setError(waitMessage(r.data.retryAfter));
     }
     if (!r.ok) return setError(errorMessage(r.data.error));
     setStep('code');

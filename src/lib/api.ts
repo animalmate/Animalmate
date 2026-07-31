@@ -33,6 +33,16 @@ export async function apiGet<T = unknown>(path: string): Promise<ApiResult<T>> {
   return parse<T>(res);
 }
 
+/**
+ * 429 안내 문구 — 얼마나 기다려야 하는지를 **초가 아니라 사람이 읽는 단위**로 말한다.
+ * "잠시 후"라고만 하면 1시간짜리 차단을 몇 초로 오해해 계속 눌러 보게 된다.
+ */
+export function waitMessage(retryAfter: number | undefined): string {
+  const s = Math.max(1, Math.ceil(retryAfter ?? 60));
+  const when = s >= 60 ? `${Math.ceil(s / 60)}분` : `${s}초`;
+  return `시도가 너무 잦아 잠시 막혔어요. ${when} 후에 다시 시도해 주세요.`;
+}
+
 // 서버 에러 코드 → 한국어 메시지.
 export function errorMessage(code: string | undefined, fallback = '오류가 발생했습니다.'): string {
   const map: Record<string, string> = {

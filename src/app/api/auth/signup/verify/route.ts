@@ -17,6 +17,9 @@ export async function POST(req: Request): Promise<Response> {
     // 로그인 검증과 같은 버킷을 공유한다 — 공격자가 가입/로그인을 번갈아 쓰며 상한을 두 배로 쓰지 못하게.
     await consumeRateLimit(db, RULES.otpVerify, ip);
     const { email, code, name, phone, privacyConsent } = await req.json();
+    // 무차별 대입이 노리는 것은 IP 가 아니라 **그 주소의 코드**다. 주소로도 묶어야 IP 를 바꿔
+    // 가며 시도하는 경로가 막히고, 공유 IP 뒤 여러 명이 서로의 예산을 깎지 않는다.
+    await consumeRateLimit(db, RULES.otpVerifyEmail, String(email ?? '').trim().toLowerCase());
     checkLength('이름', name == null ? null : String(name), LIMITS.name);
     // 개인정보 수집·이용 동의는 계정을 만드는 조건이다. 화면에서 체크박스를 비활성화하는 것은
     // 검증이 아니므로(규칙 #6) 여기서도 막는다 — 동의 없이는 계정이 만들어지지 않는다.
@@ -29,6 +32,7 @@ export async function POST(req: Request): Promise<Response> {
       { secret: requireSecret(), mailer: defaultMailer() }
     );
     await resetRateLimit(db, RULES.otpVerify, ip);
+    await resetRateLimit(db, RULES.otpVerifyEmail, String(email ?? '').trim().toLowerCase());
     return jsonWithSession({ ok: true, userId }, token);
   } catch (e) {
     return authErrorResponse(e);

@@ -39,12 +39,38 @@ export interface LimitRule {
  * 정상 사용자는 걸리지 않고 자동화만 걸리는 지점.
  */
 export const RULES = {
-  /** 가입 요청(가입코드 검사 포함) — 코드 대입과 메일 폭탄을 함께 막는 지점. */
-  signupRequest: { bucket: 'signup_request', windowSeconds: 3600, max: 10 },
-  /** 로그인 요청(OTP 발송). */
-  loginRequest: { bucket: 'login_request', windowSeconds: 3600, max: 10 },
-  /** OTP 검증(가입·로그인 공통) — 코드 무차별 대입 방어. */
-  otpVerify: { bucket: 'otp_verify', windowSeconds: 3600, max: 20 },
+  /**
+   * 가입 요청 — **한 IP 뒤에 여러 명이 있는 것이 정상**이라는 전제로 잡는다.
+   *
+   * 동아리 가입은 한자리에 모여서(같은 WiFi) 또는 통신사 CGNAT 를 통해 일어난다 —
+   * 실사용 개시일 저녁에 운영진 수십 명이 같은 공인 IP 로 들어오는 것이 정상 경로다.
+   * 예전 값(시간당 10)은 11번째 사람부터 최대 1시간 차단이라 **가입 자체를 막는 값**이었다.
+   * 여기 남은 목적은 자동화·폭주로부터 DB·메일을 지키는 것뿐이고,
+   * 가입코드 대입 방어는 아래 signupCodeFail(실패만 센다)이 따로 맡는다.
+   */
+  signupRequest: { bucket: 'signup_request', windowSeconds: 3600, max: 60 },
+  /**
+   * 가입코드 **오답**만 센다 — 코드 오라클(무제한 대입) 방어의 본체.
+   *
+   * 요청 전체를 세면 정상 가입자와 공격자가 같은 통을 나눠 쓰게 되어, 둘 중 하나를 포기해야 한다.
+   * 대입 공격은 정의상 *틀린* 코드를 반복하는 것이므로 틀린 시도만 세면 둘 다 만족한다 —
+   * 공격자의 시도 예산은 예전과 같고(시간당 10), 코드를 아는 사람은 아무리 많아도 걸리지 않는다.
+   */
+  signupCodeFail: { bucket: 'signup_code_fail', windowSeconds: 3600, max: 10 },
+  /** 로그인 요청(OTP 발송). 가입과 같은 이유로 IP 를 공유하는 다수를 전제한다. */
+  loginRequest: { bucket: 'login_request', windowSeconds: 3600, max: 60 },
+  /**
+   * OTP 검증 — **IP 단위**는 폭주 차단용으로만 남긴다(공유 IP 뒤 여러 명이 서로를 막지 않게).
+   * 무차별 대입의 실제 방어선은 아래 otpVerifyEmail(주소 단위)이다.
+   */
+  otpVerify: { bucket: 'otp_verify', windowSeconds: 3600, max: 60 },
+  /**
+   * OTP 검증 — **주소 단위**. 무차별 대입이 노리는 것은 IP 가 아니라 특정 주소의 코드이므로,
+   * 대상 주소로 묶어야 IP 를 바꿔 가며 시도하는 경로까지 막힌다.
+   * 한 주소가 받을 수 있는 코드 자체가 시간당 5개(mailToAddress)라, 20회면 코드당 4회 —
+   * 코드당 5회 제한(otp.ts)과 맞물려 실질 상한이 된다. 10^6 조합에 견줘 무의미한 수준.
+   */
+  otpVerifyEmail: { bucket: 'otp_verify_email', windowSeconds: 3600, max: 20 },
   /**
    * 수신 주소 기준 발송 상한(IP 가 아니라 **이메일**로 센다).
    * 가입 응답을 통일한 뒤로는 기가입 주소에도 안내 메일이 나가므로, IP 를 바꿔 가며
