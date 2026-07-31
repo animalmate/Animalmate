@@ -5,6 +5,8 @@ import { Icon } from '@/components/icon';
 import { CursorDog } from '@/components/cursor-dog';
 import { ChatDog } from '@/components/chat-dog';
 import { isStaffPlus, isPrivileged } from '@/auth/permissions';
+import { getDriveUrl } from '@/org/links';
+import { db } from '@/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,23 +61,24 @@ interface ExternalLink extends Shortcut {
   tone: 'cafe' | 'drive';
   staffOnly?: boolean;
 }
-const EXTERNAL_LINKS: ExternalLink[] = [
-  {
-    href: 'https://cafe.naver.com/animalmate2010',
-    label: '네이버 카페',
-    desc: '봉사 신청·공지·소식',
-    icon: 'megaphone',
-    tone: 'cafe',
-  },
-  {
-    href: 'https://drive.google.com/drive/folders/1Te4G2gOLGEmvj8Zie3t7PvFExSAeyuJP?usp=drive_link',
-    label: '구글 드라이브',
-    desc: '운영 자료·문서 보관함',
-    icon: 'layers',
-    tone: 'drive',
-    staffOnly: true, // 부원 비공개
-  },
-];
+// 카페 주소는 동아리와 함께 고정이라 코드에 둔다. **드라이브는 기수마다 바뀌므로** 설정값으로
+// 뺐다(회장단 체크리스트 화면에서 지정 — 07-DECISIONS 83). 값이 없으면 카드를 아예 그리지 않는다:
+// 죽은 링크를 보여 주는 것보다 없는 편이 낫다.
+const CAFE_LINK: ExternalLink = {
+  href: 'https://cafe.naver.com/animalmate2010',
+  label: '네이버 카페',
+  desc: '봉사 신청·공지·소식',
+  icon: 'megaphone',
+  tone: 'cafe',
+};
+const driveLink = (href: string): ExternalLink => ({
+  href,
+  label: '구글 드라이브',
+  desc: '운영 자료·문서 보관함',
+  icon: 'layers',
+  tone: 'drive',
+  staffOnly: true, // 부원 비공개
+});
 // 톤별 색(브랜드 팔레트). 카페=초록(네이버), 드라이브=앰버 — 내부 파랑 바로가기와 시각적으로 구분.
 const TONE: Record<ExternalLink['tone'], { chip: string; hover: string }> = {
   cafe: { chip: 'bg-success-100 text-success', hover: 'hover:border-success' },
@@ -91,7 +94,9 @@ export default async function HomePage() {
     ...(staff ? [board ? RECRUIT_BOARD : RECRUIT_STAFF, RECRUIT_NOTICE_PUBLIC] : []),
     ...(board ? BOARD_SHORTCUTS : []),
   ];
-  const externals = EXTERNAL_LINKS.filter((l) => !l.staffOnly || staff); // 부원은 드라이브 제외
+  // 드라이브는 **운영진 이상 + 주소가 설정돼 있을 때만** 조회한다(부원에겐 조회조차 하지 않는다).
+  const driveUrl = staff ? await getDriveUrl(db) : null;
+  const externals = [CAFE_LINK, ...(driveUrl ? [driveLink(driveUrl)] : [])].filter((l) => !l.staffOnly || staff);
   const name = actor.name?.trim() || '회원'; // loadActor 가 이미 읽어 온 값 — users 재조회 없음
 
   return (
