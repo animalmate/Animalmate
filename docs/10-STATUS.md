@@ -228,7 +228,6 @@
 | `/templates` | 발행 양식 |
 | `/admin/recruit/screening` | 서류 심사(채점) |
 | `/admin/recruit/interview/console` | 면접 당일 콘솔 |
-| `/admin/recruit/notice-edit` | 모집 공고 설정(필드 단위로 회장단 전용 항목 분리) |
 
 **회장단·시스템관리자 (board+, `requireBoard`)**
 
@@ -244,6 +243,7 @@
 | `/admin/recruit/tally` | 서류 집계·확정 |
 | `/admin/recruit/interview/assign` | 면접 배정·시간표·대기실 배정표 |
 | `/admin/recruit/final` | 최종 결정·공개 스위치·데이터 폐기 |
+| `/admin/recruit/notice-edit` | 모집 공고 설정(2026-07-31 회장단 전용으로 좁힘 — 결정 66) |
 
 **API**: 라우트 44개(`/api/**`). 인증 6, 관리자 6, 모집 17, 예약·템플릿·게시판 9, 문서·챗봇 4, 크론 2.
 모든 쓰기는 서버에서 역할·소유권을 재검증한다(UI 숨김은 권한이 아니다 — 규칙 #6).

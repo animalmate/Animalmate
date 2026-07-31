@@ -11,8 +11,11 @@ import { DEFAULT_APPLY_FORM, resolveApplyForm, type ApplyFormConfig } from '@/re
 import { ApplyFormEditor } from './apply-form-editor';
 
 export function RecruitNoticeEditPanel({ role }: { role: Role }) {
-  // 홍보팀(운영진)은 공고 본문·포스터·지원서 문항까지. 마감 스위치와 합격자 안내문처럼
-  // 지원자에게 직접 효력이 가는 값은 회장단만 바꾼다. 서버도 같은 기준으로 막는다(규칙 #6).
+  // ⚠ 이 화면은 **회장단 전용**이다(2026-07-31, 결정 66 — page.tsx 의 requireBoard).
+  //    따라서 아래 canManage 는 지금 **항상 true** 이고, `canManage ? ... : ...` 의 else 쪽은
+  //    실행되지 않는다. 지우지 않고 남겨 둔 이유: 홍보팀(운영진)에게 공고 작성만 다시 열기로 하면
+  //    필요한 것이 정확히 이 필드 단위 구분이기 때문이다(결정 31 이 그 설계였다).
+  //    **살아 있는 권한 검사로 오해하지 말 것** — 진짜 게이트는 page.tsx 와 API 라우트에 있다.
   const canManage = isPrivileged(role);
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
@@ -305,7 +308,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (홍보팀·회장단)</h1>
+            <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (회장단)</h1>
             <HelpButton screen="recruit-notice" />
           </div>
           <p className="mt-1 text-sm text-ink-500">

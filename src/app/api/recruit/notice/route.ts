@@ -93,8 +93,10 @@ function sameValue(a: unknown, b: unknown): boolean {
 export async function POST(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isStaffPlus(actor.role)) {
-    return NextResponse.json({ error: 'forbidden', message: '모집 공고 설정은 운영진 이상만 변경할 수 있습니다.' }, { status: 403 });
+  // 회장단 전용(2026-07-31, 결정 66). 화면(page.tsx)만 좁히고 여기를 두면 URL 로 그대로 저장된다 —
+  // UI 를 숨기는 것은 권한 검사가 아니다(규칙 #6).
+  if (!isPrivileged(actor.role)) {
+    return NextResponse.json({ error: 'forbidden', message: '모집 공고 설정은 회장단만 변경할 수 있습니다.' }, { status: 403 });
   }
 
   try {
@@ -132,6 +134,10 @@ export async function POST(req: Request): Promise<Response> {
     const before = await getCohortById(cohortId);
     if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
+    // ⚠ 아래 블록은 **지금 실행되지 않는다** — 위 게이트가 회장단만 통과시키므로 여기 오는
+    //    actor 는 전부 isPrivileged 다(2026-07-31, 결정 66). 지우지 않은 이유는 홍보팀에게
+    //    공고 작성만 다시 열기로 하면 필요한 것이 정확히 이 필드 단위 구분이기 때문이다.
+    //    **살아 있는 방어선으로 세지 말 것** — 지금 막고 있는 것은 위의 isPrivileged 한 줄이다.
     if (!isPrivileged(actor.role)) {
       // venues 는 GET 이 기본값을 채워 내려보내므로(DB 는 null) 비교도 같은 기준으로 해야 한다.
       const beforeValue = (key: string): unknown =>
