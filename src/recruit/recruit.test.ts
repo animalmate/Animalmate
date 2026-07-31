@@ -146,6 +146,18 @@ describe('수동 상태 전이 가드', () => {
     expect(canTransition('received', 'interview_noshow')).toBe(false);
   });
 
+  // 불참은 면접관이 현장에서 누르는 표시라 잘못 누를 수 있다. 되돌릴 수 없으면 그때마다
+  // 회장단을 불러야 한다 — 되돌아갈 자리는 "면접 전"인 doc_pass 다(2026-07-31).
+  it('면접 불참은 되돌릴 수 있다(면접 전 상태로)', () => {
+    expect(canTransition('interview_noshow', 'doc_pass')).toBe(true);
+  });
+
+  it('되돌리기가 서류 심사 단계를 되살리지는 않는다', () => {
+    // doc_fail 은 여전히 received 에서만 갈 수 있다 — 불참을 되돌린다고 서류가 다시 열리면 안 된다.
+    expect(canTransition('interview_noshow', 'doc_fail')).toBe(false);
+    expect(canTransition('interview_done', 'doc_pass')).toBe(false); // 점수 삭제로만(자동 전이)
+  });
+
   it('면접 완료와 접수 상태는 수동으로 지정할 수 없다', () => {
     // 면접 완료는 "점수가 있다"는 사실의 반영이라 자동 전이로만 정해진다.
     expect(canTransition('doc_pass', 'interview_done')).toBe(false);

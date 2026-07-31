@@ -57,12 +57,17 @@ export function canTransition(from: RecruitStatus, to: RecruitStatus): boolean {
   if (from === to) return false; // 이미 그 상태면 바꿀 것이 없다
   switch (to) {
     case 'doc_pass':
+      // received → doc_pass(서류 합격 확정)이 원래 경로다. 여기에 **면접 불참 취소**를 더한다 —
+      // 불참은 면접관이 현장에서 누르는 표시라 잘못 누를 수 있고, 되돌릴 수 없으면 그때마다
+      // 회장단을 불러야 한다. 되돌아갈 자리는 "면접 전"인 doc_pass 다.
+      return canConfirmDoc(from) || from === 'interview_noshow';
     case 'doc_fail':
       return canConfirmDoc(from);
     case 'final_pass':
     case 'final_fail':
       return canConfirmFinal(from);
-    // 배정됐지만 면접을 못 본 사람을 회장단이 표시한다.
+    // 배정됐지만 면접에 오지 않은 사람. **면접관(운영진)이 면접 콘솔에서** 표시한다
+    // — 그 자리에서 본 사실이라 회장단이 나중에 옮겨 적을 이유가 없다(2026-07-31).
     case 'interview_noshow':
       return from === 'doc_pass' || from === 'interview_done';
     // 접수 상태로 되돌리거나, 면접 완료를 수동 지정하는 경로는 없다

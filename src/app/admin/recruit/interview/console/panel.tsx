@@ -235,6 +235,31 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const otherInterviewScores = currentInterviewScores.filter((s) => s.scorerUserId !== viewerUserId);
   const myExistingScore = currentInterviewScores.find((s) => s.scorerUserId === viewerUserId);
 
+  // 면접 출결 — 면접관이 그 자리에서 본 사실을 그대로 남긴다.
+  const [attendanceBusy, setAttendanceBusy] = useState(false);
+  const [attendanceError, setAttendanceError] = useState('');
+
+  async function setAttendance(noshow: boolean): Promise<void> {
+    if (!selectedApp) return;
+    setAttendanceBusy(true);
+    setAttendanceError('');
+    try {
+      const res = await fetch('/api/recruit/applicants', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'attendance', id: selectedApp.id, cohortId: selectedCohortId, noshow }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAttendanceError(data.message ?? '출결을 저장하지 못했어요. 잠시 후 다시 눌러 주세요.');
+        return;
+      }
+      await fetchData(); // 상태 딱지와 왼쪽 목록을 함께 갱신한다.
+    } finally {
+      setAttendanceBusy(false);
+    }
+  }
+
   const [selectedSlotFilter, setSelectedSlotFilter] = useState('ALL');
   const [selectedTeam, setSelectedTeam] = useState('ALL');
 
@@ -484,6 +509,42 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* 면접 출결 — 오지 않은 사람은 면접관이 여기서 표시한다. 점수를 매길 수 없는 사람을
+                  그냥 비워 두면 나중에 "채점을 안 한 것"과 구분되지 않는다.
+                  잘못 눌러도 바로 되돌릴 수 있어서 확인 팝업은 두지 않는다(결정 33 은 되돌릴 수 없는 것에만). */}
+              <div className="-mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-cream-50 px-3 py-2">
+                <span className="text-[11px] font-bold text-ink-500">면접 출결</span>
+                {selectedApp.status === 'interview_noshow' ? (
+                  <>
+                    <span className="rounded-md bg-coral-100 px-2 py-0.5 text-xs font-bold text-coral-700">
+                      면접 불참
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void setAttendance(false)}
+                      disabled={attendanceBusy}
+                      className="min-h-tap rounded-lg border border-ink-200 bg-white px-2.5 text-xs font-bold text-ink-700 hover:bg-cream-100 disabled:opacity-50"
+                    >
+                      {attendanceBusy ? '저장 중…' : '왔어요(되돌리기)'}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void setAttendance(true)}
+                    disabled={attendanceBusy}
+                    className="min-h-tap rounded-lg border border-coral-300 bg-white px-2.5 text-xs font-bold text-coral-700 hover:bg-coral-50 disabled:opacity-50"
+                  >
+                    {attendanceBusy ? '저장 중…' : '면접에 안 왔어요'}
+                  </button>
+                )}
+                {attendanceError ? (
+                  <span className="text-[11px] font-medium text-error" role="alert">
+                    {attendanceError}
+                  </span>
+                ) : null}
               </div>
 
               {/* 같은 조에 함께 들어온 사람들. 한 방에서 여러 명을 동시에 보므로, 채점하다

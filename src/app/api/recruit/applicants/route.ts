@@ -118,6 +118,50 @@ export async function PATCH(req: Request): Promise<Response> {
       return NextResponse.json({ updatedCount: updated.length, skippedCount, outOfScopeCount });
     }
 
+    // 면접 출결 — **면접관(운영진)이 면접 콘솔에서** 표시한다(2026-07-31, 결정 67).
+    // 불참은 면접관이 그 자리에서 본 사실이다. 예전에는 도움말만 "회장단이 5번 화면에서 표시한다"고
+    // 말했고 실제로는 **어느 화면에도 입력 수단이 없었다**(상태값과 전이 규칙만 있었다).
+    // 되돌리기도 같은 자리에서 된다 — 잘못 눌렀을 때 회장단을 부르게 하지 않는다.
+    if (action === 'attendance') {
+      if (!isStaffPlus(actor.role)) {
+        return NextResponse.json({ error: 'forbidden', message: '면접 출결은 운영진만 표시할 수 있습니다.' }, { status: 403 });
+      }
+      if (!id || typeof body.noshow !== 'boolean') return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
+      // 기수를 받아 그 범위로 좁힌다 — id 만으로 전 기수를 뒤지면 다른 기수 지원자를 건드릴 수 있다.
+      if (!cohortId) return NextResponse.json({ error: 'missing_cohort' }, { status: 400 });
+
+      const [target] = await listApplicantsByIds([id], cohortId);
+      if (!target) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+      const next: RecruitStatus = body.noshow ? 'interview_noshow' : 'doc_pass';
+      if (!canTransition(target.status as RecruitStatus, next)) {
+        return NextResponse.json(
+          {
+            error: 'invalid_transition',
+            // 점수가 이미 있으면 interview_done 이라 불참으로 바꿀 수 없다. 이유를 말해 준다.
+            message: body.noshow
+              ? '이미 면접 점수가 있는 지원자입니다. 점수를 지우면 불참으로 표시할 수 있어요.'
+              : '지금 단계에서는 불참을 되돌릴 수 없습니다.',
+          },
+          { status: 409 }
+        );
+      }
+
+      await bulkUpdateApplicantStatus([target.id], next);
+      await recordAudit(
+        db,
+        buildAuditEntry({
+          actorUserId: actor.userId,
+          action: 'recruit.applicant.attendance',
+          targetTable: 'recruit_applicants',
+          targetId: target.id,
+          before: { status: target.status },
+          after: { status: next },
+        })
+      );
+      return NextResponse.json({ status: next });
+    }
+
     if (action === 'assign_slot') {
       if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
       const updated = await assignSlotToApplicant(id, slotId ?? null, interviewLink);
