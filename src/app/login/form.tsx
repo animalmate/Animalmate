@@ -8,7 +8,12 @@ import { CursorDog } from '@/components/cursor-dog';
 
 export function LoginForm({ contact }: { contact: string | null }) {
   const router = useRouter();
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  // 첫 화면은 **이메일 칸이 아니라 갈림길**이다(2026-08-03). 예전에는 들어오자마자 이메일 입력칸이
+  // 보여서, 가입한 적 없는 사람도 "여기 적으면 되는구나" 하고 코드를 기다리다 막혔다. 가입 안내를
+  // 폼 아래에 둬도 칸이 먼저 눈에 들어오면 읽지 않는다. 그래서 무엇을 하러 왔는지부터 고르게 한다.
+  // (기기에 "로그인한 적 있음"을 남겨 이 단계를 건너뛰는 방법도 있지만, 동아리는 노트북 한 대를
+  //  여럿이 돌려 쓰는 자리가 있어 그 기기에서 신입이 다시 같은 함정에 빠진다. 한 번 더 누른다.)
+  const [step, setStep] = useState<'choose' | 'email' | 'code'>('choose');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -51,9 +56,33 @@ export function LoginForm({ contact }: { contact: string | null }) {
       <div className="flex flex-1 flex-col justify-center">
       <div className="mb-6 flex flex-col items-center text-center">
         <img src="/logo.png" alt="애니멀메이트" className="h-16 w-16 rounded-full" />
-        <h1 className="mt-3 text-[22px] font-bold text-ink-900">로그인</h1>
-        <p className="mt-1 text-[13px] text-ink-500">이메일로 인증 코드를 받아 로그인해요.</p>
+        <h1 className="mt-3 text-[22px] font-bold text-ink-900">
+          {step === 'choose' ? '애니멀메이트' : '로그인'}
+        </h1>
+        <p className="mt-1 text-[13px] text-ink-500">
+          {step === 'choose' ? '동아리 회원 전용 서비스예요.' : '이메일로 인증 코드를 받아 로그인해요.'}
+        </p>
       </div>
+      {step === 'choose' ? (
+        <Card className="space-y-3">
+          <Button className="w-full" onClick={() => setStep('email')}>
+            로그인
+          </Button>
+          {/* 가입은 링크(<a>)라 버튼 모양을 직접 입힌다. 높이는 위 Button 과 같은 h-control 로 맞춘다 —
+              한쪽만 작으면 "이건 진짜 버튼이 아닌가" 싶어 안 누른다. */}
+          <a
+            href="/signup"
+            className="inline-flex h-control min-h-tap w-full items-center justify-center rounded-xl border border-coral-100 bg-coral-50 px-[18px] text-[15px] font-semibold text-coral-600 transition-colors hover:bg-coral-100"
+          >
+            회원가입
+          </a>
+          <p className="pt-1 text-center text-[13px] leading-relaxed text-ink-500">
+            처음이시라면 <b className="text-ink-700">회원가입</b>부터 해주세요.
+            <br />
+            가입하지 않은 이메일로는 로그인할 수 없어요.
+          </p>
+        </Card>
+      ) : (
       <Card className="space-y-4">
         {step === 'email' ? (
           <>
@@ -70,16 +99,23 @@ export function LoginForm({ contact }: { contact: string | null }) {
             <Button className="w-full" disabled={busy || !email} onClick={request}>
               {busy ? '전송 중…' : '인증 코드 받기'}
             </Button>
-            <div className="rounded-xl border border-coral-100 bg-coral-50 p-3.5 text-center">
-              <p className="text-[13px] font-semibold text-ink-900">처음이신가요?</p>
-              <p className="mt-0.5 text-[13px] text-ink-700">로그인하려면 먼저 가입이 필요합니다.</p>
-              <a
-                href="/signup"
-                className="mt-2.5 inline-flex h-control-sm min-h-tap items-center justify-center rounded-xl bg-coral-500 px-5 text-sm font-semibold text-white transition-colors hover:bg-coral-600"
+            {/* 가입 안내는 앞 갈림길 화면이 맡으므로 여기서는 한 줄로 줄인다.
+                그래도 남겨 두는 이유: 습관적으로 로그인을 눌렀다가 "가입한 적이 없구나" 하고
+                깨닫는 사람이 되돌아갈 문이 필요하다. */}
+            <p className="text-center text-[13px] text-ink-500">
+              <button
+                type="button"
+                onClick={() => setStep('choose')}
+                className="underline underline-offset-2 hover:text-ink-700"
               >
-                가입하기 →
+                뒤로
+              </button>
+              <span className="px-2 text-ink-300">·</span>
+              아직 가입 전이면{' '}
+              <a href="/signup" className="font-semibold text-coral-600 underline underline-offset-2">
+                회원가입
               </a>
-            </div>
+            </p>
           </>
         ) : (
           <>
@@ -105,6 +141,7 @@ export function LoginForm({ contact }: { contact: string | null }) {
           </>
         )}
       </Card>
+      )}
       </div>
       {/* 제작자 크레딧 — 로그인 화면에만 둔다(로그인 뒤 화면은 운영 도구라 자리를 차지할 이유가 없다).
           연락처는 /privacy 와 같은 CONTACT_EMAIL 을 쓴다. 값이 없으면 주소를 지어내지 않고 이름만 남긴다. */}
