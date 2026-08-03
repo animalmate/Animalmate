@@ -155,6 +155,12 @@
       인젝션 방어 · 정답+출처(chatbot-answer 통합). (커밋 7cc8396, 6048084, 24ab22a)
 - [ ] **핵심 문서 5개 입력(운영 작업 — 사용자)**: 회칙, 봉사 FAQ, 회비, 봉사시간 인정, 연락처 안내.
       `/documents` 에서 공개 범위 지정해 입력. 입력 후 `npm run eval` 로 품질 점검.
+- [x] **답하지 못한 질문 리포트(2026-08-03)** — `chat_logs.handed_off` 를 집계해 `/admin/chatbot` 카드 +
+      주 1회 회장단 메일(`src/rag/gaps.ts`, 기존 일일 크론에 얹음). 문서 최신화의 할 일 목록이
+      **사람을 찾아간다**. 07-DECISIONS 85.
+- [x] **동아리 일정 캘린더(2026-08-03)** — `/calendar` + `schedules` 테이블(0025). 회장단 등록·수정,
+      운영진 조회, visibility 는 문서와 같은 등급. 챗봇 tool `list_club_schedules` 로 자동 연동돼
+      **총회·MT 를 문서에 적어 둘 필요가 없어졌다**. 07-DECISIONS 86.
 - [ ] **(잔여) 프롬프트 캐싱** — 도입 트리거: **월 챗봇 호출 3,000건 초과가 2개월 연속**(07-DECISIONS 17).
       그 전엔 절감액 < 월 몇백 원이라 캐시 API 관리 복잡도가 손해. 도달 시 반복 시스템 프롬프트를
       Gemini explicit context cache 로 재사용(캐시 키에 PII·가변 검색결과 제외). 사용량은 /admin/chatbot 확인.

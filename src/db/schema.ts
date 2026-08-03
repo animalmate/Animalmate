@@ -588,3 +588,33 @@ export const recruitMappingPresets = pgTable('recruit_mapping_presets', {
     .references(() => users.id),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── 동아리 일정(캘린더) ────────────────────────────────────────────────
+// 총회·MT·정기회의처럼 **날짜가 있는 모든 것**. 봉사 회차(events)와는 별개다:
+// events 는 카페 공지 발행 파이프라인에 묶인 봉사 전용이고, 여기는 그 밖의 동아리 일정 전부다.
+//
+// 왜 문서(documents)가 아니라 테이블인가: "동아리 일정" 을 문서로 적어 두면 학기마다 썩는다.
+// 아무도 문서를 고치지 않기 때문이다(2026-08-03 결정 86). 일정을 표로 두면 챗봇이 **지금 값**을
+// tool 로 읽어 답하므로, 사람이 문서를 고치지 않아도 답이 낡지 않는다.
+//
+// visibility 는 documents 와 같은 등급을 쓴다 — 챗봇이 질문자 역할 이하만 검색하는 규칙(#3)을
+// 일정에도 그대로 적용하기 위해서다(src/auth/visibility.ts 가 단 하나의 정의).
+export const schedules = pgTable(
+  'schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: text('title').notNull(),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date'), // 여러 날 일정(MT 등). null = 하루짜리
+    startTime: time('start_time'), // null = 시간 미정(종일)
+    place: text('place'),
+    details: text('details'), // 세부사항(준비물·회비·집합 방법 등 자유 서술)
+    visibility: visibilityEnum('visibility').notNull().default('member'),
+    updatedBy: uuid('updated_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('schedules_start_idx').on(t.startDate)]
+);

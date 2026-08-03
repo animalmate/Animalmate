@@ -11,7 +11,7 @@
 import { and, desc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { documents, docChunks } from '@/db/schema';
-import type { Actor, OwnerType, Role } from '@/auth/permissions';
+import type { Actor, OwnerType } from '@/auth/permissions';
 import { isPrivileged } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
@@ -182,8 +182,6 @@ export async function getDocument(db: Db, id: string): Promise<Document | null> 
   return row ?? null;
 }
 
-/** 역할 → visibility 순위(검색 필터·목록에서 공용). member<staff<board=sysadmin. */
-export const VISIBILITY_RANK: Record<Visibility, number> = { member: 0, staff: 1, board: 2 };
-export function roleVisibilityRank(role: Role): number {
-  return role === 'member' ? 0 : role === 'staff' ? 1 : 2; // board·sysadmin=2
-}
+// 등급 정의는 `@/auth/visibility` 로 옮겼다(일정 캘린더가 같은 필터를 쓰면서 정의가 둘이 되면 안 된다).
+// 기존 import 경로를 깨지 않도록 여기서 다시 내보낸다.
+export { VISIBILITY_RANK, roleVisibilityRank } from '@/auth/visibility';

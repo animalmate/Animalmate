@@ -8,6 +8,10 @@ import { and, asc, gte, eq, ne, isNotNull, inArray } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { events, teams, scheduledPosts } from '@/db/schema';
 import type { GeminiTool } from './gemini';
+import type { Actor } from '@/auth/permissions';
+import { kstToday, weekdayOf } from '@/lib/kst-date';
+import { listSchedules } from '@/schedules/schedules';
+import { toChatbotView } from '@/schedules/view';
 
 // 챗봇에 노출할 회차 = 다가오는(오늘 이후) + 취소 안 됨 + 장소가 정해진 것.
 // - 취소: cancelPost 가 예약 취소 시 event.status 를 canceled 로 전이한다(고아 없음, 07-DECISIONS 24).
@@ -16,24 +20,9 @@ import type { GeminiTool } from './gemini';
 //   (예전엔 예약글이 scheduled/published 일 때만 노출했는데, 그러면 "만들어 뒀지만 아직 발행 예약 안 한"
 //    회차가 안 보여 사용자 기대와 어긋났다. 발행(카페 업로드)과 챗봇 안내는 별개 관심사다.)
 
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-
-/** KST 기준 오늘 날짜(YYYY-MM-DD). event_date 는 date 타입이라 문자열로 비교한다. */
-function kstToday(now: Date): string {
-  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
-  return kst.toISOString().slice(0, 10);
-}
-/**
- * 'YYYY-MM-DD' → 요일. **UTC 자정으로 읽는다.**
- *
- * 예전에는 `T00:00:00+09:00` 으로 파싱하고 `getUTCDay()` 를 읽었다. 그 순간은 UTC 로 **전날 15시**라
- * 요일이 하루씩 밀렸다 — 2026-08-14(금)을 '목'으로 답했고 그대로 사용자에게 나갔다(2026-07-31 발견).
- * event_date 는 시각이 없는 date 타입이니 시간대를 끌어들일 이유가 없다.
- */
-export function weekdayOf(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? '' : (WEEKDAYS[d.getUTCDay()] ?? '');
-}
+// 날짜 계산은 `@/lib/kst-date` 하나만 쓴다(일정 캘린더도 같은 구현을 본다 — 요일이 밀린 사고 재발 방지).
+// 기존 import 경로(`@/rag/tools` 에서 weekdayOf)를 깨지 않도록 여기서 다시 내보낸다.
+export { weekdayOf };
 
 /** 이 회차 공지가 카페에 올라가는(올라간) 시각. 전부 KST. */
 export interface UploadView {
@@ -172,10 +161,39 @@ export const CHATBOT_TOOLS: GeminiTool[] = [
       required: ['date'],
     },
   },
+  {
+    name: 'list_club_schedules',
+    description:
+      '봉사 말고 **동아리 일정**(총회·MT·정기회의·행사 등)을 캘린더에서 가져온다. ' +
+      '"MT 언제야", "이번 달 무슨 일정 있어", "총회 어디서 해" 처럼 날짜가 있는 동아리 행사 질문에 쓴다. ' +
+      '각 일정에는 날짜(startDate)·요일(weekday)·시간(startTime)·장소(place)·세부사항(details)이 들어 있다. ' +
+      'endDate 가 있으면 그날까지 이어지는 여러 날 일정이다. startTime 이 없으면 시간이 아직 안 정해진 것이다. ' +
+      '기본은 오늘 이후지만, 지난 일정을 물으면 from 에 과거 날짜를 넣어 조회한다.',
+    parameters: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: '조회 시작일 YYYY-MM-DD(기본: 오늘)' },
+        to: { type: 'string', description: '조회 종료일 YYYY-MM-DD(생략 가능)' },
+        limit: { type: 'integer', description: '가져올 최대 일정 수(기본 15)' },
+      },
+    },
+  },
 ];
 
-/** 모델이 호출한 tool 을 실행하고 결과 객체를 돌려준다(모델에 functionResponse 로 되돌린다). */
-export async function executeTool(db: Db, name: string, args: Record<string, unknown>, now: Date = new Date()): Promise<Record<string, unknown>> {
+/**
+ * 모델이 호출한 tool 을 실행하고 결과 객체를 돌려준다(모델에 functionResponse 로 되돌린다).
+ *
+ * `actor` 를 받는 이유: 동아리 일정은 **질문자 역할 이하 등급만** 보여야 한다(규칙 #3).
+ * 봉사 회차(events)는 부원 이상 전원 공개라 필터가 없지만, 일정은 운영진 전용이 섞이므로
+ * 조회 자체를 질문자 기준으로 건다.
+ */
+export async function executeTool(
+  db: Db,
+  actor: Actor,
+  name: string,
+  args: Record<string, unknown>,
+  now: Date = new Date()
+): Promise<Record<string, unknown>> {
   if (name === 'list_upcoming_volunteer_sessions') {
     const limit = typeof args.limit === 'number' ? args.limit : undefined;
     const sessions = await listUpcomingSessions(db, { limit, now });
@@ -186,5 +204,18 @@ export async function executeTool(db: Db, name: string, args: Record<string, unk
     const sessions = await getSessionsOnDate(db, date, now);
     return { date, sessions, count: sessions.length };
   }
+  if (name === 'list_club_schedules') {
+    const from = asDate(args.from) ?? kstToday(now); // 기본은 오늘 이후 — 지난 일정을 묻지 않는 한 소용없다
+    const to = asDate(args.to);
+    const limit = typeof args.limit === 'number' ? Math.min(args.limit, 50) : 15;
+    const rows = await listSchedules(db, actor, { from, to, limit });
+    return { from, to: to ?? null, schedules: rows.map(toChatbotView), count: rows.length };
+  }
   return { error: `알 수 없는 tool: ${name}` };
+}
+
+/** 모델이 넣은 날짜 인자 정리 — 형식이 틀리면 무시한다(조건 없이 넘기면 SQL 이 빈 결과를 낸다). */
+function asDate(v: unknown): string | undefined {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
 }

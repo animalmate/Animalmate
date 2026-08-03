@@ -117,6 +117,21 @@
     감사 기록·챗봇 평가 데이터도 사라진다. 경계는 반드시 **DB 시계(`now()`)** 로 찍는다
     (앱 시계로 찍으면 시계 차이만큼 초기화 직후 메시지가 사라진다 — 07-DECISIONS 61).
 
+### 동아리 일정(캘린더)   ← 0025
+- `schedules` (id, title, start_date, end_date?, start_time?, place?, details?, visibility,
+  updated_by, created_at, updated_at, INDEX(start_date))
+  - 총회·MT·정기회의처럼 **날짜가 있는 동아리 일정**. 봉사 회차(`events`)와 별개다 —
+    `events` 는 카페 공지 발행 파이프라인에 묶인 봉사 전용이고 여기는 그 밖의 일정 전부다.
+  - **문서(`documents`)로 관리하지 않는 이유**: "동아리 일정" 을 문서로 적으면 학기마다 썩는다.
+    표로 두면 챗봇이 tool(`list_club_schedules`)로 **지금 값**을 읽어 답하므로, 사람이 문서를
+    고치지 않아도 답이 낡지 않는다(07-DECISIONS 86).
+  - `end_date` = null 이면 하루짜리(시작일이 곧 종료일). 겹침 판정은
+    `start_date <= to AND coalesce(end_date, start_date) >= from`.
+  - `start_time` = null 이면 시간 미정(챗봇이 "아직 안 정해졌다"고 답한다).
+  - visibility 는 `documents` 와 **같은 등급**을 쓴다(`src/auth/visibility.ts` 가 유일한 정의).
+  - 권한: 등록·수정·삭제 = 회장단·시스템관리자(`schedule.manage`), 조회 = 운영진 이상
+    (부원은 화면 대신 챗봇으로 묻는다). 조회 범위도 visibility 가 WHERE 로 가른다.
+
 ### 운영 공통
 - `audit_logs` (id, actor_user_id, action, target_table, target_id,
   before_json?, after_json?, created_at)
@@ -211,6 +226,9 @@
 3. `documents` 저장 시 PII 패턴(전화번호, 주민번호 형식, "계좌") 감지되면 경고 + pii_checked
    확인 요구.
 4. 챗봇 검색 SQL: `WHERE visibility_rank <= 질문자_role_rank` 를 항상 포함.
+   **문서 검색만이 아니라 tool 조회에도 같은 필터가 걸린다** — `list_club_schedules` 는 질문자
+   Actor 를 받아 `schedules.visibility` 를 WHERE 로 제한한다(0025). 등급 정의는
+   `src/auth/visibility.ts` 한 곳뿐이다(문서·일정이 따로 정의를 들면 한쪽만 고쳐진다).
    챗봇은 **로그인 사용자 전용**(비로그인 public 공개 없음, visibility 에 public 단계 추가 안 함).
    쿼터(결정 2026-07-23): **인당 일 30회** + **전역 분기 상한**(분기 예산 1만원 ÷ 모델 단가로 호출 수
    환산). 카운트는 chat_logs 기준. 상한값은 상수 하드코딩 금지 — 설정 테이블 값으로 두어 회장단이

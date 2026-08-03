@@ -17,7 +17,8 @@ function VisBadge({ v }: { v: Visibility }) {
 
 // 공개 범위별 생성 진입점 — 어떤 문서를 넣는지 예시로 안내한다(결정 19).
 const NEW_KINDS: { visibility: Visibility; title: string; examples: string }[] = [
-  { visibility: 'member', title: '부원·운영진 공개 문서', examples: '동아리 회칙, 운영진 구성, 가이드북(부원용), 동아리 일정 등' },
+  // 날짜가 있는 것(총회·MT 등)은 여기 적지 않는다 — 문서는 썩고, 일정은 캘린더에 있으면 챗봇이 알아서 읽는다.
+  { visibility: 'member', title: '부원·운영진 공개 문서', examples: '동아리 회칙, 운영진 구성, 가이드북(부원용), 회비 안내 등' },
   { visibility: 'staff', title: '운영진 공개 문서', examples: '운영진 회의록, 가이드북(운영진용), 동아리 행사 기획, 신입기수 면접 안내 등' },
 ];
 

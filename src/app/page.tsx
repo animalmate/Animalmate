@@ -22,6 +22,7 @@ interface Shortcut {
 }
 
 const STAFF_SHORTCUTS: Shortcut[] = [
+  { href: '/calendar', label: '일정', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
   { href: '/reservations', label: '예약', desc: '공지 예약 관리', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식 저장', icon: 'doc' },
 ];

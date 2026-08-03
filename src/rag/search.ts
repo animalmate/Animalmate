@@ -10,7 +10,11 @@ import type { Db } from '@/db/types';
 import { docChunks, documents } from '@/db/schema';
 import type { Actor } from '@/auth/permissions';
 import { embedText } from './gemini';
-import { VISIBILITY_RANK, roleVisibilityRank, type Visibility } from './documents';
+import { allowedVisibilities, type Visibility } from '@/auth/visibility';
+
+// 문서 검색이 쓰는 등급 필터는 일정 캘린더와 **같은 정의**를 본다(@/auth/visibility).
+// 기존 import 경로(`@/rag/search` 에서 allowedVisibilities)를 깨지 않도록 다시 내보낸다.
+export { allowedVisibilities };
 
 export interface SearchHit {
   documentId: string;
@@ -27,12 +31,6 @@ export const TOP_K = 5;
 // 판단하게 한다(시스템 프롬프트가 "자료에 없으면 핸드오프"를 강제). 이 값은 "DB 에 아무것도 안 가까울 때"
 // 만 거르는 낮은 바닥이다. 이걸 0.55 로 잡았다가 "OT 언제야?"(0.49) 같은 정상 질문이 걸러지는 버그가 있었다.
 export const MIN_SIMILARITY = 0.3;
-
-/** 질문자 역할이 볼 수 있는 visibility 값 목록(rank ≤ 역할 rank). */
-export function allowedVisibilities(actor: Actor): Visibility[] {
-  const rank = roleVisibilityRank(actor.role);
-  return (Object.keys(VISIBILITY_RANK) as Visibility[]).filter((v) => VISIBILITY_RANK[v] <= rank);
-}
 
 /**
  * 질문과 가까운 문서 조각 top-k. visibility 는 SQL 에서 강제, 관련도 컷오프는 그 뒤에 적용한다

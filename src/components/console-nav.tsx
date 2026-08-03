@@ -17,6 +17,7 @@ interface NavItem {
 const COMMON_MENU: NavItem[] = [{ href: '/chatbot', label: '챗봇', icon: 'chat' }];
 const STAFF_MENU: NavItem[] = [
   ...COMMON_MENU,
+  { href: '/calendar', label: '일정', icon: 'calendar' },
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/admin/recruit/screening', label: '신입모집', icon: 'userPlus' },
@@ -25,6 +26,7 @@ const STAFF_MENU: NavItem[] = [
 const BOARD_MENU: NavItem[] = [
   ...COMMON_MENU,
   { href: '/guides', label: '체크리스트', icon: 'doc' },
+  { href: '/calendar', label: '일정', icon: 'calendar' },
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/documents', label: '문서', icon: 'layers' },
@@ -45,6 +47,7 @@ function menuFor(role: string): NavItem[] {
 function activeKey(pathname: string): string {
   if (pathname.startsWith('/chatbot')) return '/chatbot';
   if (pathname.startsWith('/guides')) return '/guides';
+  if (pathname.startsWith('/calendar')) return '/calendar';
   if (pathname.startsWith('/documents')) return '/documents';
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';

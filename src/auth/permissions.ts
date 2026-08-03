@@ -42,6 +42,7 @@ export type Action =
   | { kind: 'post.create' }
   | { kind: 'post.modify'; owner: Ownership } // 수정/삭제
   | { kind: 'document.modify'; owner: Ownership } // 수정/삭제
+  | { kind: 'schedule.manage' } // 동아리 일정(캘린더) 등록·수정·삭제 — 회장단 전용, 조회는 운영진 이상
   | { kind: 'recurring.manage'; owner: Ownership } // 반복 규칙/프리셋 CRUD(팀 소유)
   | { kind: 'template.manage'; owner: Ownership } // 발행 템플릿 CRUD(팀/개인 소유; global 은 별도 처리)
   | { kind: 'membership.manage' } // 운영진 임명/해제
@@ -113,7 +114,10 @@ export function authorize(actor: Actor, action: Action): Decision {
     }
 
     // 챗봇 지식베이스 문서: 관리(생성·수정·삭제)는 회장단·시스템관리자 전용(운영진·부원 불가).
+    // 동아리 일정도 같다 — 일정은 동아리 전체가 따르는 공식 정보라 운영진이 각자 고치면 안 된다.
+    // (운영진은 캘린더를 **읽을** 수 있고, 그 조회 범위는 visibility 가 따로 가른다.)
     case 'document.modify':
+    case 'schedule.manage':
       return isPrivileged(actor.role) ? ALLOW : deny('role_insufficient');
 
     // 회장단·시스템관리자 전용.

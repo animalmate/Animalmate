@@ -91,6 +91,19 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     expect(authorize(actor('sysadmin'), teamDoc).allowed).toBe(true);
   });
 
+  it('10-2. 동아리 일정 등록·수정은 회장단 전용(운영진은 보기만 — 조회는 authorize 를 타지 않는다)', () => {
+    const manage: Action = { kind: 'schedule.manage' };
+    expect(authorize(actor('member'), manage)).toMatchObject({ allowed: false, reason: 'role_insufficient' });
+    expect(authorize(actor('staff'), manage)).toMatchObject({ allowed: false, reason: 'role_insufficient' });
+    expect(authorize(actor('board'), manage).allowed).toBe(true);
+    expect(authorize(actor('sysadmin'), manage).allowed).toBe(true);
+    // 임기가 끝난 회장단은 쓰기 전면 거부(모든 쓰기의 첫 관문).
+    expect(authorize(actor('board', { membershipActive: false }), manage)).toMatchObject({
+      allowed: false,
+      reason: 'membership_inactive',
+    });
+  });
+
   it('11. 시스템관리자의 봇 토큰 관리 → 허용', () => {
     expect(authorize(actor('sysadmin'), { kind: 'bot.token' }).allowed).toBe(true);
   });
