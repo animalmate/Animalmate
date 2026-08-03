@@ -21,10 +21,11 @@ interface Shortcut {
   newTab?: boolean;
 }
 
+// 순서 = 손이 자주 가는 순(2026-08-03 사용자 지정). 예약·템플릿이 주 업무고 일정은 그다음이다.
 const STAFF_SHORTCUTS: Shortcut[] = [
-  { href: '/calendar', label: '일정', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
   { href: '/reservations', label: '예약', desc: '공지 예약 관리', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식 저장', icon: 'doc' },
+  { href: '/calendar', label: '일정', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
 ];
 // 신입 모집은 역할에 따라 들어가는 문이 다르다 — 운영진이 맡는 일은 채점, 회장단은 절차 전체.
 const RECRUIT_STAFF: Shortcut = {
