@@ -11,17 +11,29 @@ interface Usage {
   todayTotal: number;
 }
 
+interface GapItem {
+  question: string;
+  count: number;
+  lastAskedAt: string;
+}
+interface Gaps {
+  total: number;
+  items: GapItem[];
+}
+
 export function ChatbotAdminPanel() {
   const [u, setU] = useState<Usage | null>(null);
+  const [gaps, setGaps] = useState<Gaps | null>(null);
   const [daily, setDaily] = useState('');
   const [quarter, setQuarter] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const r = await apiGet<{ usage: Usage }>('/api/admin/chatbot');
+    const r = await apiGet<{ usage: Usage; gaps: Gaps }>('/api/admin/chatbot');
     if (r.ok) {
       setU(r.data.usage);
+      setGaps(r.data.gaps);
       setDaily(String(r.data.usage.dailyPerUser));
       setQuarter(String(r.data.usage.globalQuarter));
     }
@@ -48,6 +60,41 @@ export function ChatbotAdminPanel() {
         <h1 className="text-[22px] font-bold text-ink-900">챗봇 운영</h1>
         <p className="text-[13px] text-ink-500">사용량을 보고 한도와 활성 상태를 조정해요.</p>
       </div>
+
+      {/* 사용량보다 위에 둔다 — 이 화면에서 사람이 **할 일**은 한도 조정이 아니라 구멍 메우기다.
+          같은 목록이 주 1회 회장단 메일로도 나간다(콘솔을 안 열어도 도착하게). */}
+      <Card className="space-y-3">
+        <div>
+          <strong className="text-[15px] font-semibold text-ink-900">답하지 못한 질문</strong>
+          <p className="text-[13px] text-ink-500">
+            지난 7일간 챗봇이 답을 못 찾아 운영진에게 넘긴 질문이에요. 여기에 답이 될 내용을{' '}
+            <a href="/documents" className="font-semibold underline underline-offset-2">
+              문서
+            </a>
+            에 채우면 다음부터는 챗봇이 대신 답해요.
+          </p>
+        </div>
+        {gaps && gaps.items.length > 0 ? (
+          <>
+            <ul className="divide-y divide-ink-100">
+              {gaps.items.map((g) => (
+                <li key={g.question} className="flex items-start justify-between gap-3 py-2.5">
+                  <span className="text-[14px] leading-relaxed text-ink-900">{g.question}</span>
+                  <span className="shrink-0 whitespace-nowrap pt-0.5 text-[12px] text-ink-400">
+                    {g.count > 1 ? `${g.count}번 · ` : ''}
+                    {g.lastAskedAt}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[13px] text-ink-500">기간 내 답 못 한 질의 {gaps.total.toLocaleString()}건</p>
+          </>
+        ) : (
+          <p className="rounded-xl bg-cream-50 p-3 text-[13px] text-ink-500">
+            지난 7일간 답하지 못한 질문이 없어요. 문서가 잘 맞고 있다는 뜻이에요.
+          </p>
+        )}
+      </Card>
 
       <Card className="space-y-3">
         <div className="flex items-center justify-between">

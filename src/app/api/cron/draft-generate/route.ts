@@ -1,10 +1,11 @@
 // pg_cron(매일) → **일일 유지보수** 엔드포인트. 경로명 `draft-generate` 는 옛 회차 자동 생성에서
 // 온 것으로 지금 하는 일과 다르다. pg_cron 잡을 다시 등록하지 않으려고 이름만 유지한다.
 //
-// 지금 하는 일 3가지:
+// 지금 하는 일 4가지:
 //   1. 발행 D-3/D-1 미완성 점검 + 팀장단 알림
 //   2. **1년 넘게 안 들어온** 계정의 멤버십 강등 + 세션 무효화  ← 필수원칙 #2
-//   3. 지난 레이트 리밋 카운터 정리
+//   3. 챗봇이 답하지 못한 질문 주 1회 회장단 리포트(주기 판정은 sendGapReport 안에서)
+//   4. 지난 레이트 리밋 카운터 정리
 //
 // Vercel Cron 금지(규칙 #7).
 
@@ -12,6 +13,7 @@ import { NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/http/cron-auth';
 import { runReadinessCheck } from '@/publishing/readiness-check';
 import { expireInactiveMemberships } from '@/auth/inactivity-expiry';
+import { sendGapReport } from '@/rag/gaps';
 import { defaultMailer } from '@/auth/mailer';
 import { pruneRateLimits } from '@/http/rate-limit';
 import { db } from '@/db/client';
@@ -28,8 +30,11 @@ export async function POST(req: Request): Promise<Response> {
     // 미접속 만료는 미완성 점검과 독립이다 — 한쪽이 실패해도 다른 쪽은 돌아야 하므로 순서만 나눠 둔다.
     // (여기서 throw 되면 아래 정리까지 못 하지만, 다음 사이클이 하루 뒤에 다시 시도한다.)
     const inactivityExpiry = await expireInactiveMemberships(db, { mailer: defaultMailer() });
+    // 챗봇 구멍 리포트는 **매일 호출하되 주 1회만 나간다**(주기 판정이 함수 안에 있다).
+    // 메일이 실패해도 다른 일이 끝난 뒤라 나머지 결과는 이미 반영돼 있다.
+    const chatbotGaps = await sendGapReport(db, { mailer: defaultMailer() });
     await pruneRateLimits(db); // 지난 윈도의 레이트 리밋 카운터 정리(테이블이 무한히 자라지 않게)
-    return NextResponse.json({ readiness, inactivityExpiry });
+    return NextResponse.json({ readiness, inactivityExpiry, chatbotGaps });
   } catch (e) {
     // CRON_SECRET 뒤에 있고 응답은 pg_net 로그로만 간다 — 관제 디버깅용으로 원인을 그대로 싣는다
     // (사용자 대면 라우트는 internalError 로 고정 문구만 내보낸다).

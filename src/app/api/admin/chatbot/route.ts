@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { getUsage, SETTING_KEYS } from '@/rag/quota';
+import { getRecentGaps } from '@/rag/gaps';
 import { setSetting } from '@/rag/settings';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
@@ -14,7 +15,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !isPrivileged(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  return NextResponse.json({ usage: await getUsage(db) });
+  // 답하지 못한 질문은 사용량과 같은 화면에 둔다 — 챗봇을 보러 들어온 사람에게 필요한 것은
+  // "얼마나 썼나"보다 "무엇을 못 답했나"다(메일을 놓쳐도 여기서 보인다).
+  const [usage, gaps] = await Promise.all([getUsage(db), getRecentGaps(db)]);
+  return NextResponse.json({ usage, gaps });
 }
 
 export async function PATCH(req: Request): Promise<Response> {
