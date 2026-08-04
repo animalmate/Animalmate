@@ -35,7 +35,7 @@ describe('kakaoReserveLabel', () => {
   });
 });
 
-const BOARD_URL = 'https://cafe.naver.com/f-e/cafes/29850342/menus/11';
+const BOARD_URL = 'https://m.cafe.naver.com/ca-fe/web/cafes/29850342/menus/11';
 
 describe('buildKakaoNotice', () => {
   it('봉사 공지 — 팀명·날짜·장소·게시판 주소가 들어간 전문', () => {

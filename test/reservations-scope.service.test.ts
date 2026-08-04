@@ -127,7 +127,7 @@ suite('예약 큐 스코프 — 팀장은 자기 팀+개인만, 회장단은 전
     process.env.NAVER_CAFE_CLUB_ID = '12345';
     try {
       const [row] = (await listReservations(db, { actor: board })).filter((r) => r.boardMenuid === MENUID);
-      expect(row!.boardUrl).toBe(`https://cafe.naver.com/f-e/cafes/12345/menus/${MENUID}`);
+      expect(row!.boardUrl).toBe(`https://m.cafe.naver.com/ca-fe/web/cafes/12345/menus/${MENUID}`);
     } finally {
       process.env.NAVER_CAFE_CLUB_ID = prev;
     }
