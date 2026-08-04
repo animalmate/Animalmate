@@ -15,6 +15,9 @@ interface NavItem {
 // 화면 사용법은 각 화면의 "도움말" 버튼(팝업)에 있다 — 메뉴에 통합 가이드를 두지 않는다.
 // "체크리스트"는 시기별로 할 일을 적은 회장단 전용 페이지다.
 const COMMON_MENU: NavItem[] = [{ href: '/chatbot', label: '챗봇', icon: 'chat' }];
+// 부원 메뉴 = 챗봇 + 캘린더(2026-08-04, 결정 89). 캘린더를 COMMON 에 넣지 않는 이유는
+// 운영진·회장단 메뉴 순서가 예약·템플릿 다음이어야 하기 때문이다(홈 카드 순서와 맞춘다).
+const MEMBER_MENU: NavItem[] = [...COMMON_MENU, { href: '/calendar', label: '캘린더', icon: 'calendar' }];
 // 순서는 홈 화면 바로가기 카드(`app/page.tsx` STAFF_SHORTCUTS)와 맞춘다 — 두 곳이 어긋나면
 // 같은 메뉴를 화면마다 다른 자리에서 찾게 된다(2026-08-03 사용자 지정: 예약·템플릿 다음 일정).
 const STAFF_MENU: NavItem[] = [
@@ -42,7 +45,7 @@ const BOARD_MENU: NavItem[] = [
 function menuFor(role: string): NavItem[] {
   if (role === 'board' || role === 'sysadmin') return BOARD_MENU;
   if (role === 'staff') return STAFF_MENU;
-  return COMMON_MENU; // 부원도 챗봇은 보인다
+  return MEMBER_MENU; // 부원은 챗봇 + 캘린더(조회)
 }
 
 // 현재 경로 → 활성 메뉴 키(가장 구체적인 접두사 우선).

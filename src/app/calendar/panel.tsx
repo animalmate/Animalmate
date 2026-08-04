@@ -64,7 +64,12 @@ function dayLabel(day: string, weekday?: string): string {
   return `${m}월 ${d}일${weekday ? `(${weekday})` : ''}`;
 }
 
-export function CalendarPanel({ canEdit }: { canEdit: boolean }) {
+/**
+ * @param canEdit  등록·수정·삭제 버튼 노출(회장단). 실제 차단은 서버가 한다.
+ * @param manager  운영진 이상. 도움말 버튼과 "여기 적으면 부원도 본다" 안내는 **적는 사람**에게만
+ *                 의미가 있다(부원에게 도움말을 노출하지 않는 것은 가이드 원칙이기도 하다).
+ */
+export function CalendarPanel({ canEdit, manager }: { canEdit: boolean; manager: boolean }) {
   const today = kstToday();
   const [ref, setRef] = useState<MonthRef>(monthOf(today));
   const [items, setItems] = useState<ScheduleView[]>([]);
@@ -197,11 +202,13 @@ export function CalendarPanel({ canEdit }: { canEdit: boolean }) {
           {/* 화면 이름은 메뉴와 같아야 한다 — 다르면 같은 곳을 두 이름으로 부르게 된다.
               낱개(일정 추가·새 일정)는 그대로 "일정" 이다: 담는 곳이 캘린더, 담기는 것이 일정. */}
           <h1 className="text-[22px] font-bold text-ink-900">캘린더</h1>
+          {/* "챗봇이 부원 질문에 대신 답해요" 는 뺐다(2026-08-04) — 부원이 이 화면을 직접 보게 된
+              이상 맞지 않는 말이다. 적는 사람에게 필요한 것은 "여기 적으면 부원이 본다"뿐이다. */}
           <p className="mt-1 text-[13px] text-ink-500">
-            총회·MT·정기회의 같은 동아리 일정이에요. 여기에 적어 두면 <b>챗봇이 부원 질문에 대신 답해요</b>.
+            총회·MT·정기회의 같은 동아리 일정이에요.{manager ? ' 여기에 적으면 부원도 바로 봐요.' : ''}
           </p>
         </div>
-        <HelpButton screen="calendar" />
+        {manager ? <HelpButton screen="calendar" /> : null}
       </div>
 
       {/* 달 이동 + 추가 */}
@@ -314,9 +321,13 @@ export function CalendarPanel({ canEdit }: { canEdit: boolean }) {
                     {s.place ? ` · ${s.place}` : ''}
                   </p>
                 </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${VIS_TONE[s.visibility]}`}>
-                  {VIS_LABEL[s.visibility]}
-                </span>
+                {/* 공개 범위 딱지는 **적는 사람**에게만 뜻이 있다. 부원에게는 어차피 부원 공개만
+                    보이므로 모든 줄에 같은 딱지가 붙어 아무것도 구분해 주지 않는다. */}
+                {manager ? (
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${VIS_TONE[s.visibility]}`}>
+                    {VIS_LABEL[s.visibility]}
+                  </span>
+                ) : null}
               </div>
               {s.details ? <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink-700">{s.details}</p> : null}
               {canEdit ? (

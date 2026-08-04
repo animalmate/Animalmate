@@ -1,10 +1,9 @@
 // 동아리 일정 단건 조회·수정·삭제.
-//  - 조회(GET): 운영진 이상 + 볼 수 있는 등급만(못 보는 등급은 404 — 존재 여부도 알려주지 않는다).
+//  - 조회(GET): **로그인한 전원** + 볼 수 있는 등급만(못 보는 등급은 404 — 존재 여부도 알려주지 않는다).
 //  - 수정·삭제: 회장단·시스템관리자만(서비스가 검증).
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { isStaffPlus } from '@/auth/permissions';
 import { getSchedule, updateSchedule, deleteSchedule, ScheduleInputError } from '@/schedules/schedules';
 import { toScheduleView } from '@/schedules/view';
 import { PermissionError } from '@/auth/guard';
@@ -15,7 +14,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
-  if (!actor || !isStaffPlus(actor.role)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { id } = await ctx.params;
   const row = await getSchedule(db, actor, id);
   if (!row) return NextResponse.json({ error: 'not_found' }, { status: 404 });
