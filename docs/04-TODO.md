@@ -133,6 +133,10 @@
       화면(`/reservations/batch`)·API·`batch-generate.ts`·`src/recurrence/` 전부 삭제. 여러 회차는 새 예약
       화면에서 일정 행을 추가해 만든다(회차별 날짜·집합시간·정원 + 회차별 미리보기 팝업).
       recurring_rules 테이블은 데이터 보존을 위해 남겨 둠(미사용 — 03-DATA-MODEL 참고).
+- [x] **단톡 공지 지원(2026-08-04, 07-DECISIONS 88)**: 예약 큐의 `카카오톡 공지 예약` 버튼이 공지문과
+      예약 시각(발행 +1분)을 준다 — 팀장단이 카톡 **예약 메시지**로 직접 건다(자동 전송 API 없음).
+      문구 조립은 `src/publishing/kakao-notice.ts`(순수, 단위 15), 게시판 주소는 `src/boards/cafe-url.ts`.
+      글 주소는 발행 전 알 수 없어 **게시판 주소**를 넣는다. 시각 수정·발행 실패 시 "걸어둔 예약을 고쳐라" 안내.
 - [x] draft-generate 크론 → **미완성 점검** → `src/publishing/readiness-check.ts`(D-3/D-1, notice_check_log
       중복 방지, D-1 격상, 팀장단 알림). `/api/cron/draft-generate` 라우트가 이걸 호출. 구 draft-generation 제거.
 - [x] ~~recurring_rules(생성 프리셋) CRUD~~ **삭제(2026-07-24)** — 일괄 생성 전용이라 `recurring-rules.ts`와

@@ -3,7 +3,8 @@
 
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { scheduledPosts, events, boards } from '@/db/schema';
+import { scheduledPosts, events, boards, teams } from '@/db/schema';
+import { cafeBoardUrl } from '@/boards/cafe-url';
 import { composeTeamLeaders } from '@/org/team-leaders';
 import { dateVars, kstDateStr } from './placeholders';
 import { isStaffPlus, type Actor } from '@/auth/permissions';
@@ -360,6 +361,10 @@ export interface ReservationRow {
   cafeArticleUrl: string | null;
   ownerType: string;
   ownerId: string;
+  /** 소유 팀 이름(개인 소유면 null). 단톡 공지문의 "○○ 팀장단입니다" 에 쓴다. */
+  teamName: string | null;
+  /** 이 글이 올라갈 카페 게시판 주소. 글 주소는 발행 전 알 수 없어 게시판까지만 준다. */
+  boardUrl: string | null;
   failReason: string | null; // failed 일 때 실패 사유
   // status 는 화면이 "봉사 취소 표시" 버튼을 보일지 정하는 데 쓴다(이미 취소된 회차엔 안 보인다).
   event: {
@@ -458,10 +463,12 @@ export async function listReservations(
 
   const where = conds.length > 0 ? and(...conds) : undefined;
   const rows = await db
-    .select({ post: scheduledPosts, event: events, boardName: boards.name })
+    .select({ post: scheduledPosts, event: events, boardName: boards.name, teamName: teams.name })
     .from(scheduledPosts)
     .leftJoin(events, eq(events.id, scheduledPosts.eventId))
     .leftJoin(boards, eq(boards.menuid, scheduledPosts.boardMenuid))
+    // owner_id 는 다형성(personal=user, team=team)이라 FK 가 없다 — owner_type 까지 봐야 팀 행이다.
+    .leftJoin(teams, and(eq(scheduledPosts.ownerType, 'team'), eq(teams.id, scheduledPosts.ownerId)))
     .where(where)
     // 큐 위쪽은 **앞으로 할 일**이어야 한다. 예전에는 publish_at 오름차순이라 이미 업로드된 글이
     // 맨 위를 차지했고, 새로 만든 예약을 보려면 끝까지 스크롤해야 했다(2026-07-29 QA).
@@ -478,7 +485,10 @@ export async function listReservations(
   const teamIds = [...new Set(rows.filter((r) => r.post.ownerType === 'team' && r.post.status !== 'published').map((r) => r.post.ownerId))];
   const leadersByTeam = new Map(await Promise.all(teamIds.map(async (id) => [id, await composeTeamLeaders(db, id)] as const)));
 
-  return rows.map(({ post, event, boardName }) => {
+  // 게시판 주소(단톡 공지문용). clubid 는 서버 환경변수라 여기서 붙여 내려보낸다.
+  const clubId = process.env.NAVER_CAFE_CLUB_ID ?? '';
+
+  return rows.map(({ post, event, boardName, teamName }) => {
     const placeholders =
       post.status === 'published'
         ? []
@@ -502,6 +512,8 @@ export async function listReservations(
       cafeArticleUrl: post.cafeArticleUrl,
       ownerType: post.ownerType,
       ownerId: post.ownerId,
+      teamName: teamName ?? null,
+      boardUrl: cafeBoardUrl(post.boardMenuid, clubId),
       failReason: post.failReason ?? null,
       event: event
         ? {

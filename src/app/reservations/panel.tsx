@@ -4,9 +4,12 @@ import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, InfoText, SecondaryButton, Select, StatusBadge } from '@/components/ui';
 import { HelpButton } from '@/components/help-button';
 import { Modal } from '@/components/modal';
+import { Toast } from '@/components/toast';
 import { PreviewButton, ReservationPreview } from '@/components/reservation-preview';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
 import { shortenValue } from '@/publishing/placeholder-catalog';
+import { buildKakaoNotice, kakaoReserveLabel } from '@/publishing/kakao-notice';
+import { copyText } from '@/lib/clipboard';
 
 interface Reservation {
   id: string;
@@ -19,6 +22,8 @@ interface Reservation {
   event: { status: string; eventDate: string | null; place: string | null; capacity: number | null } | null;
   missing: string[];
   placeholders: { key: string; value: string | null }[];
+  teamName: string | null;
+  boardUrl: string | null;
 }
 
 function fmt(iso: string | null): string {
@@ -68,6 +73,9 @@ export function ReservationsPanel() {
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [preview, setPreview] = useState<PreviewState | null>(null);
+  // 단톡 공지문 팝업(카톡 예약 메시지에 붙여 넣을 문구). 목록 데이터만으로 만들어져 추가 조회가 없다.
+  const [kakao, setKakao] = useState<Reservation | null>(null);
+  const [toast, setToast] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -250,6 +258,11 @@ export function ReservationsPanel() {
                 {/* 미리보기는 업로드된 글에도 준다 — 실제로 무엇이 나갔는지 확인할 수 있어야 한다. */}
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <PreviewButton onClick={() => void openPreview(r)} />
+                  {/* 카톡 공지는 **올라가기 전에** 걸어 두는 것이다. 이미 나갔거나(published) 실패한
+                      건에는 걸 예약이 없으므로 숨긴다 — 발행 완료 건에는 위에 실제 글 링크가 뜬다. */}
+                  {r.status !== 'published' && r.status !== 'failed' ? (
+                    <SecondaryButton onClick={() => setKakao(r)}>카카오톡 공지 예약</SecondaryButton>
+                  ) : null}
                   {r.status !== 'published' ? (
                     <>
                       <a href={`/reservations/${r.id}/edit`}>
@@ -296,6 +309,69 @@ export function ReservationsPanel() {
           )}
         </Modal>
       ) : null}
+      {kakao ? <KakaoNoticeModal row={kakao} onClose={() => setKakao(null)} onCopied={setToast} /> : null}
+      <Toast text={toast} onDone={() => setToast('')} />
     </div>
+  );
+}
+
+/**
+ * 단톡 공지 팝업 — 카톡 예약 메시지에 넣을 **시각**과 **문구**를 준다.
+ *
+ * 카카오톡에는 단톡방 자동 전송 API 가 없다(비공식 자동화는 약관 위반이라 금지). 그래서 이 화면은
+ * 보내 주는 것이 아니라 **사람이 카톡의 예약 메시지를 거는 데 필요한 것만** 건넨다.
+ */
+function KakaoNoticeModal({
+  row,
+  onClose,
+  onCopied,
+}: {
+  row: Reservation;
+  onClose: () => void;
+  onCopied: (msg: string) => void;
+}) {
+  // 카페에 글이 올라간 **뒤** 알림이 가야 하므로 발행 시각보다 1분 뒤로 안내한다.
+  const reserveAt = kakaoReserveLabel(row.publishAt);
+  // 제목에 {{간결_날짜}} 같은 자리표시자가 남아 있으면 그대로 단톡방에 나간다 —
+  // 큐가 이미 갖고 있는 치환값(발행 워커와 같은 값)으로 먼저 바꾼다.
+  const titleVars = Object.fromEntries(row.placeholders.filter((p) => p.value).map((p) => [p.key, p.value!]));
+  const notice = buildKakaoNotice({
+    title: renderTemplate(row.title, titleVars),
+    teamName: row.teamName,
+    eventDate: row.event?.eventDate ?? null,
+    place: row.event?.place ?? null,
+    boardUrl: row.boardUrl,
+  });
+
+  async function copy() {
+    const ok = await copyText(notice);
+    onCopied(ok ? '공지문을 복사했습니다' : '복사하지 못했습니다 — 아래 문구를 길게 눌러 복사하세요');
+  }
+
+  return (
+    <Modal title="카카오톡 공지 예약" onClose={onClose}>
+      <div className="space-y-3">
+        <div className="rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5 text-[13px] leading-relaxed text-ink-700">
+          아래 공지문을 복사해 카카오톡 <strong>예약 메시지</strong>로 걸어두세요.
+          <div className="mt-1.5">
+            예약 시간 :{' '}
+            {reserveAt ? (
+              <strong className="text-ink-900">{reserveAt}</strong>
+            ) : (
+              <span className="text-warning-700">업로드 시각이 아직 없습니다 — "수정"에서 정한 뒤 다시 여세요.</span>
+            )}
+          </div>
+        </div>
+        {/* 붙여 넣을 것과 화면에 보이는 것이 **같은 문자열**이어야 한다(빈 줄 포함). */}
+        <pre className="whitespace-pre-wrap rounded-md bg-cream-100 p-3 font-sans text-sm text-ink-900">{notice}</pre>
+        {!row.boardUrl ? (
+          <InfoText>게시판 주소를 만들지 못했습니다(카페 설정 확인). 문구만 복사됩니다.</InfoText>
+        ) : null}
+        <Button className="w-full" onClick={() => void copy()}>
+          공지문 복사
+        </Button>
+        <InfoText>붙여 넣은 뒤 문구는 자유롭게 고쳐도 됩니다. 카페 글 주소는 올라가기 전이라 넣을 수 없습니다.</InfoText>
+      </div>
+    </Modal>
   );
 }

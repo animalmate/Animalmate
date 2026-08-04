@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet, errorMessage } from '@/lib/api';
-import { Button, Card, ErrorText, Field, InfoText, Input } from '@/components/ui';
+import { Banner, Button, Card, ErrorText, Field, InfoText, Input } from '@/components/ui';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { TimeSelect } from '@/components/time-select';
 import { renderTemplate, placeholderKeys } from '@/publishing/template-render';
@@ -42,6 +42,8 @@ export function EditReservationForm({ id }: { id: string }) {
   const [vars, setVars] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // 불러온 시점의 업로드 시각. 이걸 바꾸면 이미 걸어 둔 카톡 예약 메시지와 어긋난다(아래 안내).
+  const [loadedAt, setLoadedAt] = useState<{ date: string; time: string }>({ date: '', time: '' });
 
   useEffect(() => {
     void (async () => {
@@ -56,6 +58,7 @@ export function EditReservationForm({ id }: { id: string }) {
       const at = toDateTimeInputs(post.publishAt);
       setPublishDate(at.date);
       setPublishTime(at.time);
+      setLoadedAt(at);
       setHasEvent(Boolean(post.eventId));
       if (event) {
         setEventDate(event.eventDate ?? '');
@@ -101,6 +104,8 @@ export function EditReservationForm({ id }: { id: string }) {
   const previewBody = renderTemplate(contentMd, previewVars);
   // 이 글이 쓰는 값과 각각 무엇으로 바뀌는지(비어 있으면 발행이 보류된다).
   const used = placeholderKeys(title, contentMd).map((key) => ({ key, value: previewVars[key] ?? null }));
+  // 시각을 실제로 옮겼을 때만(불러온 값과 다를 때만) 카톡 예약 안내를 띄운다.
+  const publishAtChanged = loaded && (publishDate !== loadedAt.date || publishTime !== loadedAt.time);
 
   if (!loaded) return <InfoText>불러오는 중…</InfoText>;
   if (status === 'published')
@@ -128,6 +133,11 @@ export function EditReservationForm({ id }: { id: string }) {
             <TimeSelect value={publishTime} onChange={setPublishTime} warnEarlyMorning />
           </Field>
         </div>
+        {/* 카톡 예약 메시지는 시스템이 모르는 곳(카톡)에 있다 — 여기서 시각을 옮기면 그쪽은 그대로다.
+            시각 칸을 건드렸을 때만 나오고, 되돌리면 사라진다. */}
+        {publishAtChanged ? (
+          <Banner kind="warning">카톡 예약 메시지를 걸어뒀다면 시각을 함께 수정하세요.</Banner>
+        ) : null}
         {hasEvent ? (
           <div className="space-y-3 rounded-md bg-cream-100 p-3">
             <div className="text-sm font-medium text-ink-700">봉사 회차 정보</div>

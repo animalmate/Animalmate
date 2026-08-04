@@ -110,6 +110,29 @@ suite('예약 큐 스코프 — 팀장은 자기 팀+개인만, 회장단은 전
   // ── 큐 종류 필터(일반 공지 / 봉사 공지 팀별) ────────────────────────────
   const board: Actor = { userId: '00000000-0000-0000-0000-000000000000', role: 'board', membershipActive: true, teams: [] };
 
+  // ── 단톡 공지문 재료(팀 이름·게시판 주소) ────────────────────────────────
+  // teams 조인은 owner_id 가 FK 없는 다형성 컬럼이라 owner_type 까지 봐야 한다.
+  // 잘못 걸면 개인 소유 건에 남의 팀 이름이 붙거나 행이 불어난다 — 그래서 건수도 함께 본다.
+  it('팀 소유 예약에는 팀 이름이, 개인 소유에는 null 이 붙는다', async () => {
+    const rows = (await listReservations(db, { actor: board })).filter((r) => r.boardMenuid === MENUID);
+    expect(rows).toHaveLength(5); // 조인 때문에 행이 늘지 않았는지.
+    const byTitle = new Map(rows.map((r) => [r.title, r]));
+    expect(byTitle.get('A팀 예약')!.teamName).toBe(TEAM_A);
+    expect(byTitle.get('B팀 봉사')!.teamName).toBe(TEAM_B);
+    expect(byTitle.get('내 개인 예약')!.teamName).toBeNull();
+  });
+
+  it('게시판 주소는 clubid + menuid 로 조립된다', async () => {
+    const prev = process.env.NAVER_CAFE_CLUB_ID;
+    process.env.NAVER_CAFE_CLUB_ID = '12345';
+    try {
+      const [row] = (await listReservations(db, { actor: board })).filter((r) => r.boardMenuid === MENUID);
+      expect(row!.boardUrl).toBe(`https://cafe.naver.com/f-e/cafes/12345/menus/${MENUID}`);
+    } finally {
+      process.env.NAVER_CAFE_CLUB_ID = prev;
+    }
+  });
+
   it("kind='general': 회차 없는 건만", async () => {
     const rows = (await listReservations(db, { actor: board, kind: 'general' })).filter((r) => r.boardMenuid === MENUID);
     expect(titles(rows)).toEqual(['A팀 예약', 'B팀 예약', '내 개인 예약']);
