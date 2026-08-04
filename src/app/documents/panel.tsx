@@ -185,6 +185,12 @@ export function DocumentsPanel() {
         <p className="mt-1 text-[13px] text-ink-500">
           챗봇이 답변 근거로 쓰는 안내 문서예요. 공개 범위를 골라 새로 만들어요.
           <br />
+          {/* 총회 날짜가 문서와 캘린더 두 곳에 있으면 한쪽은 반드시 낡는다. 챗봇은 캘린더를 그때그때
+              읽으므로(list_club_schedules), 날짜 있는 것은 캘린더 한 곳에만 두는 편이 항상 맞다(결정 86). */}
+          <span className="text-ink-400">
+            <b className="font-semibold text-ink-500">일정 관련 정보는 캘린더에만 저장하세요.</b> 문서에도 적으면 한쪽이 낡아 챗봇이 틀린 날짜를 답해요.
+          </span>
+          <br />
           <span className="text-ink-400">부원 명단·연락처 같은 개인정보는 넣지 마세요(챗봇 자료가 아니라 회원 관리·드라이브에서 다뤄요).</span>
         </p>
       </div>

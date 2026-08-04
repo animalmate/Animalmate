@@ -194,7 +194,9 @@ export function CalendarPanel({ canEdit }: { canEdit: boolean }) {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-bold text-ink-900">일정</h1>
+          {/* 화면 이름은 메뉴와 같아야 한다 — 다르면 같은 곳을 두 이름으로 부르게 된다.
+              낱개(일정 추가·새 일정)는 그대로 "일정" 이다: 담는 곳이 캘린더, 담기는 것이 일정. */}
+          <h1 className="text-[22px] font-bold text-ink-900">캘린더</h1>
           <p className="mt-1 text-[13px] text-ink-500">
             총회·MT·정기회의 같은 동아리 일정이에요. 여기에 적어 두면 <b>챗봇이 부원 질문에 대신 답해요</b>.
           </p>

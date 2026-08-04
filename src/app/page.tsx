@@ -25,7 +25,7 @@ interface Shortcut {
 const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations', label: '예약', desc: '공지 예약 관리', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식 저장', icon: 'doc' },
-  { href: '/calendar', label: '일정', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
+  { href: '/calendar', label: '캘린더', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
 ];
 // 신입 모집은 역할에 따라 들어가는 문이 다르다 — 운영진이 맡는 일은 채점, 회장단은 절차 전체.
 const RECRUIT_STAFF: Shortcut = {

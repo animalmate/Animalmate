@@ -126,7 +126,7 @@ export const SCREEN_HELP: Record<ScreenKey, ScreenHelp> = {
   },
 
   calendar: {
-    title: '일정 — 도움말',
+    title: '캘린더 — 도움말',
     body: `총회·MT·정기회의처럼 **날짜가 있는 동아리 일정**을 적는 곳입니다. 봉사 회차는 여기가 아니라 **예약**에서 다룹니다.
 
 ## 왜 여기에 적나
