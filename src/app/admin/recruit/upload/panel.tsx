@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { autoMapHeaders, parseCsv, missingRequiredMappings, REQUIRED_MAPPING_LABELS } from '@/recruit/csv';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, Field, Select, StatusMessage } from '@/components/ui';
+import { Button, Card, CardField, Field, RowCard, Select, StatusMessage, TableCards } from '@/components/ui';
 
 // 연결 가능한 항목 전체. 새 데이터를 붙여넣을 때 여기서부터 다시 시작한다.
 const BLANK_MAPPING: Record<string, string> = {
@@ -15,6 +15,20 @@ const BLANK_MAPPING: Record<string, string> = {
   nearStation: '', otAttend: '', remoteInterviewWish: '', essayIntro: '', essayValues: '',
   essayValuesTopic: '', englishName: '',
 };
+
+// "인근 역"에 역명 대신 주소를 적어 낸 지원자를 잡아낸다.
+// 표(PC)와 카드(모바일)가 같은 판정을 쓰도록 뽑아 뒀다.
+function looksLikeAddress(nearStation?: string | null): boolean {
+  return Boolean(nearStation) && /[시구동번지]/.test(nearStation!);
+}
+
+function AddressChip() {
+  return (
+    <span className="inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+      <Icon name="alert" size={12} className="inline" /> 주소 감지 (역명 정제 추천)
+    </span>
+  );
+}
 
 export function RecruitUploadPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -305,38 +319,56 @@ export function RecruitUploadPanel({ role }: { role: Role }) {
             </div>
 
             <h3 className="text-xs font-bold text-ink-700">등록 예정 지원자 미리보기 (샘플 5건)</h3>
-            <div className="overflow-x-auto rounded-xl border border-cream-200 bg-white">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-cream-100 text-ink-700 font-semibold">
-                  <tr>
-                    <th className="p-3">이름</th>
-                    <th className="p-3">전화번호</th>
-                    <th className="p-3">학교 / 학과</th>
-                    <th className="p-3">인근 역 (주소)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-cream-100">
-                  {previewResult.sample?.map((s: any, idx: number) => {
-                    const hasAddressPattern = s.nearStation && /[시구동번지]/.test(s.nearStation);
-                    return (
+            {/* 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
+            <TableCards
+              table={
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-cream-100 font-semibold text-ink-700">
+                    <tr>
+                      <th className="p-3">이름</th>
+                      <th className="p-3">전화번호</th>
+                      <th className="p-3">학교 / 학과</th>
+                      <th className="p-3">인근 역 (주소)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-cream-100">
+                    {previewResult.sample?.map((s: any, idx: number) => (
                       <tr key={idx} className="hover:bg-cream-25">
                         <td className="p-3 font-bold text-ink-900">{s.name}</td>
                         <td className="p-3 font-mono text-ink-700">{s.phone}</td>
-                        <td className="p-3 text-ink-700">{s.school} {s.department}</td>
+                        <td className="p-3 text-ink-700">
+                          {s.school} {s.department}
+                        </td>
                         <td className="p-3 text-ink-700">
                           {s.nearStation}
-                          {hasAddressPattern && (
-                            <span className="ml-2 inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                              <Icon name="alert" size={12} className="inline" /> 주소 감지 (역명 정제 추천)
+                          {looksLikeAddress(s.nearStation) && (
+                            <span className="ml-2">
+                              <AddressChip />
                             </span>
                           )}
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                  </tbody>
+                </table>
+              }
+              cards={previewResult.sample?.map((s: any, idx: number) => (
+                <RowCard key={idx} title={s.name}>
+                  <CardField label="전화번호">
+                    <span className="font-mono">{s.phone}</span>
+                  </CardField>
+                  <CardField label="학교 / 학과">
+                    {s.school} {s.department}
+                  </CardField>
+                  <CardField label="인근 역">
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                      {s.nearStation}
+                      {looksLikeAddress(s.nearStation) && <AddressChip />}
+                    </span>
+                  </CardField>
+                </RowCard>
+              ))}
+            />
 
             <div className="flex justify-end pt-2">
               <Button

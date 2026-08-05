@@ -30,10 +30,40 @@ const sortKeyFmt = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
+const timeKoFmt = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: KST,
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true,
+});
+
+/**
+ * '오후 01:00'. 시각 하나를 사람이 부르는 말로 쓸 때(면접 콘솔의 시간대 칩).
+ *
+ * `toLocaleTimeString` 을 화면에서 직접 부르지 말 것 — **브라우저의 시간대**를 따르므로 KST 밖에서
+ * 열면 시각이 어긋난다(면접 시간표는 전부 KST 로 적혀 있다).
+ */
+export function formatTimeKo(ms: number): string {
+  return timeKoFmt.format(new Date(ms));
+}
+
 /** '10:00 ~ 10:30'. 면접 표와 대기실 표가 같은 문구를 써야 나란히 읽힌다. */
 export function formatTimeRange(startMs: number, durationMin: number): string {
   const end = startMs + durationMin * 60_000;
   return `${timeFmt.format(new Date(startMs))} ~ ${timeFmt.format(new Date(end))}`;
+}
+
+/** '8. 1.(토)'. 표 머리에 쓰는 날짜. */
+export function formatDateKo(ms: number): string {
+  return dateFmt.format(new Date(ms));
+}
+
+/**
+ * 날짜별로 나눌 때 쓰는 키(KST 기준 'YYYY-MM-DD').
+ * 문자열 정렬이 곧 날짜 순서다 — 표시용 라벨('8. 1.(토)')로 나누면 10월이 2월 앞에 온다.
+ */
+export function dayKeyOf(ms: number): string {
+  return sortKeyFmt.format(new Date(ms));
 }
 
 /** 여러 슬롯에서 시간축(시작 시각 ms 오름차순)과 시각별 소요 시간을 뽑는다. */

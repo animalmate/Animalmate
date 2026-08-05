@@ -432,16 +432,27 @@ export const recruitCohorts = pgTable('recruit_cohorts', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// 면접 슬롯(날짜×시간 격자). 10분 단위 세분화 지원. 장소 프리셋 또는 비대면 링크 지정.
+// 면접 슬롯(조×시간 격자). 10분 단위 세분화 지원. 장소 프리셋 또는 비대면 링크 지정.
 export const recruitSlots = pgTable('recruit_slots', {
   id: uuid('id').primaryKey().defaultRandom(),
   cohortId: uuid('cohort_id')
     .notNull()
     .references(() => recruitCohorts.id, { onDelete: 'cascade' }),
+  /**
+   * 소속 조 이름('A조'·'B조'·'비대면 파견'). 조는 **하루 종일 유지되는 트랙**이다 — 한 방을 잡고
+   * 그 안에서 시간대마다 면접관·면접자를 바꿔 가며 본다(지난 기수 시간표가 정확히 이 모양이다).
+   *
+   * 왜 컬럼이어야 하나: 예전에는 조를 "같은 시각 슬롯들의 순번"으로 **계산**했다. 그러면 A조가 한
+   * 시간대를 비우는 순간(첫 30분 면접실 정비 등) 그 아래부터 B조가 1조로 밀려 이름이 바뀐다.
+   * 조는 계산해서 붙이는 번호가 아니라 슬롯이 처음부터 가지고 있는 소속이다.
+   *
+   * null = 조를 나누기 전에 만든 옛 슬롯(마이그레이션 0026 이전). 화면은 '조 미지정'으로 보여준다.
+   */
+  panel: text('panel'),
   startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
   durationMin: integer('duration_min').notNull().default(20),
   link: text('link'),
-  venue: text('venue'), // 대면 면접 장소 명칭 또는 온라인 접속 안내
+  venue: text('venue'), // 대면 면접 장소 명칭 또는 온라인 접속 안내(조 단위로 같은 값이 들어간다)
   isRemote: boolean('is_remote').notNull().default(false), // 비대면 여부
   createdBy: uuid('created_by')
     .notNull()

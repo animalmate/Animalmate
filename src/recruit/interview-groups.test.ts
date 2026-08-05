@@ -71,6 +71,31 @@ describe('면접 슬롯별 묶기', () => {
     expect(groups[1]!.interviewers).toEqual([]);
   });
 
+  it('조 이름은 panel 컬럼이 먼저다 — 순번은 컬럼이 빈 옛 슬롯에만 쓴다', () => {
+    // 순번은 그 시각의 슬롯 개수에 따라 달라진다. 컬럼이 있는데 순번을 쓰면
+    // A조가 한 시간대를 비우는 순간 아래 시간대부터 이름이 밀린다.
+    const groups = groupApplicantsBySlot({
+      slots: [
+        { id: 's1', startsAt: at('01:00'), venue: '201호', panel: 'A조' },
+        { id: 's2', startsAt: at('01:00'), venue: '동아리방' }, // panel 없음
+      ],
+      applicants: [],
+      panelNumbers: { s1: 1, s2: 2 },
+      placeLabel: place,
+    });
+    expect(groups.map((g) => g.panel)).toEqual(['A조', '2조']);
+  });
+
+  it('슬롯 미배정 묶음에는 조 이름이 없다', () => {
+    const groups = groupApplicantsBySlot({
+      slots: SLOTS,
+      applicants: [A('없는사람', null)],
+      placeLabel: place,
+    });
+    const unassigned = groups.find((g) => g.slotId === null);
+    expect(unassigned?.panel).toBe('');
+  });
+
   it('장소 표기는 화면과 같은 규칙을 쓴다', () => {
     const groups = groupApplicantsBySlot({
       slots: [{ id: 'r', startsAt: at('01:00'), venue: null, isRemote: true }],

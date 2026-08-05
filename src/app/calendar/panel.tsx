@@ -38,6 +38,12 @@ const VIS_TONE: Record<Visibility, string> = {
   staff: 'bg-blue-50 text-blue-600',
   board: 'bg-amber-50 text-amber-600',
 };
+// 좁은 화면의 달력 칸에서 제목 대신 찍는 점. 색은 위 VIS_TONE 과 같은 뜻(공개 범위)을 가리킨다.
+const VIS_DOT: Record<Visibility, string> = {
+  member: 'bg-success',
+  staff: 'bg-blue-500',
+  board: 'bg-amber-500',
+};
 const WEEKDAY_HEAD = ['일', '월', '화', '수', '목', '금', '토'];
 
 function emptyDraft(day: string): Draft {
@@ -211,12 +217,15 @@ export function CalendarPanel({ canEdit, manager }: { canEdit: boolean; manager:
         {manager ? <HelpButton screen="calendar" /> : null}
       </div>
 
-      {/* 달 이동 + 추가 */}
-      <div className="flex items-center gap-2">
+      {/* 달 이동 + 추가.
+          `flex-wrap` 이 없어서 360px 에서 "일정 추가"가 화면 밖으로 밀려 나갔다(2026-08-05 사용자 보고).
+          한 줄에 필요한 폭이 ~400px 인데 쓸 수 있는 폭은 328px 이고, 버튼의 `whitespace-nowrap` 탓에
+          줄지도 못했다. 좁으면 달 이동만 첫 줄에 두고 추가 버튼은 아래 줄에서 폭을 다 쓴다. */}
+      <div className="flex flex-wrap items-center gap-2">
         <SecondaryButton onClick={() => go(-1)} aria-label="이전 달">
           <Icon name="chevronRight" size={15} className="rotate-180" />
         </SecondaryButton>
-        <strong className="min-w-[112px] text-center text-[16px] font-bold text-ink-900">
+        <strong className="min-w-[104px] text-center text-[16px] font-bold text-ink-900">
           {ref.year}년 {ref.month}월
         </strong>
         <SecondaryButton onClick={() => go(1)} aria-label="다음 달">
@@ -230,9 +239,12 @@ export function CalendarPanel({ canEdit, manager }: { canEdit: boolean; manager:
         >
           오늘
         </SecondaryButton>
-        <span className="flex-1" />
+        <span className="hidden flex-1 sm:block" />
+        {/* 좁은 화면에서는 감춘다. 이 버튼과 아래 "이 날에 추가"는 `emptyDraft(selected)` 로
+            **완전히 같은 동작**이라, 폰에서 둘 다 두면 폭을 꽉 채운 파란 덩어리가 달력보다 커지면서
+            같은 일을 두 번 권하게 된다. 아래쪽이 고른 날짜 옆에 있어 무엇이 만들어지는지도 분명하다. */}
         {canEdit ? (
-          <Button onClick={() => setDraft(emptyDraft(selected))}>
+          <Button onClick={() => setDraft(emptyDraft(selected))} className="hidden sm:inline-flex">
             <Icon name="plus" size={16} /> 일정 추가
           </Button>
         ) : null}
@@ -247,16 +259,21 @@ export function CalendarPanel({ canEdit, manager }: { canEdit: boolean; manager:
           ))}
         </div>
         <div className="grid grid-cols-7 gap-1">
-          {cells.map((day, i) =>
-            day === null ? (
-              <div key={`pad-${i}`} />
-            ) : (
+          {cells.map((day, i) => {
+            if (day === null) return <div key={`pad-${i}`} />;
+            const onDay = items.filter((s) => occursOn(s, day));
+            return (
               <button
                 key={day}
                 onClick={() => setSelected(day)}
-                className={`min-h-[64px] rounded-lg border p-1 text-left transition-colors ${
+                // `flex flex-col` 이 있어야 날짜 숫자가 칸마다 같은 높이에 선다.
+                // 버튼은 남는 높이에서 내용을 **세로 가운데**로 놓기 때문에, 점이 붙은 칸만 내용이
+                // 높아져 숫자가 위로 밀렸다(12·13·14 만 9·10·11 보다 위에 뜨던 원인).
+                // 점만 찍는 좁은 화면에서는 칸이 낮아도 된다(그래도 44px 이상이라 누르기 충분하다).
+                className={`flex min-h-tap flex-col rounded-lg border p-0.5 text-left transition-colors md:min-h-[64px] md:p-1 ${
                   day === selected ? 'border-blue-400 bg-blue-50' : 'border-transparent hover:bg-cream-50'
                 }`}
+                aria-label={`${dayLabel(day)}${onDay.length ? ` 일정 ${onDay.length}건` : ''}`}
               >
                 <span
                   className={`block text-[12px] font-semibold ${
@@ -266,27 +283,33 @@ export function CalendarPanel({ canEdit, manager }: { canEdit: boolean; manager:
                   {Number(day.slice(8, 10))}
                   {day === today ? ' ·' : ''}
                 </span>
-                <span className="mt-0.5 block space-y-0.5">
-                  {items
-                    .filter((s) => occursOn(s, day))
-                    .slice(0, 2)
-                    .map((s) => (
-                      <span
-                        key={s.id}
-                        className={`block truncate rounded px-1 py-0.5 text-[11px] font-medium ${VIS_TONE[s.visibility]}`}
-                      >
-                        {s.title}
-                      </span>
-                    ))}
-                  {items.filter((s) => occursOn(s, day)).length > 2 ? (
-                    <span className="block px-1 text-[11px] text-ink-400">
-                      +{items.filter((s) => occursOn(s, day)).length - 2}
+
+                {/* 좁은 화면(태블릿 세로 미만)에서는 제목 대신 점을 찍는다.
+                    360px 에서 한 칸에 글자로 쓸 수 있는 폭이 ~21px 밖에 안 돼 제목이 두 글자와 '…' 로
+                    잘렸다(2026-08-05 사용자 보고). 두 글자는 어떤 일정인지 알려 주지 못하면서 칸만
+                    어지럽힌다. 점은 "몇 건 있는지 · 누구에게 공개인지"를 정확히 전하고,
+                    제목은 바로 아래 '고른 날' 목록이 온전히 보여 준다. */}
+                <span className="mt-1 flex flex-wrap gap-0.5 md:hidden">
+                  {onDay.slice(0, 3).map((s) => (
+                    <i key={s.id} className={`h-1.5 w-1.5 rounded-full ${VIS_DOT[s.visibility]}`} />
+                  ))}
+                  {onDay.length > 3 ? <i className="h-1.5 w-1.5 rounded-full bg-ink-300" /> : null}
+                </span>
+
+                <span className="mt-0.5 hidden space-y-0.5 md:block">
+                  {onDay.slice(0, 2).map((s) => (
+                    <span
+                      key={s.id}
+                      className={`block truncate rounded px-1 py-0.5 text-[11px] font-medium ${VIS_TONE[s.visibility]}`}
+                    >
+                      {s.title}
                     </span>
-                  ) : null}
+                  ))}
+                  {onDay.length > 2 ? <span className="block px-1 text-[11px] text-ink-400">+{onDay.length - 2}</span> : null}
                 </span>
               </button>
-            )
-          )}
+            );
+          })}
         </div>
       </Card>
 

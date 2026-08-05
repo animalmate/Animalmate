@@ -10,7 +10,36 @@ import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { formatScore, docSampleState } from '@/recruit/display';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Banner, Card, DangerButton, Input, SecondaryButton, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+import { Banner, Card, CardField, DangerButton, Input, RowCard, SecondaryButton, StatusMessage, TableCards, TeamOptions, ToolbarSelect } from '@/components/ui';
+
+// 표(PC)와 카드(모바일)가 같은 조각을 쓰도록 뽑아 둔다 — 한쪽만 고치는 사고를 막는다.
+function SampleChip({ sample }: { sample: string }) {
+  if (sample === 'unscored')
+    return (
+      <span className="inline-flex items-center rounded-md bg-coral-100 px-1.5 py-0.5 text-[10px] font-bold text-coral-700">
+        <Icon name="alert" size={12} className="inline" /> 아무도 안 봄
+      </span>
+    );
+  if (sample === 'deficient')
+    return (
+      <span className="inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+        <Icon name="alert" size={12} className="inline" /> 표본 부족 (&lt;3)
+      </span>
+    );
+  return null;
+}
+
+function StatusChip({ status }: { status: string }) {
+  const b = recruitStatusBadge(status);
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${BADGE_TONE_CLASS[b.tone]}`}
+    >
+      <i className="h-1.5 w-1.5 rounded-full bg-current" />
+      {b.label}
+    </span>
+  );
+}
 
 export function RecruitTallyPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -88,6 +117,23 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
   const deficientCount = filteredApplicants.filter(
     (a) => docSampleState(aggregations[a.id]?.docScorerCount ?? 0) === 'deficient'
   ).length;
+
+  // 한 줄에서 뽑아 쓰는 값을 여기서 한 번만 계산한다. 표와 카드가 각자 계산하면
+  // 한쪽만 고쳐 놓고 못 알아채는 일이 생긴다.
+  const rows = filteredApplicants.map((app, idx) => {
+    const agg = aggregations[app.id];
+    const docAvg = formatScore(agg?.docScoreAvg);
+    const scorerCount = agg?.docScorerCount ?? 0;
+    return {
+      app,
+      docAvg,
+      scorerCount,
+      // 미채점자에게 석차를 붙이면 '최하위'로 읽힌다 — 순위가 없는 것과 꼴찌는 다르다.
+      rank: docAvg === null ? null : idx + 1,
+      sample: docSampleState(scorerCount),
+      effectiveTeam: app.assignedTeam || app.wishTeam1 || '-',
+    };
+  });
 
   const handleToggleSelect = (id: string) => {
     const next = new Set(selectedIds);
@@ -277,7 +323,8 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
       {/* 일괄 액션 바 */}
       <Card className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-cream-200 pb-4">
-          <div className="flex items-center gap-3">
+          {/* 360px 에서 "상위 석차 자동 선택 + 입력칸 + 버튼"이 한 줄에 들어가지 않는다 — 접히게 둔다. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-sm font-bold text-ink-900">상위 석차 자동 선택:</span>
             <div className="flex items-center gap-1.5">
               <Input
@@ -336,88 +383,104 @@ export function RecruitTallyPanel({ role }: { role: Role }) {
 
         <StatusMessage text={message} />
 
-        {/* 집계 표 */}
-        <div className="overflow-x-auto rounded-xl border border-cream-200 bg-white shadow-card">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-cream-100 text-ink-700 font-semibold">
-              <tr>
-                <th className="p-3.5 w-10 text-center">선택</th>
-                <th className="p-3.5 w-12 text-center">석차</th>
-                <th className="p-3.5">이름</th>
-                <th className="p-3.5">학교 / 학과</th>
-                <th className="p-3.5">소속 배정팀 (1지망)</th>
-                <th className="p-3.5">서류 평균 점수</th>
-                <th className="p-3.5">채점 인원</th>
-                <th className="p-3.5">현재 상태</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-cream-100">
-              {filteredApplicants.map((app, idx) => {
-                const agg = aggregations[app.id];
-                const isSelected = selectedIds.has(app.id);
-                const sample = docSampleState(agg?.docScorerCount ?? 0);
-                const docAvg = formatScore(agg?.docScoreAvg);
-                const effectiveTeam = app.assignedTeam || app.wishTeam1 || '-';
-
-                return (
-                  <tr key={app.id} className={`transition-colors hover:bg-cream-25 ${isSelected ? 'bg-blue-50/50' : ''}`}>
-                    <td className="p-0 text-center">
-                      {/* 라벨로 감싸 셀 전체를 누를 수 있게 한다 — 16px 네모만 노리면 자꾸 빗나간다. */}
-                      <label
-                        className="flex min-h-tap cursor-pointer items-center justify-center px-3.5"
-                        aria-label={`${app.name} 선택`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelect(app.id)}
-                          className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </label>
-                    </td>
-                    {/* 미채점자에게 석차를 붙이면 '최하위'로 읽힌다 — 순위가 없는 것과 꼴찌는 다르다. */}
-                    <td className="p-3.5 text-center font-mono font-bold text-ink-500">
-                      {docAvg === null ? <span className="text-ink-300">-</span> : idx + 1}
-                    </td>
-                    <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
-                    <td className="p-3.5 text-ink-700">{app.school} {app.department}</td>
-                    <td className="p-3.5 text-ink-700 font-semibold">{effectiveTeam} <span className="text-[11px] font-normal text-ink-400">({app.wishTeam1 || '-'})</span></td>
-                    <td className="p-3.5">
-                      {docAvg !== null ? (
-                        <span className="font-bold text-blue-700 text-sm">{docAvg}점</span>
-                      ) : (
-                        <span className="text-ink-400">미채점</span>
-                      )}
-                    </td>
-                    <td className="p-3.5 text-ink-700">
-                      <span className="font-semibold">{agg?.docScorerCount ?? 0}명</span>
-                      {sample === 'unscored' && (
-                        <span className="ml-2 inline-flex items-center rounded-md bg-coral-100 px-1.5 py-0.5 text-[10px] font-bold text-coral-700">
-                          <Icon name="alert" size={12} className="inline" /> 아무도 안 봄
+        {/* 집계 목록 — 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
+        <TableCards
+          table={
+            <table className="w-full text-left text-xs">
+              <thead className="bg-cream-100 font-semibold text-ink-700">
+                <tr>
+                  <th className="w-10 p-3.5 text-center">선택</th>
+                  <th className="w-12 p-3.5 text-center">석차</th>
+                  <th className="p-3.5">이름</th>
+                  <th className="p-3.5">학교 / 학과</th>
+                  <th className="p-3.5">소속 배정팀 (1지망)</th>
+                  <th className="p-3.5">서류 평균 점수</th>
+                  <th className="p-3.5">채점 인원</th>
+                  <th className="p-3.5">현재 상태</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-cream-100">
+                {rows.map(({ app, docAvg, scorerCount, rank, sample, effectiveTeam }) => {
+                  const isSelected = selectedIds.has(app.id);
+                  return (
+                    <tr key={app.id} className={`transition-colors hover:bg-cream-25 ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                      <td className="p-0 text-center">
+                        {/* 라벨로 감싸 셀 전체를 누를 수 있게 한다 — 16px 네모만 노리면 자꾸 빗나간다. */}
+                        <label className="flex min-h-tap cursor-pointer items-center justify-center px-3.5" aria-label={`${app.name} 선택`}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(app.id)}
+                            className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </label>
+                      </td>
+                      <td className="p-3.5 text-center font-mono font-bold text-ink-500">
+                        {rank === null ? <span className="text-ink-300">-</span> : rank}
+                      </td>
+                      <td className="p-3.5 text-sm font-bold text-ink-900">{app.name}</td>
+                      <td className="p-3.5 text-ink-700">
+                        {app.school} {app.department}
+                      </td>
+                      <td className="p-3.5 font-semibold text-ink-700">
+                        {effectiveTeam} <span className="text-[11px] font-normal text-ink-400">({app.wishTeam1 || '-'})</span>
+                      </td>
+                      <td className="p-3.5">
+                        {docAvg !== null ? (
+                          <span className="text-sm font-bold text-blue-700">{docAvg}점</span>
+                        ) : (
+                          <span className="text-ink-400">미채점</span>
+                        )}
+                      </td>
+                      <td className="p-3.5 text-ink-700">
+                        <span className="font-semibold">{scorerCount}명</span>
+                        <span className="ml-2">
+                          <SampleChip sample={sample} />
                         </span>
-                      )}
-                      {sample === 'deficient' && (
-                        <span className="ml-2 inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                          <Icon name="alert" size={12} className="inline" /> 표본 부족 (&lt;3)
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3.5 font-semibold">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] ${
-                          BADGE_TONE_CLASS[recruitStatusBadge(app.status).tone]
-                        }`}
-                      >
-                        <i className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {recruitStatusBadge(app.status).label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                      <td className="p-3.5">
+                        <StatusChip status={app.status} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          }
+          cards={rows.map(({ app, docAvg, scorerCount, rank, sample, effectiveTeam }) => (
+            <RowCard
+              key={app.id}
+              selected={selectedIds.has(app.id)}
+              onSelect={() => handleToggleSelect(app.id)}
+              selectLabel={`${app.name} 선택`}
+              badge={<StatusChip status={app.status} />}
+              title={
+                <span className="flex items-baseline gap-2">
+                  {/* 석차는 카드에서도 맨 앞에 둔다 — 정렬 근거가 보이지 않으면 목록 순서가 임의로 보인다. */}
+                  <span className="font-mono text-[13px] font-bold text-ink-400">{rank === null ? '-' : rank}</span>
+                  {app.name}
+                </span>
+              }
+            >
+              <CardField label="학교 / 학과">
+                {app.school} {app.department}
+              </CardField>
+              <CardField label="배정팀 (1지망)">
+                <span className="font-semibold">{effectiveTeam}</span>{' '}
+                <span className="text-[11px] text-ink-400">({app.wishTeam1 || '-'})</span>
+              </CardField>
+              <CardField label="서류 평균">
+                {docAvg !== null ? <span className="font-bold text-blue-700">{docAvg}점</span> : <span className="text-ink-400">미채점</span>}
+              </CardField>
+              <CardField label="채점 인원">
+                <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                  <span className="font-semibold">{scorerCount}명</span>
+                  <SampleChip sample={sample} />
+                </span>
+              </CardField>
+            </RowCard>
+          ))}
+        />
       </Card>
     </div>
   );

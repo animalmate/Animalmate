@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
-import { createSlot, listSlotsByCohort, deleteSlot } from '@/recruit/slots';
+import { createSlot, createPanelSlots, listSlotsByCohort, deleteSlot } from '@/recruit/slots';
 import { getSlotsInterviewersMap } from '@/recruit/slot-interviewers';
 import { internalError } from '@/http/errors';
 import { parseDate } from '@/http/input';
@@ -35,7 +35,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { cohortId, startsAt, durationMin, link, venue, isRemote } = body;
+    const { cohortId, panel, startsAt, until, durationMin, link, venue, isRemote } = body;
     if (!cohortId || !startsAt) {
       return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
     }
@@ -49,8 +49,40 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ error: 'invalid_durationMin' }, { status: 400 });
     }
 
+    // `until` 이 있으면 조 하나를 통째로 만든다(시작~종료를 durationMin 으로 자른다).
+    if (until) {
+      const parsedUntil = parseDate(until);
+      if (!parsedUntil) return NextResponse.json({ error: 'invalid_until' }, { status: 400 });
+      if (parsedUntil.getTime() <= parsedStartsAt.getTime()) {
+        return NextResponse.json(
+          { error: 'invalid_until', message: '종료 시각이 시작 시각보다 늦어야 합니다.' },
+          { status: 400 }
+        );
+      }
+      const panelName = String(panel ?? '').trim();
+      if (!panelName) {
+        return NextResponse.json(
+          { error: 'missing_panel', message: '조 이름을 입력해 주세요(예: A조).' },
+          { status: 400 }
+        );
+      }
+      const slots = await createPanelSlots({
+        cohortId,
+        panel: panelName,
+        startsAt: parsedStartsAt,
+        until: parsedUntil,
+        durationMin: parsedDuration,
+        link: link ? String(link) : null,
+        venue: venue ? String(venue) : null,
+        isRemote: !!isRemote,
+        createdBy: actor.userId,
+      });
+      return NextResponse.json({ slots });
+    }
+
     const slot = await createSlot({
       cohortId,
+      panel: panel ? String(panel) : null,
       startsAt: parsedStartsAt,
       durationMin: parsedDuration,
       link: link ? String(link) : null,

@@ -10,7 +10,32 @@ import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { formatScore } from '@/recruit/display';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+import { Button, Card, CardBlock, CardField, DangerButton, Field, Input, RowCard, SecondaryButton, Select, StatusMessage, TableCards, TeamOptions, ToolbarSelect } from '@/components/ui';
+
+// 표(PC)와 카드(모바일)가 같은 조각을 쓰도록 뽑아 둔다 — 한쪽만 고치는 사고를 막는다.
+function WarnChip({ warn }: { warn: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold ${
+        warn === '면접 불참' ? 'bg-coral-100 text-coral-700' : 'bg-amber-100 text-amber-700'
+      }`}
+    >
+      <Icon name="alert" size={12} className="inline" /> {warn}
+    </span>
+  );
+}
+
+function StatusChip({ status }: { status: string }) {
+  const b = recruitStatusBadge(status);
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${BADGE_TONE_CLASS[b.tone]}`}
+    >
+      <i className="h-1.5 w-1.5 rounded-full bg-current" />
+      {b.label}
+    </span>
+  );
+}
 
 export function RecruitFinalPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -225,6 +250,31 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
   });
   const decidableCount = teamApplicants.filter((a) => DECIDABLE.includes(a.status)).length;
 
+  // 한 줄에서 뽑아 쓰는 값을 한 번만 계산한다 — 표(PC)와 카드(모바일)가 각자 계산하면
+  // 한쪽만 고쳐 놓고 못 알아채는 일이 생긴다.
+  const rows = filteredApplicants.map((app) => {
+    const agg = aggregations[app.id];
+
+    // 경고가 `app.slotId &&` 로 시작해서, **슬롯을 아예 못 받은 사람은 아무 경고도 못 받았다.**
+    // 배정 단계에서 잊힌 사람이 정확히 그 경우인데 화면이 조용했다. 두 경우를 나눠 각각 말해 준다.
+    const warns: string[] = [];
+    if (app.status === 'interview_noshow') {
+      // 불참이면 점수가 없는 게 당연하다. '채점 미기록'까지 같이 붙이면 문제가 두 개인 것처럼 보인다.
+      warns.push('면접 불참');
+    } else if (app.status === 'doc_pass' && !app.slotId) {
+      warns.push('면접 미배정');
+    } else if (app.slotId && (agg?.interviewScorerCount ?? 0) === 0) {
+      warns.push('면접 채점 미기록');
+    }
+
+    return {
+      app,
+      warns,
+      docAvg: formatScore(agg?.docScoreAvg),
+      intAvg: formatScore(agg?.interviewScoreAvg),
+    };
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -279,7 +329,8 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-6 rounded-2xl bg-cream-50 border border-cream-200 p-3 px-5">
+          {/* 공개 스위치 두 개는 문구가 길다. 좁으면 세로로 쌓고, 가운데 구분선은 그때 감춘다. */}
+          <div className="flex flex-col gap-2 rounded-2xl border border-cream-200 bg-cream-50 p-3 px-5 sm:flex-row sm:items-center sm:gap-6">
             <label className="flex min-h-tap items-center gap-2.5 cursor-pointer font-bold text-xs text-ink-900">
               <input
                 type="checkbox"
@@ -290,7 +341,7 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
               <span>면접 일정/링크 지원자 공개</span>
             </label>
 
-            <div className="h-4 w-px bg-cream-200" />
+            <div className="hidden h-4 w-px bg-cream-200 sm:block" />
 
             <label className="flex min-h-tap items-center gap-2.5 cursor-pointer font-bold text-xs text-ink-900">
               <input
@@ -310,14 +361,15 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
 
       {/* 최종 합격 결정 매트릭스 카드 */}
       <Card className="space-y-4">
-        <div className="flex items-center justify-between border-b border-cream-200 pb-3">
+        {/* 확정 버튼 문구가 "선택 12명 최종 불합격 처리"까지 길어진다 — 좁으면 접히게 둔다. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 pb-3">
           <span className="text-sm font-bold text-ink-900">
             최종 결정 매트릭스 ({filteredApplicants.length}명)
-            <span className="ml-2 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+            <span className="ml-2 inline-block rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
               지금 결정할 수 있는 사람 {decidableCount}명
             </span>
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-ink-500 font-semibold mr-1">
               선택: <strong className="text-blue-600">{selectedIds.size}명</strong>
             </span>
@@ -338,107 +390,113 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
           </div>
         </div>
 
-        {/* 종합 점수 테이블 */}
-        <div className="overflow-x-auto rounded-xl border border-cream-200 bg-white shadow-card">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-cream-100 text-ink-700 font-semibold">
-              <tr>
-                <th className="p-3.5 w-10 text-center">선택</th>
-                <th className="p-3.5">이름</th>
-                <th className="p-3.5">학교 / 학과</th>
-                <th className="p-3.5">최종 배정 팀</th>
-                <th className="p-3.5">서류 평균 점수</th>
-                <th className="p-3.5">면접 평균 점수</th>
-                <th className="p-3.5">특이사항 경고</th>
-                <th className="p-3.5">최종 상태</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-cream-100">
-              {filteredApplicants.map((app) => {
-                const agg = aggregations[app.id];
-                const isSelected = selectedIds.has(app.id);
-                // 경고가 `app.slotId &&` 로 시작해서, **슬롯을 아예 못 받은 사람은 아무 경고도
-                // 못 받았다.** 배정 단계에서 잊힌 사람이 정확히 그 경우인데 화면이 조용했다.
-                // 두 경우를 나눠서 각각 말해 준다.
-                const docAvg = formatScore(agg?.docScoreAvg);
-                const intAvg = formatScore(agg?.interviewScoreAvg);
-
-                const warns: string[] = [];
-                if (app.status === 'interview_noshow') {
-                  // 불참이면 점수가 없는 게 당연하다. '채점 미기록'까지 같이 붙이면 문제가
-                  // 두 개인 것처럼 보인다 — 불참이 곧 이유이므로 하나만 말한다.
-                  warns.push('면접 불참');
-                } else if (app.status === 'doc_pass' && !app.slotId) {
-                  warns.push('면접 미배정');
-                } else if (app.slotId && (agg?.interviewScorerCount ?? 0) === 0) {
-                  warns.push('면접 채점 미기록');
-                }
-
-                return (
-                  <tr key={app.id} className={`hover:bg-cream-25 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
-                    <td className="p-0 text-center">
-                      {/* 라벨로 감싸 셀 전체를 누를 수 있게 한다 — 16px 네모만 노리면 자꾸 빗나간다. */}
-                      <label
-                        className="flex min-h-tap cursor-pointer items-center justify-center px-3.5"
-                        aria-label={`${app.name} 선택`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelect(app.id)}
-                          className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </label>
-                    </td>
-                    <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
-                    <td className="p-3.5 text-ink-700">{app.school} {app.department}</td>
-                    <td className="p-3.5">
-                      <Select
-                        value={app.assignedTeam || app.wishTeam1 || '봉사 1팀'}
-                        onChange={(e) => handleReassignTeam(app.id, e.target.value)}
-                        className="w-32 text-xs h-8"
-                      >
-                <TeamOptions teams={teams} loading={teamsLoading} />
-              </Select>
-                    </td>
-                    <td className="p-3.5 text-ink-700">{docAvg !== null ? `${docAvg}점` : '-'}</td>
-                    <td className="p-3.5">
-                      {intAvg !== null ? (
-                        <span className="font-bold text-blue-700 text-sm">{intAvg}점</span>
-                      ) : (
-                        <span className="text-ink-400">-</span>
-                      )}
-                    </td>
-                    <td className="p-3.5">
-                      <div className="flex flex-wrap gap-1">
-                        {warns.map((w) => (
-                          <span
-                            key={w}
-                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                              w === '면접 불참' ? 'bg-coral-100 text-coral-700' : 'bg-amber-100 text-amber-700'
-                            }`}
+        {/* 종합 점수 목록 — 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
+        <TableCards
+          table={
+            <table className="w-full text-left text-xs">
+              <thead className="bg-cream-100 font-semibold text-ink-700">
+                <tr>
+                  <th className="w-10 p-3.5 text-center">선택</th>
+                  <th className="p-3.5">이름</th>
+                  <th className="p-3.5">학교 / 학과</th>
+                  <th className="p-3.5">최종 배정 팀</th>
+                  <th className="p-3.5">서류 평균 점수</th>
+                  <th className="p-3.5">면접 평균 점수</th>
+                  <th className="p-3.5">특이사항 경고</th>
+                  <th className="p-3.5">최종 상태</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-cream-100">
+                {rows.map(({ app, warns, docAvg, intAvg }) => {
+                  const isSelected = selectedIds.has(app.id);
+                  return (
+                    <tr key={app.id} className={`transition-colors hover:bg-cream-25 ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                      <td className="p-0 text-center">
+                        {/* 라벨로 감싸 셀 전체를 누를 수 있게 한다 — 16px 네모만 노리면 자꾸 빗나간다. */}
+                        <label className="flex min-h-tap cursor-pointer items-center justify-center px-3.5" aria-label={`${app.name} 선택`}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(app.id)}
+                            className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </label>
+                      </td>
+                      <td className="p-3.5 text-sm font-bold text-ink-900">{app.name}</td>
+                      <td className="p-3.5 text-ink-700">
+                        {app.school} {app.department}
+                      </td>
+                      <td className="p-3.5">
+                        {/* 폭은 **감싼 div** 로 준다. `Select` 에 `w-32` 를 직접 붙이면 기본 `w-full` 과
+                            같은 특이도로 충돌해서 좁은 칸 기준 100%(81px)로 눌리고 "봉사 1팀"이 잘렸다.
+                            같은 이유로 화면·심사 화면도 래퍼로 폭을 준다(console:636, screening:394). */}
+                        <div className="w-36">
+                          <Select
+                            value={app.assignedTeam || app.wishTeam1 || '봉사 1팀'}
+                            onChange={(e) => handleReassignTeam(app.id, e.target.value)}
+                            aria-label={`${app.name} 최종 배정 팀`}
+                            uiSize="sm"
                           >
-                            <Icon name="alert" size={12} className="inline" /> {w}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-3.5 font-semibold">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] ${
-                          BADGE_TONE_CLASS[recruitStatusBadge(app.status).tone]
-                        }`}
-                      >
-                        <i className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {recruitStatusBadge(app.status).label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                            <TeamOptions teams={teams} loading={teamsLoading} />
+                          </Select>
+                        </div>
+                      </td>
+                      <td className="p-3.5 text-ink-700">{docAvg !== null ? `${docAvg}점` : '-'}</td>
+                      <td className="p-3.5">
+                        {intAvg !== null ? <span className="text-sm font-bold text-blue-700">{intAvg}점</span> : <span className="text-ink-400">-</span>}
+                      </td>
+                      <td className="p-3.5">
+                        <div className="flex flex-wrap gap-1">
+                          {warns.map((w) => (
+                            <WarnChip key={w} warn={w} />
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-3.5">
+                        <StatusChip status={app.status} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          }
+          cards={rows.map(({ app, warns, docAvg, intAvg }) => (
+            <RowCard
+              key={app.id}
+              title={app.name}
+              selected={selectedIds.has(app.id)}
+              onSelect={() => handleToggleSelect(app.id)}
+              selectLabel={`${app.name} 선택`}
+              badge={<StatusChip status={app.status} />}
+            >
+              {/* 경고는 값 줄에 묻으면 안 된다 — 결정 직전에 봐야 하는 정보라 맨 위에 폭 전체로 편다. */}
+              {warns.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {warns.map((w) => (
+                    <WarnChip key={w} warn={w} />
+                  ))}
+                </div>
+              ) : null}
+              <CardField label="학교 / 학과">
+                {app.school} {app.department}
+              </CardField>
+              <CardField label="서류 평균">{docAvg !== null ? `${docAvg}점` : '-'}</CardField>
+              <CardField label="면접 평균">
+                {intAvg !== null ? <span className="font-bold text-blue-700">{intAvg}점</span> : <span className="text-ink-400">-</span>}
+              </CardField>
+              <CardBlock label="최종 배정 팀">
+                <Select
+                  value={app.assignedTeam || app.wishTeam1 || '봉사 1팀'}
+                  onChange={(e) => handleReassignTeam(app.id, e.target.value)}
+                  aria-label={`${app.name} 최종 배정 팀`}
+                >
+                  <TeamOptions teams={teams} loading={teamsLoading} />
+                </Select>
+              </CardBlock>
+            </RowCard>
+          ))}
+        />
       </Card>
 
       {/* 되돌릴 수 없는 작업 — 공개 스위치와 떨어뜨려 화면 맨 아래에 둔다. */}

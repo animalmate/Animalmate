@@ -5,7 +5,7 @@ import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { matchesTeamFilter } from '@/recruit/team-filter';
-import { slotPlaceLabel, slotPanelNumbers, slotPanelSuffix } from '@/recruit/display';
+import { slotPlaceLabel, slotPanelNumbers, slotPanelSuffix, slotPanelLabel, suggestNextPanelName } from '@/recruit/display';
 import { timeAxisOf } from '@/recruit/timetable';
 import type { DutyRow } from '@/recruit/duty-rules';
 import { isPrivileged } from '@/auth/permissions';
@@ -13,8 +13,19 @@ import { TimetableModal } from './timetable-modal';
 import { DutyRoster } from './duty-roster';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
+import { StaffTimetableButton } from '@/components/staff-timetable-button';
 import { useTeams } from '@/components/use-teams';
-import { Button, Card, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+import { Button, Card, CardBlock, CardField, Field, Input, RowCard, SecondaryButton, Select, StatusMessage, TableCards, TeamOptions, ToolbarSelect } from '@/components/ui';
+
+// 표(PC)와 카드(모바일)가 같은 조각을 쓰도록 뽑아 둔다 — 한쪽만 고치는 사고를 막는다.
+function RemoteWishChip({ wish }: { wish?: string | null }) {
+  if (!wish) return <span className="text-[11px] font-semibold text-ink-400">대면</span>;
+  return (
+    <span className="shrink-0 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+      {wish}
+    </span>
+  );
+}
 
 export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -33,9 +44,11 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [venuePresets, setVenuePresets] = useState<string[]>([]);
   const [venuesLoading, setVenuesLoading] = useState(true);
 
-  // 슬롯 추가 입력 폼 (10분 단위 시각 선택)
+  // 조 만들기 입력 폼 (10분 단위 시각 선택)
+  const [panelName, setPanelName] = useState('A조');
   const [slotDate, setSlotDate] = useState('2026-08-01');
   const [slotTime, setSlotTime] = useState('14:00');
+  const [slotEndTime, setSlotEndTime] = useState('18:00');
   const [slotDuration, setSlotDuration] = useState('20');
   const [isRemote, setIsRemote] = useState(false);
   const [selectedVenue, setSelectedVenue] = useState('');
@@ -132,44 +145,61 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     }
   }, [selectedCohortId, fetchSlotsAndApplicants, fetchCohortNoticeSettings]);
 
-  const handleCreateSlot = async () => {
+  const handleCreatePanel = async () => {
     if (!slotDate || !slotTime) return;
+    if (!panelName.trim()) {
+      setMessage('❌ 조 이름을 입력해 주세요(예: A조).');
+      return;
+    }
     // 대면인데 장소가 비면 장소 없는 슬롯이 만들어진다 — 지원자에게 어디로 오라고 안내할 수 없다.
     if (!isRemote && !selectedVenue) {
       setMessage('❌ 면접 장소를 먼저 0. 공고 설정에서 등록해 주세요.');
       return;
     }
+    if (plannedSlotCount <= 0) {
+      setMessage('❌ 종료 시각이 시작 시각보다 늦어야 합니다.');
+      return;
+    }
+    // 같은 이름의 조가 이미 있으면 시간대가 뒤섞인다 — 두 번 누른 사고를 여기서 잡는다.
+    if (existingPanels.includes(panelName.trim())) {
+      setMessage(`❌ "${panelName.trim()}" 은(는) 이미 있습니다. 다른 이름을 쓰거나 기존 조를 지우고 다시 만드세요.`);
+      return;
+    }
     setLoading(true);
     setMessage('');
     try {
-      const startsAt = new Date(`${slotDate}T${slotTime}:00`);
-      const venue = isRemote ? '비대면 (온라인 화상)' : selectedVenue;
-
       const res = await fetch('/api/recruit/slots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cohortId: selectedCohortId,
-          startsAt: startsAt.toISOString(),
+          panel: panelName.trim(),
+          startsAt: new Date(`${slotDate}T${slotTime}:00`).toISOString(),
+          until: new Date(`${slotDate}T${slotEndTime}:00`).toISOString(),
           durationMin: parseInt(slotDuration, 10),
-          venue,
+          venue: isRemote ? '비대면 (온라인 화상)' : selectedVenue,
           isRemote,
           link: isRemote ? slotLink : null,
         }),
       });
 
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.slot) {
+      if (res.ok && Array.isArray(data.slots)) {
         // 만든 슬롯을 응답에서 바로 받아 끼워 넣는다 — 전체를 다시 불러올 이유가 없다.
         setSlots((prev) =>
-          [...prev, data.slot].sort(
-            (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+          [...prev, ...data.slots].sort(
+            (a, b) =>
+              new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime() ||
+              String(a.panel ?? '').localeCompare(String(b.panel ?? ''))
           )
         );
-        setMessage('✅ 면접 시간 슬롯이 생성되었습니다.');
+        setMessage(`✅ ${panelName.trim()} 을(를) ${data.slots.length}칸으로 만들었습니다.`);
+        // 다음 조 이름을 미리 채워 둔다 — 안 그러면 두 번째 조를 만들 때마다 지우고 다시 써야 하고,
+        // 그대로 누르면 "이미 있는 이름"에서 막힌다.
+        setPanelName(suggestNextPanelName([...existingPanels, panelName.trim()]));
         setSlotLink('');
       } else {
-        setMessage(`❌ 슬롯 생성 실패: ${data.message || data.error || res.status}`);
+        setMessage(`❌ 조 생성 실패: ${data.message || data.error || res.status}`);
       }
     } finally {
       setLoading(false);
@@ -280,6 +310,30 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
 
   const filteredApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
 
+  // 만들기 전에 몇 칸이 생기는지 버튼에 적어 준다 — 10:00~18:00 을 20분으로 자르면 24칸이고,
+  // 그걸 모른 채 누르면 지우는 데 24번을 눌러야 한다.
+  const plannedSlotCount = (() => {
+    const step = parseInt(slotDuration, 10);
+    const from = new Date(`${slotDate}T${slotTime}:00`).getTime();
+    const to = new Date(`${slotDate}T${slotEndTime}:00`).getTime();
+    if (!Number.isFinite(from) || !Number.isFinite(to) || !step || to <= from) return 0;
+    return Math.ceil((to - from) / (step * 60_000));
+  })();
+
+  // 이미 있는 조 이름(중복 생성 방지 + 안내). 슬롯이 곧 조 목록이다.
+  const existingPanels = [...new Set(slots.map((s) => (s.panel ?? '').trim()).filter(Boolean))];
+  const panelsKey = existingPanels.join('|');
+
+  // 기수를 바꾸거나 슬롯을 다시 받으면 그 기수에 **없는** 이름으로 기본값을 맞춘다.
+  // 없으면 앞 기수에서 쓰던 이름이 칸에 남아, 누르자마자 "이미 있는 이름"에서 막힌다.
+  // 의존성은 접은 문자열(panelsKey)로 둔다 — 배열은 렌더마다 새로 생겨 effect 가 매번 돈다.
+  // 조 이름을 손으로 고치는 중에는 panelsKey 가 안 바뀌므로 입력을 빼앗지 않는다.
+  useEffect(() => {
+    const next = suggestNextPanelName(panelsKey ? panelsKey.split('|') : []);
+    // Z조까지 찼으면 빈 문자열이 온다 — 그때는 칸을 비우지 말고 사람이 쓴 값을 그대로 둔다.
+    if (next) setPanelName(next);
+  }, [panelsKey]);
+
   // 같은 시각·같은 장소 슬롯(동시 진행 조)에 번호를 매긴다. 드롭다운·카드가 같은 번호를 쓴다.
   const panelNumbers = slotPanelNumbers(slots);
 
@@ -305,6 +359,30 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     setDutyRows(rows);
   }, []);
 
+  // 슬롯 드롭다운 내용은 표(PC)와 카드(모바일)가 함께 쓴다 — 한 번만 만든다.
+  const slotOptions = (
+    <>
+      <option value="">-- 면접 슬롯 미배정 --</option>
+      {slots.map((s) => (
+        <option key={s.id} value={s.id}>
+          {new Date(s.startsAt).toLocaleString('ko-KR', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}{' '}
+          | {slotPlaceLabel(s)} ({s.durationMin}분)
+          {/* 같은 시각을 나눠 쓰는 조는 이 꼬리표가 없으면 드롭다운에 완전히 같은 줄로 뜬다
+              — 어느 쪽을 고르는지 알 수 없다. 면접관까지 붙여 "누가 보는 조인지"를 함께 알린다. */}
+          {slotPanelSuffix(
+            slotPanelLabel(s, panelNumbers),
+            (slotInterviewersMap[s.id] ?? []).map((i: any) => i.name)
+          )}
+        </option>
+      ))}
+    </>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -317,6 +395,10 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* 배정을 하다 말고 "지금까지 누가 어디에 들어갔더라"를 확인하는 자리다.
+              아래 '현재 현황 보기'는 지원자까지 넣은 공지용 표이고, 이쪽은 운영진 배정만 본다. */}
+          <StaffTimetableButton cohortId={selectedCohortId} />
+
           <ToolbarSelect
             label="팀"
             loading={teamsLoading}
@@ -351,10 +433,12 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
         title="면접 배정 운영진 공용 메모지"
       />
 
-      {/* 1. 슬롯 생성 카드 (10분 단위 & 대면 장소 프리셋 + 비대면 링크) */}
+      {/* 1. 조 만들기 — 조 = 방 하나를 잡고 하루 종일 유지되는 트랙(지난 기수 시간표의 A조·B조·비대면 파견).
+             시작~종료를 소요 시간으로 잘라 슬롯을 한 번에 만든다. 예전에는 칸을 하나씩 만들게 해서
+             10:00~18:00 을 30분으로 쪼개면 같은 폼을 16번 채워야 했다. */}
       <Card className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 pb-4">
-          <h2 className="text-base font-bold text-ink-900">면접 슬롯 만들기</h2>
+          <h2 className="text-base font-bold text-ink-900">면접 조 만들기</h2>
           {/* 두 값 중 하나를 고르는 것이므로 라디오 그룹으로 묶는다(키보드 화살표 이동·스크린리더 대응). */}
           <div
             role="radiogroup"
@@ -386,7 +470,21 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
         {/* 라벨은 전부 한 줄짜리로 맞추고 도움말은 표 아래 한 곳에 모은다.
             예전에는 items-end 였는데 장소 필드에만 hint 가 붙어 있어서, 아래를 기준으로 정렬되는 바람에
             그 셀렉트만 한 줄 위로 떠 다른 컨트롤과 높이가 어긋났다. */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* 조 구성은 기수마다 다르다 — 대면만 3개일 수도, 비대면이 없을 수도 있다.
+              그래서 이름은 자유 입력이고 목록도 코드에 두지 않는다. */}
+          <Field
+            label="조 이름"
+            hint={existingPanels.length > 0 ? `이미 있는 조: ${existingPanels.join(' · ')}` : '원하는 대로 지으세요(예: A조 · 비대면 파견)'}
+          >
+            <Input
+              type="text"
+              placeholder="예: A조"
+              value={panelName}
+              onChange={(e) => setPanelName(e.target.value)}
+            />
+          </Field>
+
           <Field label="면접 날짜">
             <Input type="date" value={slotDate} onChange={(e) => setSlotDate(e.target.value)} />
           </Field>
@@ -401,7 +499,19 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
             </Select>
           </Field>
 
-          <Field label="소요 시간">
+          {/* 종료 시각은 **그 시각 전까지** 만든다 — 18:00 을 고르면 17:30~18:00 이 마지막 칸이다.
+              "18:00 까지"라고 말했을 때 사람이 기대하는 것이 그것이다. */}
+          <Field label="종료 시각" hint="이 시각 전까지 만듭니다">
+            <Select value={slotEndTime} onChange={(e) => setSlotEndTime(e.target.value)}>
+              {timeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="한 칸 길이">
             <Select value={slotDuration} onChange={(e) => setSlotDuration(e.target.value)}>
               <option value="10">10분</option>
               <option value="15">15분</option>
@@ -449,15 +559,17 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
 
           {/* 셀 높이가 모두 같으므로 items-end 로 버튼 바닥을 컨트롤 바닥에 맞춘다. */}
           <div className="flex h-full items-end">
-            <Button type="button" disabled={loading} onClick={handleCreateSlot} className="w-full">
-              슬롯 생성
+            <Button type="button" disabled={loading} onClick={handleCreatePanel} className="w-full">
+              {loading ? '만드는 중…' : `조 만들기${plannedSlotCount > 0 ? ` (${plannedSlotCount}칸)` : ''}`}
             </Button>
           </div>
         </div>
 
         <p className="text-[13px] text-ink-500">
+          조는 <strong>방 하나를 잡고 하루 종일 유지되는 트랙</strong>입니다. 조를 만든 뒤 아래에서 시간대마다
+          면접관과 지원자를 배정하세요.{' '}
           {isRemote
-            ? '비대면 슬롯은 화상 링크가 지원자 조회 화면에 그대로 노출됩니다.'
+            ? '비대면 조는 화상 링크가 지원자 조회 화면에 그대로 노출됩니다.'
             : '면접 장소는 “0. 공고·마감 설정”에서 등록한 프리셋 중에서 고릅니다.'}
         </p>
 
@@ -500,11 +612,11 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                           minute: '2-digit',
                         })}{' '}
                         ({slot.durationMin}분)
-                        {/* 카드도 드롭다운과 같은 조 번호를 쓴다 — 안 그러면 똑같이 생긴 카드 둘 중
-                            어느 것이 드롭다운의 1조인지 알 수 없다. */}
-                        {(panelNumbers[slot.id] ?? 0) > 0 && (
+                        {/* 카드도 드롭다운과 같은 조 이름을 쓴다 — 안 그러면 똑같이 생긴 카드 둘 중
+                            어느 것이 드롭다운의 A조인지 알 수 없다. */}
+                        {slotPanelLabel(slot, panelNumbers) && (
                           <span className="rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            {panelNumbers[slot.id]}조
+                            {slotPanelLabel(slot, panelNumbers)}
                           </span>
                         )}
                       </span>
@@ -602,58 +714,58 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
           </span>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-cream-200 bg-white shadow-card">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-cream-100 text-ink-700 font-semibold">
-              <tr>
-                <th className="p-3.5">지원자 이름</th>
-                <th className="p-3.5">소속 배정팀</th>
-                <th className="p-3.5">비대면 면접 희망 여부</th>
-                <th className="p-3.5">배정할 면접 슬롯</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-cream-100">
-              {filteredApplicants.map((app) => (
-                <tr key={app.id} className="hover:bg-cream-25 transition-colors">
-                  <td className="p-3.5 font-bold text-ink-900 text-sm">{app.name}</td>
-                  <td className="p-3.5 font-medium text-ink-700">{app.assignedTeam || app.wishTeam1 || '-'}</td>
-                  <td className="p-3.5">
-                    {app.remoteInterviewWish ? (
-                      <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 border border-blue-200">
-                        {app.remoteInterviewWish}
-                      </span>
-                    ) : (
-                      <span className="text-ink-400">대면</span>
-                    )}
-                  </td>
-                  <td className="p-3.5">
-                    <Select
-                      value={app.slotId || ''}
-                      onChange={(e) => handleAssignSlot(app.id, e.target.value || null)}
-                      className="max-w-[360px] h-9 text-xs"
-                    >
-                      <option value="">-- 면접 슬롯 미배정 --</option>
-                      {slots.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {new Date(s.startsAt).toLocaleString('ko-KR', {
-                            month: 'numeric',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}{' '}
-                          | {slotPlaceLabel(s)} ({s.durationMin}분)
-                          {/* 같은 시각·같은 장소를 나눠 쓰는 조는 이 꼬리표가 없으면
-                              드롭다운에 완전히 같은 줄로 뜬다 — 어느 쪽을 고르는지 알 수 없다. */}
-                          {slotPanelSuffix(panelNumbers[s.id] ?? 0, (slotInterviewersMap[s.id] ?? []).map((i: any) => i.name))}
-                        </option>
-                      ))}
-                    </Select>
-                  </td>
+        {/* 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
+        <TableCards
+          table={
+            <table className="w-full text-left text-xs">
+              <thead className="bg-cream-100 font-semibold text-ink-700">
+                <tr>
+                  <th className="p-3.5">지원자 이름</th>
+                  <th className="p-3.5">소속 배정팀</th>
+                  <th className="p-3.5">비대면 면접 희망 여부</th>
+                  <th className="p-3.5">배정할 면접 슬롯</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-cream-100">
+                {filteredApplicants.map((app) => (
+                  <tr key={app.id} className="transition-colors hover:bg-cream-25">
+                    <td className="p-3.5 text-sm font-bold text-ink-900">{app.name}</td>
+                    <td className="p-3.5 font-medium text-ink-700">{app.assignedTeam || app.wishTeam1 || '-'}</td>
+                    <td className="p-3.5">
+                      <RemoteWishChip wish={app.remoteInterviewWish} />
+                    </td>
+                    <td className="p-3.5">
+                      <Select
+                        value={app.slotId || ''}
+                        onChange={(e) => handleAssignSlot(app.id, e.target.value || null)}
+                        aria-label={`${app.name} 면접 슬롯`}
+                        uiSize="sm"
+                        className="max-w-[360px]"
+                      >
+                        {slotOptions}
+                      </Select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          }
+          cards={filteredApplicants.map((app) => (
+            <RowCard key={app.id} title={app.name} badge={<RemoteWishChip wish={app.remoteInterviewWish} />}>
+              <CardField label="소속 배정팀">{app.assignedTeam || app.wishTeam1 || '-'}</CardField>
+              {/* 슬롯 이름이 "10/2 14:00 | 학생회관 (20분) · 2조" 처럼 길다 — CardBlock 으로 폭을 다 준다. */}
+              <CardBlock label="배정할 면접 슬롯">
+                <Select
+                  value={app.slotId || ''}
+                  onChange={(e) => handleAssignSlot(app.id, e.target.value || null)}
+                  aria-label={`${app.name} 면접 슬롯`}
+                >
+                  {slotOptions}
+                </Select>
+              </CardBlock>
+            </RowCard>
+          ))}
+        />
       </Card>
 
       <DutyRoster

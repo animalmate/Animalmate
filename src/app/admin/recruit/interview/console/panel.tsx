@@ -7,11 +7,15 @@ import { useTeams } from '@/components/use-teams';
 import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
+import { StaffTimetableButton } from '@/components/staff-timetable-button';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
 import { EssayBlock } from '@/components/essay-block';
 import { formatPhone } from '@/lib/phone';
-import { slotPlaceLabel, formatScore, slotPanelNumbers, slotPanelSuffix } from '@/recruit/display';
-import { formatTimeRange } from '@/recruit/timetable';
+// slotPanelSuffix 는 슬롯 드롭다운이 쓰던 것 — 드롭다운을 걷어내고 시간대 그리드가 조 번호를
+// 배지로 직접 그리면서 필요 없어졌다(다른 화면에서는 아직 쓴다).
+import { slotPlaceLabel, formatScore, slotPanelNumbers } from '@/recruit/display';
+import { formatTimeKo, formatTimeRange } from '@/recruit/timetable';
+import { panelOrder } from '@/recruit/staff-timetable';
 import { groupApplicantsBySlot } from '@/recruit/interview-groups';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
@@ -20,6 +24,57 @@ import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect }
 // 않고 저장만 눌러도 8.0 이 '면접관이 매긴 점수'로 기록되고 상태까지 면접 완료로 전이됐다.
 // 채점하지 않은 것과 8점을 준 것은 완전히 다른 사실이고, 뒤섞이면 집계·표본 부족 판정이 무너진다.
 const NO_SCORE = '';
+
+/**
+ * 시간대 그리드 한 칸. 면접 당일에 눈으로 훑어야 하는 것은 세 가지다 —
+ * **지금 어디인지 · 어디까지 채점했는지 · 지금 보고 있는 조가 어디인지.** 색으로 셋을 나눈다.
+ * (파랑=지금 진행 중, 초록=내 채점 끝, 테두리 강조=지금 고른 조.)
+ */
+function SlotChip({
+  label,
+  sub,
+  badge,
+  now = false,
+  done = false,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  sub: string;
+  badge?: string;
+  now?: boolean;
+  done?: boolean;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  const tone = now
+    ? 'bg-blue-600 text-white border-blue-600'
+    : done
+      ? 'border-success bg-success-100 text-success-700'
+      : 'border-ink-200 bg-white text-ink-700 hover:bg-cream-50';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      // 고른 조는 테두리를 두 겹으로 준다. 배경색은 이미 '지금·채점완료'가 쓰고 있어서,
+      // 선택까지 배경으로 표시하면 세 가지 뜻이 한 색에 겹쳐 아무것도 안 읽힌다.
+      className={`min-h-tap rounded-lg border px-2 py-1.5 text-left transition-colors ${tone} ${
+        active ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+      }`}
+    >
+      <span className="flex items-baseline gap-1">
+        <span className="font-mono text-[12px] font-bold">{label}</span>
+        {badge ? (
+          <span className={`rounded px-1 text-[10px] font-bold ${now ? 'bg-white/25' : 'bg-ink-900 text-white'}`}>{badge}</span>
+        ) : null}
+      </span>
+      <span className={`block text-[10px] font-semibold ${now ? 'text-white/80' : done ? 'text-success-700' : 'text-ink-400'}`}>
+        {sub}
+      </span>
+    </button>
+  );
+}
 
 export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -288,11 +343,14 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
 
   // 한 슬롯에 여러 명이 함께 들어간다. 평면 목록이면 "지금 이 방에 누가 있는지"를
   // 한 명씩 눌러 봐야 알 수 있어, 슬롯(조) 단위로 묶어서 보여준다.
-  const visibleSlots =
-    selectedSlotFilter === 'ALL' ? slots : slots.filter((s) => s.id === selectedSlotFilter);
-  const groups = groupApplicantsBySlot({
-    slots: visibleSlots,
-    applicants: filteredApplicants,
+  //
+  // 슬롯 필터를 **걸기 전** 상태로 한 번 묶는다. 위쪽 시간대 그리드는 이 값을 쓰는데,
+  // 그리드가 곧 슬롯을 고르는 UI 라서 필터가 걸린 목록만 보면 다른 시간대로 옮겨갈 수가 없다.
+  const teamApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  const allScoredCount = teamApplicants.filter((a) => myInterviewScores[a.id] !== undefined).length;
+  const slotOverview = groupApplicantsBySlot({
+    slots,
+    applicants: teamApplicants,
     interviewersBySlot: Object.fromEntries(
       slots.map((s) => [s.id, (slotInterviewersNames[s.id] ?? []) as string[]])
     ),
@@ -301,6 +359,32 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     nowMs,
   });
 
+  // 아래 목록은 고른 시간대만 편다(전체면 그대로).
+  const groups =
+    selectedSlotFilter === 'ALL' ? slotOverview : slotOverview.filter((g) => g.slotId === selectedSlotFilter);
+
+  // ── 조 × 시간 표 ────────────────────────────────────────────────────────
+  // 지난 기수 시간표가 이 모양이다: 조가 열(방 하나를 하루 종일 쓴다), 시각이 행.
+  // 평면 목록이면 "지금 A조는 어디까지 했고 B조는 어디쯤인지"를 스크롤로 맞춰 봐야 한다.
+  // 조 열 순서는 운영진 시간표 팝업과 **같은 규칙**을 쓴다(`panelOrder` 주석 참고 — 만든 순서).
+  // 두 표가 다른 순서로 서면 같은 하루를 보면서도 열을 다시 맞춰 읽어야 한다.
+  const panelNames = panelOrder(
+    slots,
+    (s) => (s.panel ?? '').trim(),
+    (s) => s.createdAt
+  );
+  const rowTimes = [...new Set(slotOverview.map((g) => g.startsAtMs).filter((t): t is number => t !== null))].sort(
+    (a, b) => a - b
+  );
+  // (조, 시각) → 그 칸의 슬롯. 조가 시간대를 비우면(첫 30분 면접실 정비 등) 칸이 없다.
+  const cellAt = new Map<string, (typeof slotOverview)[number]>();
+  for (const g of slotOverview) {
+    if (g.startsAtMs === null || !g.panel) continue;
+    cellAt.set(`${g.panel}|${g.startsAtMs}`, g);
+  }
+  const scoredIn = (g: (typeof slotOverview)[number]) =>
+    g.applicants.filter((a: any) => myInterviewScores[a.id] !== undefined).length;
+
   const selectedGroup = groups.find((g) => g.applicants.some((a: any) => a.id === selectedApplicantId));
 
   return (
@@ -308,30 +392,20 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[24px] font-bold text-ink-900">4. 면접 당일 콘솔 (슬롯별 &amp; 팀별 다중 채점)</h1>
+            <h1 className="text-[24px] font-bold text-ink-900">4. 면접 당일 콘솔 (pc화면 전용, 면접 채점용)</h1>
             <HelpButton screen="recruit-console" />
           </div>
           <p className="mt-1 text-sm text-ink-500">동일 면접 슬롯에 입장한 지원자그룹을 선택하여 실시간 질문 메모 및 평가 점수를 부여합니다.</p>
         </div>
 
-        {/* 다른 모집 화면과 같은 툴바 셀렉트로 맞춘다(높이·테두리 제각각이던 파란 상자를 걷어냈다). */}
+        {/* 다른 모집 화면과 같은 툴바 셀렉트로 맞춘다(높이·테두리 제각각이던 파란 상자를 걷어냈다).
+            "슬롯" 셀렉트는 뺐다 — 왼쪽 시간대 그리드가 같은 상태(`selectedSlotFilter`)를 고르는데,
+            같은 일을 하는 컨트롤이 둘이면 어느 쪽이 지금 값인지 눈으로 확인해야 한다.
+            드롭다운은 열어야 보이고, 그리드는 하루 전체가 늘 보인다. */}
         <div className="flex flex-wrap items-center gap-2">
-          <ToolbarSelect
-            label="슬롯"
-            value={selectedSlotFilter}
-            onChange={(e) => setSelectedSlotFilter(e.target.value)}
-          >
-            <option value="ALL">전체</option>
-            {slots.map((s) => (
-              <option key={s.id} value={s.id}>
-                {new Date(s.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                {' | '}
-                {slotPlaceLabel(s)}
-                {/* 동시 진행 조는 시각·장소가 같아 이 꼬리표가 없으면 구분되지 않는다. */}
-                {slotPanelSuffix(panelNumbers[s.id] ?? 0)}
-              </option>
-            ))}
-          </ToolbarSelect>
+          {/* 채점하다 "내 다음 차례가 언제였지"를 여기서 바로 편다 — 배정 화면(회장단 전용)까지
+              되돌아가야 볼 수 있으면 아무도 안 본다. */}
+          <StaffTimetableButton cohortId={selectedCohortId} />
 
           <ToolbarSelect
             label="팀"
@@ -367,10 +441,20 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
         title="면접 당일 운영진 공용 실시간 메모지"
       />
 
+      {/* 이 화면만 PC 를 전제로 만든다(2026-08-05 사용자 확인: 면접 채점은 노트북으로만 한다).
+          좁은 화면에서도 접혀서 동작은 하지만, 목록·채점·메모를 나란히 보는 배치를 잃어 쓰기 나쁘다.
+          그래서 폰에서 채점 흐름을 따로 만드는 대신 **사실을 알려 주고** 그대로 둔다 —
+          쓰지 않는 화면에 두 번째 레이아웃을 만들면 고칠 곳만 두 곳이 된다. */}
+      <div className="rounded-xl bg-warning-100 px-3.5 py-3 text-[13px] leading-relaxed text-warning-700 lg:hidden">
+        <strong className="block text-sm font-semibold">노트북에서 사용하세요</strong>
+        이 화면은 지원자 목록과 채점표를 나란히 놓고 쓰도록 만들었습니다. 휴대폰에서는 세로로 접혀
+        한 번에 하나씩만 보입니다.
+      </div>
+
       {/* 2열 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* 좌측 면접 순서 목록 */}
-        <Card className="lg:col-span-4 p-4 space-y-3 max-h-[750px] overflow-y-auto">
+        <Card className="lg:col-span-4 p-4 space-y-3">
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
             <span className="text-xs font-bold uppercase tracking-wider text-ink-400">
               면접 대상자 ({filteredApplicants.length}명)
@@ -380,7 +464,116 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
             </span>
           </div>
 
-          <div className="space-y-4">
+          {/* 조 × 시간 표 — 지난 기수 시간표와 같은 모양으로 하루 전체를 펼쳐 놓고 고르게 한다.
+              예전에는 슬롯 머리와 지원자 카드를 세로로 이어 붙이기만 해서, 시간대를 옮기려면
+              스크롤로 훑어야 했다(슬롯 20개면 카드 60장 사이를 지나가야 한다).
+              면접 당일에 필요한 동작은 "다음 칸으로 넘어가기" 하나인데 그게 가장 비쌌다.
+              **스크롤 밖에 고정**해 둔다 — 목록을 내려도 표는 계속 보여야 고를 수 있다. */}
+          {rowTimes.length > 0 && panelNames.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-ink-400">조 · 시간</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSlotFilter('ALL')}
+                  aria-pressed={selectedSlotFilter === 'ALL'}
+                  className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition-colors ${
+                    selectedSlotFilter === 'ALL'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-ink-200 bg-white text-ink-500 hover:bg-cream-50'
+                  }`}
+                >
+                  전체 {allScoredCount}/{teamApplicants.length}
+                </button>
+              </div>
+              {/* 조가 많으면 가로로 넘친다 — 표 안에서만 스크롤시킨다(페이지를 밀지 않는다). */}
+              <div className="overflow-x-auto">
+                <table className="w-full border-separate border-spacing-0.5 text-[10px]">
+                  <thead>
+                    <tr>
+                      <th className="w-10" />
+                      {panelNames.map((p) => (
+                        <th key={p} className="truncate px-1 pb-0.5 text-[10px] font-bold text-ink-500" title={p}>
+                          {p}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rowTimes.map((t) => (
+                      <tr key={t}>
+                        <th className="pr-1 text-right font-mono text-[10px] font-semibold text-ink-400">
+                          {formatTimeKo(t)}
+                        </th>
+                        {panelNames.map((p) => {
+                          const g = cellAt.get(`${p}|${t}`);
+                          // 그 조가 이 시간대를 비운 칸. 빗금 대신 옅은 바탕으로 "없음"만 알린다.
+                          if (!g) return <td key={p} className="rounded bg-cream-50/60" />;
+                          const scored = scoredIn(g);
+                          const total = g.applicants.length;
+                          const done = total > 0 && scored === total;
+                          const active = selectedSlotFilter === g.slotId;
+                          return (
+                            <td key={p} className="p-0">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSlotFilter(g.slotId!)}
+                                aria-pressed={active}
+                                aria-label={`${p} ${formatTimeKo(t)} 지원자 ${total}명 중 내 채점 ${scored}명`}
+                                className={`w-full rounded border px-1 py-1.5 font-bold transition-colors ${
+                                  g.isNow
+                                    ? 'border-blue-600 bg-blue-600 text-white'
+                                    : done
+                                      ? 'border-success bg-success-100 text-success-700'
+                                      : total === 0
+                                        ? 'border-ink-100 bg-white text-ink-300'
+                                        : 'border-ink-200 bg-white text-ink-700 hover:bg-cream-50'
+                                } ${active ? 'ring-2 ring-blue-500' : ''}`}
+                              >
+                                {total === 0 ? '—' : `${scored}/${total}`}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 조가 아직 없는 옛 기수(0026 이전 슬롯)는 표를 만들 수 없다 — 시간대 칩으로 내려간다. */}
+          {panelNames.length === 0 && slotOverview.some((g) => g.slotId !== null) && (
+            <div className="space-y-1.5">
+              <span className="block text-[11px] font-bold text-ink-400">시간대</span>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                <SlotChip
+                  label="전체"
+                  sub={`${allScoredCount}/${teamApplicants.length}`}
+                  done={teamApplicants.length > 0 && allScoredCount === teamApplicants.length}
+                  active={selectedSlotFilter === 'ALL'}
+                  onClick={() => setSelectedSlotFilter('ALL')}
+                />
+                {slotOverview
+                  .filter((g) => g.slotId !== null)
+                  .map((g) => (
+                    <SlotChip
+                      key={g.slotId}
+                      label={g.startsAtMs !== null ? formatTimeKo(g.startsAtMs) : '시각 없음'}
+                      sub={g.applicants.length === 0 ? '없음' : `${scoredIn(g)}/${g.applicants.length}`}
+                      done={g.applicants.length > 0 && scoredIn(g) === g.applicants.length}
+                      now={g.isNow}
+                      active={selectedSlotFilter === g.slotId}
+                      onClick={() => setSelectedSlotFilter(g.slotId!)}
+                    />
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* 목록만 스크롤한다(위 시간대 그리드는 따라 내려가지 않는다). */}
+          <div className="max-h-[560px] space-y-4 overflow-y-auto">
             {groups.map((group) => (
               <div key={group.slotId ?? 'unassigned'} className="space-y-2">
                 {/* 슬롯 머리 — 이 시간에 어느 방에서 누가 보는 조인지. 같이 들어가는 사람이 아래에 모여 있다. */}
@@ -395,13 +588,13 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                       : '슬롯 미배정'}
                   </span>
                   {group.placeLabel && <span className="font-semibold">{group.placeLabel}</span>}
-                  {group.panelNo > 0 && (
+                  {group.panel && (
                     <span
                       className={`rounded px-1.5 py-0.5 font-bold ${
                         group.isNow ? 'bg-white/25' : 'bg-ink-900 text-white'
                       }`}
                     >
-                      {group.panelNo}조
+                      {group.panel}
                     </span>
                   )}
                   {group.isNow && <span className="font-bold">지금</span>}

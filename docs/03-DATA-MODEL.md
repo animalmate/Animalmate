@@ -179,8 +179,14 @@
     문항 2개). 미설정이면 `src/recruit/apply-form.ts` 의 기본값을 쓴다. 지망 팀 목록은 여기 두지 않고
     `teams` 테이블을 그대로 쓴다(회장단이 회원 관리에서 바꾸면 지원서도 따라간다).
     폐기 시 익명 집계만 archived_stats 로 잔존.
-  - `recruit_slots` (id, cohort_id, starts_at, duration_min=20, link?, venue?, is_remote, created_by, created_at)
-    — 면접 슬롯. cohort_id 인덱스(0014).
+  - `recruit_slots` (id, cohort_id, **panel?**, starts_at, duration_min=20, link?, venue?, is_remote, created_by, created_at)
+    — 면접 슬롯(조×시간 한 칸). cohort_id 인덱스(0014).
+    **`panel` = 소속 조 이름**('A조'·'B조'·'비대면 파견', 0026). 조는 **방 하나를 잡고 하루 종일 유지되는
+    트랙**이고, 그 안에서 시간대마다 면접관·면접자가 바뀐다(지난 기수 시간표가 이 모양이다).
+    ⚠ 조를 "같은 시각 슬롯들의 순번"으로 **계산하지 말 것** — A조가 한 시간대를 비우면(첫 30분 면접실
+    정비 등) 그 아래부터 B조가 1조로 밀려 이름이 하루 중에 바뀐다. 0026 이전 슬롯만 `slotPanelNumbers`
+    fallback 을 쓰고, 새 코드는 `slotPanelLabel(slot, fallback)` 을 부른다.
+    조 생성은 `createPanelSlots`(시작~종료를 duration 으로 잘라 일괄 insert, 한 조당 200칸 상한).
   - `recruit_slot_interviewers` (id, slot_id, user_id, created_at) UNIQUE(slot_id, user_id) — 슬롯별 면접관 배정(0014).
   - `recruit_duty_assignments` (id, cohort_id, starts_at, duty, user_id?(set null), note?, created_by, created_at)
     UNIQUE(cohort_id, starts_at, duty) — **면접 당일 대기실 업무 배정**(0019). 면접관이 아니라

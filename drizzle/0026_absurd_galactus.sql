@@ -1,0 +1,1 @@
+ALTER TABLE "recruit_slots" ADD COLUMN "panel" text;

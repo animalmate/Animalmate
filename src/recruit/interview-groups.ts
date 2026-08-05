@@ -10,6 +10,8 @@ export interface GroupSlot {
   durationMin?: number | null;
   venue?: string | null;
   isRemote?: boolean | null;
+  /** 소속 조 이름('A조'). 조를 나누기 전 슬롯은 null. */
+  panel?: string | null;
 }
 
 export interface InterviewGroup<A> {
@@ -18,7 +20,9 @@ export interface InterviewGroup<A> {
   startsAtMs: number | null;
   durationMin: number | null;
   placeLabel: string | null;
-  /** 같은 시각·같은 장소를 나눠 쓰는 조 번호(1-based). 하나뿐이면 0. */
+  /** 조 이름. 컬럼이 비었으면 `panelNo` 로 만든 임시 이름('1조'), 그것도 없으면 빈 문자열. */
+  panel: string;
+  /** 같은 시각을 나눠 쓰는 조 번호(1-based). 하나뿐이면 0. 옛 슬롯 fallback 용. */
   panelNo: number;
   interviewers: string[];
   applicants: A[];
@@ -64,12 +68,15 @@ export function groupApplicantsBySlot<A extends { id: string; slotId?: string | 
       const startsAtMs = new Date(slot.startsAt).getTime();
       const durationMin = slot.durationMin ?? 30;
       const valid = !Number.isNaN(startsAtMs);
+      const panelNo = panelNumbers[slot.id] ?? 0;
       return {
         slotId: slot.id,
         startsAtMs: valid ? startsAtMs : null,
         durationMin,
         placeLabel: placeLabel(slot),
-        panelNo: panelNumbers[slot.id] ?? 0,
+        // 조 이름은 컬럼이 먼저다. 없으면(0026 이전 슬롯) 같은 시각 순번으로 임시 이름을 만든다.
+        panel: slot.panel?.trim() || (panelNo > 0 ? `${panelNo}조` : ''),
+        panelNo,
         interviewers: interviewersBySlot[slot.id] ?? [],
         applicants: bySlot.get(slot.id) ?? [],
         isNow:
@@ -86,6 +93,7 @@ export function groupApplicantsBySlot<A extends { id: string; slotId?: string | 
       startsAtMs: null,
       durationMin: null,
       placeLabel: null,
+      panel: '',
       panelNo: 0,
       interviewers: [],
       applicants: unassigned,

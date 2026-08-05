@@ -2,7 +2,7 @@
 // 면접 당일 대기실 업무 배정표 — 명단 체크·대기실 안내·인솔을 누가 맡는지 시간대별로 정한다.
 // 지난 기수는 이걸 별도 엑셀로 돌렸다(22.png). 면접 시간표와 **같은 시간축**을 쓴다.
 import { useEffect, useState } from 'react';
-import { Card, Select, StatusMessage } from '@/components/ui';
+import { Card, CardBlock, CardField, RowCard, Select, StatusMessage, TableCards } from '@/components/ui';
 import { formatTimeRange } from '@/recruit/timetable';
 import { DUTY_ALL, buildDutyRows, findDoubleBookedDuties, type DutyRow } from '@/recruit/duty-rules';
 
@@ -123,26 +123,25 @@ export function DutyRoster({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-cream-200">
-        <table className="w-full border-collapse text-left text-xs">
-          <thead className="bg-cream-100">
-            <tr>
-              <th className="w-32 whitespace-nowrap border-b border-cream-200 p-2 font-bold text-ink-900">대기실</th>
-              {roles.map((r) => (
-                <th key={r} className="border-b border-l border-cream-200 p-2 font-semibold text-ink-600">
-                  {r}
-                </th>
-              ))}
-              <th className="w-44 border-b border-l border-cream-200 p-2 font-semibold text-ink-600">
-                전원 공지
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const dupHere = doubled.some((d) => d.startsAtMs === row.startsAtMs);
-              return (
-                <tr key={row.startsAtMs} className={dupHere ? 'bg-amber-50/60' : ''}>
+      {/* 업무 수만큼 열이 늘어나는 행렬이라 좁은 화면에서 특히 빨리 넘친다.
+          폰에서는 시간대 하나 = 카드 하나로 세운다(업무가 칸 제목 대신 항목 이름이 된다). */}
+      <TableCards
+        table={
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-cream-100">
+              <tr>
+                <th className="w-32 whitespace-nowrap border-b border-cream-200 p-2 font-bold text-ink-900">대기실</th>
+                {roles.map((r) => (
+                  <th key={r} className="border-b border-l border-cream-200 p-2 font-semibold text-ink-600">
+                    {r}
+                  </th>
+                ))}
+                <th className="w-44 border-b border-l border-cream-200 p-2 font-semibold text-ink-600">전원 공지</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.startsAtMs} className={doubled.some((d) => d.startsAtMs === row.startsAtMs) ? 'bg-amber-50/60' : ''}>
                   <td className="whitespace-nowrap border-b border-cream-100 p-2 font-mono text-[11px] font-semibold text-ink-700">
                     {formatTimeRange(row.startsAtMs, durationAt[row.startsAtMs] ?? 30)}
                   </td>
@@ -153,7 +152,8 @@ export function DutyRoster({
                           uiSize="sm"
                           value={row.byDuty[role]?.userId ?? ''}
                           onChange={(e) => save(row.startsAtMs, role, e.target.value || null, null)}
-                          className="w-full text-xs"
+                          aria-label={`${formatTimeRange(row.startsAtMs, durationAt[row.startsAtMs] ?? 30)} ${role}`}
+                          className="w-full"
                         >
                           <option value="">—</option>
                           {staffMembers.map((s) => (
@@ -173,6 +173,7 @@ export function DutyRoster({
                         type="text"
                         defaultValue={row.allNote ?? ''}
                         placeholder="예: 전원 면접실 정비"
+                        aria-label={`${formatTimeRange(row.startsAtMs, durationAt[row.startsAtMs] ?? 30)} 전원 공지`}
                         // 글자마다 저장하면 요청이 폭주한다 — 칸을 벗어날 때 한 번만 보낸다.
                         onBlur={(e) => {
                           const v = e.target.value;
@@ -185,11 +186,68 @@ export function DutyRoster({
                     )}
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        }
+        cards={rows.map((row) => {
+          const timeLabel = formatTimeRange(row.startsAtMs, durationAt[row.startsAtMs] ?? 30);
+          const dupHere = doubled.some((d) => d.startsAtMs === row.startsAtMs);
+          return (
+            <RowCard
+              key={row.startsAtMs}
+              title={<span className="font-mono text-[14px]">{timeLabel}</span>}
+              badge={
+                dupHere ? (
+                  <span className="shrink-0 whitespace-nowrap rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                    업무 겹침
+                  </span>
+                ) : undefined
+              }
+            >
+              {roles.map((role) =>
+                canManage ? (
+                  <CardBlock key={role} label={role}>
+                    <Select
+                      value={row.byDuty[role]?.userId ?? ''}
+                      onChange={(e) => save(row.startsAtMs, role, e.target.value || null, null)}
+                      aria-label={`${timeLabel} ${role}`}
+                    >
+                      <option value="">—</option>
+                      {staffMembers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </CardBlock>
+                ) : (
+                  <CardField key={role} label={role}>
+                    {row.byDuty[role]?.userName ?? '—'}
+                  </CardField>
+                )
+              )}
+              {canManage ? (
+                <CardBlock label="전원 공지">
+                  <input
+                    type="text"
+                    defaultValue={row.allNote ?? ''}
+                    placeholder="예: 전원 면접실 정비"
+                    aria-label={`${timeLabel} 전원 공지`}
+                    onBlur={(e) => {
+                      const v = e.target.value;
+                      if ((row.allNote ?? '') !== v) save(row.startsAtMs, DUTY_ALL, null, v);
+                    }}
+                    className="min-h-tap w-full rounded-xl border-[1.5px] border-ink-200 px-3.5 text-[13px] outline-none focus:border-blue-500"
+                  />
+                </CardBlock>
+              ) : (
+                <CardField label="전원 공지">{row.allNote ?? '—'}</CardField>
+              )}
+            </RowCard>
+          );
+        })}
+      />
 
       <div className="flex items-center justify-between">
         <StatusMessage text={message} />
