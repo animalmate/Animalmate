@@ -153,8 +153,15 @@ export function ToolbarSelect({
   // 높이를 44px(h-11)로 못 박는다. 옆에 서는 버튼이 min-h-tap 때문에 실측 44px 인데,
   // h-control-sm(36)+min-h-tap 조합은 테두리 계산 탓에 42px 로 떨어져 2px 어긋났다.
   // 44px 은 접근성 최소 터치 타깃이기도 하다.
+  //
+  // 테두리는 `ink-400`. 예전 `ink-200`(#DDD6C8)은 흰 바탕과 대비가 **1.45:1** 뿐이라 크림색 페이지
+  // 위에서 컨트롤의 경계가 사라져 보였다(2026-08-05 사용자 보고). 한 단계만 올린 ink-300 도 1.99:1 로
+  // 화면에서 거의 차이가 없었고(실물 비교), ink-400 이 3.13:1 로 WCAG 1.4.11(비텍스트 대비 3:1)을 넘긴다.
+  //
+  // **카드 안 컨트롤(`CONTROL`·`SecondaryButton`)보다 진한 것이 맞다.** 툴바는 카드 밖 크림 배경에
+  // 맨몸으로 서 있어서 감싸는 상자도 라벨 구조도 없다 — 경계선이 그 자리에서 유일한 형태 정보다.
   return (
-    <label className="inline-flex h-11 items-center gap-0 overflow-hidden rounded-xl border-[1.5px] border-ink-200 bg-white focus-within:border-blue-500">
+    <label className="inline-flex h-11 items-center gap-0 overflow-hidden rounded-xl border-[1.5px] border-ink-400 bg-white focus-within:border-blue-500">
       <span className="flex h-full shrink-0 items-center border-r border-ink-100 bg-cream-50 px-2.5 text-[12px] font-semibold text-ink-500">
         {label}
       </span>
@@ -185,11 +192,12 @@ export function ToolbarSelect({
  * 실측 42px 로 떨어져 셀렉트(44px)와 2px 어긋난다. `className` 에 `h-11` 을 덧붙이는 것도 답이 아니다:
  * 같은 특이도로 충돌해 어느 쪽이 이기는지 CSS 출력 순서에 달린다(`ControlSize` 주석의 함정).
  * 그래서 높이를 처음부터 44px 로 박은 버튼을 따로 둔다.
+ * 테두리는 옆의 `ToolbarSelect` 와 같은 `ink-400` — 이유는 그쪽 주석 참고.
  */
 export function ToolbarButton({ className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-[1.5px] border-ink-200 bg-white px-3 text-[13px] font-semibold text-ink-900 transition-colors hover:bg-cream-50 disabled:opacity-50 ${className}`}
+      className={`inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-[1.5px] border-ink-400 bg-white px-3 text-[13px] font-semibold text-ink-900 transition-colors hover:bg-cream-50 disabled:opacity-50 ${className}`}
       {...props}
     />
   );
