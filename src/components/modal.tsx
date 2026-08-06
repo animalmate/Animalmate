@@ -21,7 +21,8 @@ export function Modal({
   title: string;
   onClose: () => void;
   children: ReactNode;
-  size?: 'md' | 'lg' | 'xl';
+  /** 2xl 은 **화면 캡처를 읽어야 하는** 팝업용(둘러보기) — 1280px 캡처가 절반으로 줄면 글씨가 안 보인다. */
+  size?: 'md' | 'lg' | 'xl' | '2xl';
   /**
    * 바닥 줄을 통째로 바꾼다. 안 주면 지금까지처럼 폭 전체 `닫기` 버튼 하나다.
    * 슬라이드(둘러보기)처럼 **닫기 말고 다른 동작이 바닥에 있어야 하는** 팝업에만 쓴다 —
@@ -106,7 +107,7 @@ export function Modal({
         ref={panelRef}
         tabIndex={-1}
         className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-modal outline-none ${
-          size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
+          size === '2xl' ? 'max-w-[92rem]' : size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
         }`}
       >
         <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-5 py-3.5">
