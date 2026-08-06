@@ -10,7 +10,7 @@ If the user invokes this skill without any other guidance, ask them what they wa
 
 Key facts:
 - Mobile-first (360px), Korean UI, 해요체 tone, warm & friendly but operationally clear.
-- Brand colors from the club logo: blue #5588D2 (primary), coral #EE5A60 (danger/accent), amber #F0A72A (pending). Near-neutral #F6F5F2 background, barely-warm grey ink neutrals. (Desaturated 2026-08-06 — the old cream palette read yellow across the whole screen; lightness unchanged so contrast held.)
+- Brand colors from the club logo: blue #5588D2 (primary), coral #EE5A60 (danger/accent), amber #F0A72A (pending). Near-neutral #F8F5F0 background, barely-warm grey ink neutrals. (Desaturated 2026-08-06 — the old cream palette read yellow across the whole screen; lightness unchanged so contrast held.)
 - Font: Pretendard Variable. Big rounded corners (buttons 12px, cards 16px), warm soft shadows, 44px+ touch targets.
 - Design tokens live in tokens/*.css (imported by styles.css) and map 1:1 to a Tailwind config.
 - Rendering note: the self-contained HTML kits force Babel transform explicitly (a bootstrap script at end of body transforms #app), because the preview does not auto-run text/babel scripts. Keep that pattern when authoring new standalone kits here.

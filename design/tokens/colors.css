@@ -29,17 +29,17 @@
   --amber-700: #8F5C05;
 
   /* 크림(엠블럼 아이보리) & 잉크(웜 그레이) */
-  --cream-25:  #FBFAF9;
-  --cream-50:  #F6F5F2;  /* 앱 배경 */
-  --cream-100: #EDEBE6;
-  --cream-200: #DEDBD5;
-  --ink-100: #EAE8E5;
-  --ink-200: #D6D4CF;
-  --ink-300: #B6B4AF;
-  --ink-400: #908E88;
-  --ink-500: #73706B;
-  --ink-700: #474540;
-  --ink-900: #292826;
+  --cream-25:  #FCFBF8;
+  --cream-50:  #F8F5F0;  /* 앱 배경 */
+  --cream-100: #F0ECE3;
+  --cream-200: #E4DDCF;
+  --ink-100: #ECE9E3;
+  --ink-200: #D9D5CC;
+  --ink-300: #BBB5AA;
+  --ink-400: #948F84;
+  --ink-500: #767067;
+  --ink-700: #4a463d;
+  --ink-900: #2c2823;
 
   /* ── 시맨틱 별칭 ─────────────────────────────── */
   --color-primary: var(--blue-500);
