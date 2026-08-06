@@ -43,13 +43,18 @@ export function DangerButton({ className = '', ...props }: ButtonHTMLAttributes<
  * 알약 형태 + 넉넉한 여백 + 낮은 대비의 그림자로 부드럽게 하되, 장식은 더하지 않아 깔끔함을 유지한다.
  * 눌림 피드백은 색으로만 준다(레이아웃을 흔드는 scale 변형은 쓰지 않는다).
  */
+// 테두리는 **투명으로라도 모든 변형에 넣는다.** 보조 버튼(ctaSecondary)에만 테두리가 있으면
+// 나란히 섰을 때 높이가 2px 어긋나 한 쌍으로 안 보인다(2026-08-06 모집 공고에서 실측).
 const CTA_BASE =
-  'inline-flex min-h-tap items-center justify-center gap-2 rounded-full px-7 py-3.5 text-[15px] font-bold no-underline transition-colors duration-200 disabled:opacity-60';
+  'inline-flex min-h-tap items-center justify-center gap-2 rounded-full border-[1.5px] border-transparent px-7 py-3.5 text-[15px] font-bold no-underline transition-colors duration-200 disabled:opacity-60';
 
 // 색은 산호(coral)를 쓴다. 로그인 화면의 "가입하기"가 이미 산호색이라 이 앱에서 산호 = "환영하는 행동"이고,
 // 따뜻한 크림 배경 위에서 파란 버튼보다 훨씬 부드럽게 얹힌다(파란색은 콘솔의 업무용 색).
 export const ctaPrimary = `${CTA_BASE} bg-coral-500 text-white shadow-card hover:bg-coral-600 hover:text-white active:bg-coral-700`;
 export const ctaDisabled = `${CTA_BASE} cursor-not-allowed bg-ink-200 text-ink-500`;
+// 주 버튼 **옆에 나란히** 서는 보조 행동(모집 공고의 "지원 결과 조회하기").
+// 같은 CTA_BASE 를 쓰는 것이 핵심이다 — 높이·라운드·글자 크기가 어긋나면 둘이 한 쌍으로 안 보인다.
+export const ctaSecondary = `${CTA_BASE} border-ink-200 bg-white text-ink-700 hover:bg-cream-50 hover:text-ink-900`;
 
 export function Field({
   label,

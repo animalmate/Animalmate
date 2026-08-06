@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { Icon } from '@/components/icon';
+import { ctaSecondary } from '@/components/ui';
 import { CursorDog } from '@/components/cursor-dog';
 import { ApplyButton } from './apply-button';
 
@@ -55,25 +56,29 @@ export default async function PublicRecruitNoticePage() {
       {/* 히어로 — 로그인·가입 화면과 같은 인사 방식(동아리 로고 + 따뜻한 배경)을 쓴다.
           지원 버튼은 이 페이지에 하나뿐이다: 같은 버튼을 아래에 또 두면 어느 쪽이 진짜인지 헷갈린다. */}
       <header className="border-b border-cream-200 bg-gradient-to-b from-cream-100 to-cream-25 px-4 py-12 sm:py-16">
-        <div className="mx-auto max-w-xl space-y-5 text-center">
+        {/* 제목이 한 줄로 서야 해서 `xl`(576px)보다 넓게 잡는다 — 19자 제목이 그 폭에서는 접힌다. */}
+        <div className="mx-auto max-w-2xl space-y-5 text-center">
           <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-16 w-16 rounded-full" />
 
           <div className="space-y-2.5">
             <span className="inline-flex items-center rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-coral-700 shadow-card">
               {notice.label} 신입 모집
             </span>
-            <h1 className="text-[26px] font-bold leading-snug tracking-tight text-ink-900 sm:text-[34px]">
-              아이들 곁에 함께 있어 줄
-              <br />
-              사람을 찾습니다
+            {/* 한 문장을 한 줄로. 좁은 화면에서는 접힐 수밖에 없으므로 `text-balance` 로 고르게 나눈다.
+                (아래 설명 문단은 뺐다 — 바로 위 딱지와 같은 말을 두 번 하고 있었다.) */}
+            <h1 className="text-balance text-[24px] font-bold leading-snug tracking-tight text-ink-900 sm:text-[32px]">
+              애니멀메이트에서 신입기수를 모집합니다!
             </h1>
-            <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-500">
-              유기동물 봉사 동아리 애니멀메이트가 {notice.label} 신입 부원을 모집합니다.
-            </p>
           </div>
 
-          <div className="pt-1">
+          {/* 지원하러 온 사람과 결과를 보러 온 사람이 **같은 자리에서** 갈린다.
+              결과 조회를 맨 아래에 두면 발표 날 스크롤을 끝까지 내려야 찾는다. */}
+          <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
             <ApplyButton isClosed={notice.isClosed} />
+            <a href="/recruit" className={ctaSecondary}>
+              <Icon name="doc" size={18} />
+              지원 결과 조회하기
+            </a>
           </div>
         </div>
       </header>
@@ -113,16 +118,6 @@ export default async function PublicRecruitNoticePage() {
           <p className="text-center text-sm text-ink-400">상세 모집 요강이 준비 중입니다.</p>
         )}
 
-        <footer className="space-y-3 border-t border-cream-200 pt-8 text-center">
-          <p className="text-sm text-ink-500">이미 지원하셨나요?</p>
-          <a
-            href="/recruit"
-            className="inline-flex min-h-tap items-center gap-1.5 rounded-full border-[1.5px] border-ink-200 bg-white px-5 py-2.5 text-sm font-semibold text-ink-700 no-underline transition-colors hover:bg-cream-50 hover:text-ink-900 hover:no-underline"
-          >
-            <Icon name="doc" size={16} />
-            지원 결과 조회하기
-          </a>
-        </footer>
       </div>
     </main>
   );
