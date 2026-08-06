@@ -6,9 +6,6 @@
 //
 // 이 파일은 순수 함수만 둔다(env·DB·브라우저 API 없음) — 서버와 클라이언트가 같이 import 한다.
 
-/** 카톡 예약 시각 = 카페 발행 시각 + 이만큼. 카페에 글이 올라간 뒤 알림이 가야 한다. */
-export const KAKAO_LEAD_MINUTES = 1;
-
 // 문구는 여기만 고치면 된다. 자리표시자는 `{키}` 한 겹 — 카페 본문의 `{{키}}`(사용자가 직접 쓰는
 // 플레이스홀더)와 헷갈리지 않게 일부러 다른 모양을 쓴다. 이 문자열은 사용자에게 노출되지 않는다.
 export const KAKAO_NOTICE_TEMPLATE = `안녕하세요, {팀명} 팀장단입니다.
@@ -63,15 +60,20 @@ export function shortDateLabel(dateStr: string | null | undefined): string | nul
 }
 
 /**
- * 카톡 예약 메시지에 넣을 시각 = 발행 시각 + 1분 → "8/5(화) 13:01" (KST).
+ * 카톡 예약 메시지에 넣을 시각 = **카페 발행 시각 그대로** → "8/5(화) 13:00" (KST).
  * 발행 시각이 미정이면 null.
+ *
+ * ⚠ 예전에는 +1분으로 안내했다(카페에 글이 올라간 **뒤** 알림이 가야 한다는 생각). 그런데
+ * **카카오톡 예약 메시지는 5분 단위로만 고를 수 있어** 13:01 은 애초에 선택지에 없었다
+ * (2026-08-06 사용자 확인) — 안내대로 맞추는 것이 불가능한 시각이었던 셈이다.
+ * 발행 정시로 안내한다: 업로드 시각은 10분 단위로만 고를 수 있으므로(`lib/time-options.ts`)
+ * 발행 정시는 **항상 5의 배수**라 카톡에서 그대로 고를 수 있다.
  */
 export function kakaoReserveLabel(publishAt: Date | string | null | undefined): string | null {
   if (!publishAt) return null;
   const d = publishAt instanceof Date ? publishAt : new Date(publishAt);
   if (Number.isNaN(d.getTime())) return null;
-  const at = new Date(d.getTime() + KAKAO_LEAD_MINUTES * 60_000);
-  const p = kstParts(at);
+  const p = kstParts(d);
   return `${p.mo}/${p.day}(${p.wd}) ${p.hh}:${p.mm}`;
 }
 

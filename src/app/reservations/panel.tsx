@@ -347,7 +347,7 @@ function KakaoNoticeModal({
   onClose: () => void;
   onCopied: (msg: string) => void;
 }) {
-  // 카페에 글이 올라간 **뒤** 알림이 가야 하므로 발행 시각보다 1분 뒤로 안내한다.
+  // 카톡 예약 메시지는 5분 단위로만 고를 수 있어 발행 **정시**로 안내한다(kakao-notice.ts 주석).
   const reserveAt = kakaoReserveLabel(row.publishAt);
   // 제목에 {{간결_날짜}} 같은 자리표시자가 남아 있으면 그대로 단톡방에 나간다 —
   // 큐가 이미 갖고 있는 치환값(발행 워커와 같은 값)으로 먼저 바꾼다.

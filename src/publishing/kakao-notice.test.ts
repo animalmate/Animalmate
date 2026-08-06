@@ -16,17 +16,22 @@ describe('shortDateLabel', () => {
 });
 
 describe('kakaoReserveLabel', () => {
-  it('발행 시각 + 1분 을 KST 로 적는다', () => {
-    // 2026-08-05T04:00Z = KST 13:00 → 예약은 13:01.
-    expect(kakaoReserveLabel('2026-08-05T04:00:00.000Z')).toBe('8/5(수) 13:01');
+  it('발행 시각을 그대로 KST 로 적는다', () => {
+    // 2026-08-05T04:00Z = KST 13:00 → 예약도 13:00.
+    expect(kakaoReserveLabel('2026-08-05T04:00:00.000Z')).toBe('8/5(수) 13:00');
+  });
+  // 카카오톡 예약 메시지는 5분 단위로만 고를 수 있다. 업로드 시각이 10분 단위로 강제돼 있어
+  // (lib/time-options.ts) 발행 정시는 늘 5의 배수다 — 안내한 시각을 카톡에서 실제로 고를 수 있어야 한다.
+  it('안내 시각의 분은 5의 배수다 — 카톡에서 고를 수 있어야 한다', () => {
+    for (const hhmm of ['00:00', '04:10', '11:20', '14:30', '23:50']) {
+      const label = kakaoReserveLabel(`2026-08-05T${hhmm}:00.000Z`)!;
+      const minute = Number(label.slice(-2));
+      expect(minute % 5, `${hhmm} → ${label}`).toBe(0);
+    }
   });
   it('브라우저 시간대와 무관하게 KST 로 나온다(UTC 로 도는 CI 포함)', () => {
     // KST 00:30 → 한국 날짜는 8/6 이다. UTC 로 읽으면 8/5 로 하루 어긋난다.
-    expect(kakaoReserveLabel('2026-08-05T15:30:00.000Z')).toBe('8/6(목) 00:31');
-  });
-  it('자정 1분 전이면 날짜가 넘어간다', () => {
-    // KST 23:59 + 1분 = 다음 날 00:00.
-    expect(kakaoReserveLabel('2026-08-05T14:59:00.000Z')).toBe('8/6(목) 00:00');
+    expect(kakaoReserveLabel('2026-08-05T15:30:00.000Z')).toBe('8/6(목) 00:30');
   });
   it('시각 미정·잘못된 값 → null', () => {
     expect(kakaoReserveLabel(null)).toBeNull();
