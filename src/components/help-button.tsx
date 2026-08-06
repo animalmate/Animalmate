@@ -20,7 +20,7 @@ export function HelpButton({ screen }: { screen: ScreenKey }) {
         type="button"
         onClick={() => setOpen(true)}
         title="이 화면 사용법"
-        // 테두리 `ink-400` — 화면 제목 옆 크림 배경에 맨몸으로 서는 버튼이라 툴바와 같은 기준을 쓴다
+        // 테두리 `ink-400` — 화면 제목 옆 페이지 배경에 맨몸으로 서는 버튼이라 툴바와 같은 기준을 쓴다
         // (ink-200 은 흰 바탕 대비 1.45:1 로 경계가 사라져 보였다. `ui.tsx` 의 ToolbarSelect 주석 참고).
         className="inline-flex h-control-sm min-h-tap shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-ink-400 bg-white px-3 text-[13px] font-semibold text-ink-500 transition-colors hover:border-blue-300 hover:text-blue-700"
       >

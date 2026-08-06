@@ -84,7 +84,7 @@ export function ChatDog({ mood, answerNonce = 0, size = 96 }: { mood: DogMood; a
   return (
     <svg width={size} height={size} viewBox="-48 -84 96 92" aria-hidden="true" className="overflow-visible">
       {/* 발밑 그림자 */}
-      <ellipse cx="-2" cy="-2" rx="26" ry="5" fill="#2E2921" opacity="0.08" />
+      <ellipse cx="-2" cy="-2" rx="26" ry="5" fill="#292826" opacity="0.08" />
       <g ref={rootRef}>
         <g ref={tailRef}>
           <path d="M-26 -36 q -16 -4 -13 -22" stroke="#D9B487" strokeWidth="7" strokeLinecap="round" fill="none" />
