@@ -129,6 +129,19 @@ const P: Record<string, ReactElement> = {
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </>
   ),
+  // 같은 화면의 PC 판·휴대폰 판을 나란히 놓을 때 어느 쪽인지 알리는 표시(둘러보기 슬라이드).
+  monitor: (
+    <>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </>
+  ),
+  smartphone: (
+    <>
+      <rect x="6" y="2" width="12" height="20" rx="2" />
+      <path d="M11 18h2" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof P;

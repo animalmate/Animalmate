@@ -15,11 +15,21 @@ export function Modal({
   // 도움말처럼 읽을거리가 들어가는 팝업은 넓어야 줄이 짧게 끊기지 않는다.
   // xl 은 표(면접 시간표)처럼 가로로 넓은 내용용.
   size = 'md',
+  footer,
+  headerExtra,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   size?: 'md' | 'lg' | 'xl';
+  /**
+   * 바닥 줄을 통째로 바꾼다. 안 주면 지금까지처럼 폭 전체 `닫기` 버튼 하나다.
+   * 슬라이드(둘러보기)처럼 **닫기 말고 다른 동작이 바닥에 있어야 하는** 팝업에만 쓴다 —
+   * 이 자리는 스크롤 밖에 고정돼 있어서, 내용이 길어도 '다음'이 늘 손 닿는 곳에 있다.
+   */
+  footer?: ReactNode;
+  /** 제목 오른쪽(닫기 버튼 왼쪽)에 붙는 것. 쪽수(`3 / 9`) 같은 짧은 표시용. */
+  headerExtra?: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -101,20 +111,25 @@ export function Modal({
       >
         <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-5 py-3.5">
           <h2 className="text-base font-semibold text-ink-900">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="-mr-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-500 hover:bg-cream-100 hover:text-ink-700"
-          >
-            <Icon name="x" size={18} />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {headerExtra}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="닫기"
+              className="-mr-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-500 hover:bg-cream-100 hover:text-ink-700"
+            >
+              <Icon name="x" size={18} />
+            </button>
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         <div className="border-t border-ink-100 px-5 py-3">
-          <SecondaryButton type="button" onClick={onClose} className="w-full">
-            닫기
-          </SecondaryButton>
+          {footer ?? (
+            <SecondaryButton type="button" onClick={onClose} className="w-full">
+              닫기
+            </SecondaryButton>
+          )}
         </div>
       </div>
     </div>

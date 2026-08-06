@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiGet, apiPost, errorMessage } from '@/lib/api';
 import { Button, Card, ErrorText, InfoText, SecondaryButton, Select, StatusBadge } from '@/components/ui';
 import { HelpButton } from '@/components/help-button';
+import { WalkthroughModal } from '@/components/walkthrough-modal';
+import { useReservationWalkthrough } from '@/guides/use-reservation-walkthrough';
 import { Modal } from '@/components/modal';
 import { Toast } from '@/components/toast';
 import { PreviewButton, ReservationPreview } from '@/components/reservation-preview';
@@ -91,6 +93,9 @@ export function ReservationsPanel() {
     void load();
   }, [load]);
 
+  // 예약을 처음 맡은 사람에게 전 과정을 한 번 보여준다. 하루 미루기·이 세션 동안 참기는 훅이 맡는다.
+  const walk = useReservationWalkthrough();
+
   // 팀 목록은 한 번만. 비회장단에게는 서버가 소속 팀만 돌려준다(/api/teams).
   useEffect(() => {
     void (async () => {
@@ -153,7 +158,11 @@ export function ReservationsPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-[22px] font-bold text-ink-900">예약 큐</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 저절로 뜬 것을 닫은 뒤에도 다시 볼 수 있어야 한다 — 닫는 순간 사라지는 안내는 없는 것과 같다. */}
+          <SecondaryButton type="button" onClick={walk.openManually}>
+            예약 흐름 보기
+          </SecondaryButton>
           <HelpButton screen="reservations" />
           <a href="/reservations/new">
             <Button>새 예약</Button>
@@ -161,8 +170,16 @@ export function ReservationsPanel() {
         </div>
       </div>
       <p className="rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5 text-[13px] leading-relaxed text-ink-700">
-        예약한 시각이 되면 네이버 카페에 글이 자동으로 올라갑니다. 상태 딱지 보는 법은 위 <strong>도움말</strong>에 있어요.
+        예약한 시각이 되면 네이버 카페에 글이 자동으로 올라갑니다. 처음이라면 <strong>예약 흐름 보기</strong>에서
+        전 과정을 화면으로 볼 수 있고, 상태 딱지 보는 법은 <strong>도움말</strong>에 있어요.
       </p>
+      {walk.open ? (
+        <WalkthroughModal
+          onClose={walk.close}
+          snoozed={walk.snoozedUntil !== null}
+          onToggleSnooze={walk.toggleSnooze}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="queue-filter" className="text-[13px] font-medium text-ink-700">
           종류
