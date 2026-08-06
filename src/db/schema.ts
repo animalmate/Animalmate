@@ -122,6 +122,10 @@ export const users = pgTable('users', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+// ⚠ DB 에는 `users_last_seen_idx`(last_seen_at) 인덱스가 있다 — 손으로 쓴 마이그레이션 0024 에서
+// 만들었고 여기(schema.ts)에도 drizzle 스냅샷에도 없다. 즉 **drizzle 은 그 인덱스를 모른다.**
+// 여기에 index() 로 다시 선언하면 generate 가 이미 있는 이름으로 CREATE INDEX 를 뽑아 마이그레이션이
+// 실패한다. 지우거나 바꾸려면 마이그레이션 SQL 을 손으로 써야 한다. (같은 사정: recruit_slots.cohort_id)
 
 export const memberships = pgTable('memberships', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -459,6 +463,8 @@ export const recruitSlots = pgTable('recruit_slots', {
     .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+// ⚠ DB 에는 `recruit_slots_cohort_idx`(cohort_id) 인덱스가 있다(마이그레이션 0014, 손으로 작성).
+// users_last_seen_idx 와 같은 사정 — schema.ts·drizzle 스냅샷 어디에도 없으니 여기서 다시 선언하지 말 것.
 
 // 슬롯별 면접관(운영진) 배정 테이블
 export const recruitSlotInterviewers = pgTable(

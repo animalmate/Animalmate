@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
+import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
-import { createSlot, createPanelSlots, listSlotsByCohort, deleteSlot } from '@/recruit/slots';
+import { createSlot, createPanelSlots, listSlotsByCohort, listPanelNames, deleteSlot } from '@/recruit/slots';
 import { getSlotsInterviewersMap } from '@/recruit/slot-interviewers';
+import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { internalError } from '@/http/errors';
 import { parseDate } from '@/http/input';
 
@@ -66,6 +68,14 @@ export async function POST(req: Request): Promise<Response> {
           { status: 400 }
         );
       }
+      // 화면도 같은 이름을 막지만 그건 검증이 아니다 — 탭이 두 개거나 두 사람이 동시에 누르면
+      // 같은 이름의 조가 두 벌 서고, 그때부터 어느 칸이 어느 방인지 표에서 갈라낼 수 없다.
+      if ((await listPanelNames(cohortId)).includes(panelName)) {
+        return NextResponse.json(
+          { error: 'duplicate_panel', message: `"${panelName}" 은(는) 이미 있는 조입니다. 다른 이름을 쓰거나 기존 조를 지우고 다시 만드세요.` },
+          { status: 409 }
+        );
+      }
       const slots = await createPanelSlots({
         cohortId,
         panel: panelName,
@@ -77,6 +87,16 @@ export async function POST(req: Request): Promise<Response> {
         isRemote: !!isRemote,
         createdBy: actor.userId,
       });
+      // 면접 배정은 recruit.manage(관리 행위) — 누가 언제 어떤 조를 세웠는지 남긴다(규칙 #4).
+      await recordAudit(
+        db,
+        buildAuditEntry({
+          actorUserId: actor.userId,
+          action: 'recruit.slot.createPanel',
+          targetTable: 'recruit_slots',
+          after: { cohortId, panel: panelName, count: slots.length, startsAt: parsedStartsAt, until: parsedUntil, durationMin: parsedDuration },
+        })
+      );
       return NextResponse.json({ slots });
     }
 
@@ -90,6 +110,16 @@ export async function POST(req: Request): Promise<Response> {
       isRemote: !!isRemote,
       createdBy: actor.userId,
     });
+    await recordAudit(
+      db,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: 'recruit.slot.create',
+        targetTable: 'recruit_slots',
+        targetId: slot!.id,
+        after: { cohortId, panel: slot!.panel, startsAt: slot!.startsAt, durationMin: slot!.durationMin },
+      })
+    );
 
     return NextResponse.json({ slot });
   } catch (e) {
@@ -109,7 +139,21 @@ export async function DELETE(req: Request): Promise<Response> {
   if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
 
   try {
-    await deleteSlot(id);
+    const deleted = await deleteSlot(id);
+    if (!deleted) return NextResponse.json({ success: true });
+    // 슬롯을 지우면 거기 배정돼 있던 지원자의 slot_id 가 함께 null 이 된다(set null) — 지운 뒤에는
+    // 그 시간에 누가 있었는지 어디에도 남지 않는다. 되짚을 수 있는 유일한 흔적이라 [high] 로 남긴다.
+    await recordAudit(
+      db,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: 'recruit.slot.delete',
+        targetTable: 'recruit_slots',
+        targetId: id,
+        before: { cohortId: deleted.cohortId, panel: deleted.panel, startsAt: deleted.startsAt, durationMin: deleted.durationMin },
+        severity: 'high',
+      })
+    );
     return NextResponse.json({ success: true });
   } catch (e) {
     return internalError('recruit/slots DELETE', e);

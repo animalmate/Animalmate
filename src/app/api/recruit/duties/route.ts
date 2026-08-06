@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
+import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { listDutyAssignments, setDutyAssignment } from '@/recruit/duties';
 import { getCohortById } from '@/recruit/cohorts';
 import { resolveDutyRoles, isValidDuty, DUTY_ALL } from '@/recruit/duty-rules';
+import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS, parseDate } from '@/http/input';
 
@@ -73,6 +75,18 @@ export async function POST(req: Request): Promise<Response> {
       note: typeof note === 'string' ? note : null,
       actorUserId: actor.userId,
     });
+    // 대기실 배정도 recruit.manage(관리 행위) — 당일 "내 업무가 왜 바뀌었나"를 되짚을 근거를 남긴다(규칙 #4).
+    // 빈 값으로 저장하면 배정이 지워진다(setDutyAssignment 가 null 을 돌려준다) — 지운 것도 행위다.
+    await recordAudit(
+      db,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: saved ? 'recruit.duty.assign' : 'recruit.duty.clear',
+        targetTable: 'recruit_duty_assignments',
+        targetId: saved?.id ?? null,
+        after: { cohortId, startsAt: parsed, duty, userId: saved?.userId ?? null },
+      })
+    );
     return NextResponse.json({ assignment: saved });
   } catch (e) {
     if (e instanceof InputTooLongError) {

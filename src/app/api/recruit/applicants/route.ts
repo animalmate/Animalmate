@@ -13,6 +13,7 @@ import {
   updateApplicantTeam,
   bulkUpdateApplicantTeam,
 } from '@/recruit/applicants';
+import { getSlotById } from '@/recruit/slots';
 import { canTransition, canMarkAttendance, type RecruitStatus } from '@/recruit/status';
 import { internalError } from '@/http/errors';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
@@ -178,7 +179,36 @@ export async function PATCH(req: Request): Promise<Response> {
 
     if (action === 'assign_slot') {
       if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
+      const applicant = await getApplicantById(id);
+      if (!applicant) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+      // 지원자와 슬롯이 같은 기수인지 서버에서 맞춰 본다. id 두 개만 믿으면 **다른 기수 슬롯**에
+      // 배정할 수 있고, 그러면 그 슬롯은 이 기수 화면에 안 보이는 채로 사람이 하나 들어앉는다
+      // (bulk_status·attendance 가 cohortId 를 받아 범위를 좁히는 것과 같은 이유).
+      if (slotId) {
+        const slot = await getSlotById(String(slotId));
+        if (!slot) return NextResponse.json({ error: 'not_found', message: '없는 면접 시간입니다.' }, { status: 404 });
+        if (slot.cohortId !== applicant.cohortId) {
+          return NextResponse.json(
+            { error: 'cohort_mismatch', message: '다른 기수의 면접 시간에는 배정할 수 없습니다.' },
+            { status: 409 }
+          );
+        }
+      }
+
       const updated = await assignSlotToApplicant(id, slotId ?? null, interviewLink);
+      // 면접 시간 배정도 '결정'이다 — 배정이 사라졌을 때 누가 언제 바꿨는지 되짚을 근거를 남긴다(규칙 #4).
+      await recordAudit(
+        db,
+        buildAuditEntry({
+          actorUserId: actor.userId,
+          action: 'recruit.applicant.assignSlot',
+          targetTable: 'recruit_applicants',
+          targetId: id,
+          before: { slotId: applicant.slotId },
+          after: { slotId: slotId ?? null },
+        })
+      );
       return NextResponse.json({ applicant: updated });
     }
 

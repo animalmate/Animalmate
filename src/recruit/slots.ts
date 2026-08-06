@@ -1,7 +1,7 @@
 // F9 신입 모집 면접 슬롯 관리 서비스
 import { db } from '../db/client';
 import { recruitSlots } from '../db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and, isNotNull } from 'drizzle-orm';
 
 export interface CreateSlotInput {
   cohortId: string;
@@ -74,6 +74,26 @@ export async function createPanelSlots(input: {
   return db.insert(recruitSlots).values(rows).returning();
 }
 
+/** 단건 조회. 다른 기수 슬롯에 배정하는 요청을 서버에서 걸러내는 데 쓴다. */
+export async function getSlotById(slotId: string) {
+  const [found] = await db.select().from(recruitSlots).where(eq(recruitSlots.id, slotId)).limit(1);
+  return found ?? null;
+}
+
+/**
+ * 이 기수에 이미 있는 조 이름들.
+ *
+ * 화면도 같은 검사를 하지만 그건 검증이 아니다(규칙 #6 과 같은 이유) — 탭 두 개를 띄워 두거나
+ * 두 사람이 동시에 만들면 같은 이름의 조가 두 벌 서고, 조 열이 뒤섞여 누가 어느 방인지 알 수 없게 된다.
+ */
+export async function listPanelNames(cohortId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ panel: recruitSlots.panel })
+    .from(recruitSlots)
+    .where(and(eq(recruitSlots.cohortId, cohortId), isNotNull(recruitSlots.panel)));
+  return rows.map((r) => r.panel!).filter((p) => p.trim() !== '');
+}
+
 export async function listSlotsByCohort(cohortId: string) {
   return db
     .select()
@@ -84,6 +104,12 @@ export async function listSlotsByCohort(cohortId: string) {
     .orderBy(asc(recruitSlots.startsAt), asc(recruitSlots.panel));
 }
 
+/**
+ * 슬롯 삭제. **배정돼 있던 지원자의 `slot_id` 는 조용히 null 이 된다**(FK on delete set null) —
+ * 지운 뒤에는 누가 그 시간이었는지 어디에도 남지 않으므로, 지운 내용을 호출부가 audit 에
+ * 적을 수 있게 삭제된 행을 돌려준다.
+ */
 export async function deleteSlot(slotId: string) {
-  await db.delete(recruitSlots).where(eq(recruitSlots.id, slotId));
+  const [deleted] = await db.delete(recruitSlots).where(eq(recruitSlots.id, slotId)).returning();
+  return deleted ?? null;
 }
