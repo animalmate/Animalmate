@@ -4,6 +4,22 @@ import { recruitApplicants } from '../db/schema';
 import { eq, and, inArray, asc } from 'drizzle-orm';
 import { ApplicantImportInput } from './csv';
 import { RecruitStatus } from './status';
+import { shortTeamName } from './team-name';
+
+/**
+ * 행에 덮어씌울 팀 이름 3종. 지원자가 고른 값에 지역이 붙어 있으면("1팀 - 강남(집결지 강남역)")
+ * 팀 이름만 남긴다 — 심사·집계 화면의 배지가 길어지고, 선택지가 "1팀"으로 짧아진 뒤로는
+ * 팀 필터에도 걸리지 않는다. DB 값은 그대로 둔다(옛 기수 기록을 고쳐 쓸 이유가 없다).
+ */
+const shortTeamsOf = (r: {
+  assignedTeam: string | null;
+  wishTeam1: string | null;
+  wishTeam2: string | null;
+}) => ({
+  assignedTeam: shortTeamName(r.assignedTeam),
+  wishTeam1: shortTeamName(r.wishTeam1),
+  wishTeam2: shortTeamName(r.wishTeam2),
+});
 
 export async function bulkCreateApplicants(
   cohortId: string,
@@ -41,11 +57,12 @@ export async function bulkCreateApplicants(
 }
 
 export async function listApplicantsByCohort(cohortId: string) {
-  return db
+  const rows = await db
     .select()
     .from(recruitApplicants)
     .where(eq(recruitApplicants.cohortId, cohortId))
     .orderBy(asc(recruitApplicants.name));
+  return rows.map((r) => ({ ...r, ...shortTeamsOf(r) }));
 }
 
 /**
@@ -53,7 +70,7 @@ export async function listApplicantsByCohort(cohortId: string) {
  * 지원서 전문을 읽는 화면(서류 심사·면접 콘솔)만 위 전체 조회를 쓴다.
  */
 export async function listApplicantsByCohortSlim(cohortId: string) {
-  return db
+  const rows = await db
     .select({
       id: recruitApplicants.id,
       name: recruitApplicants.name,
@@ -72,6 +89,7 @@ export async function listApplicantsByCohortSlim(cohortId: string) {
     .from(recruitApplicants)
     .where(eq(recruitApplicants.cohortId, cohortId))
     .orderBy(asc(recruitApplicants.name));
+  return rows.map((r) => ({ ...r, ...shortTeamsOf(r) }));
 }
 
 export async function getApplicantById(id: string) {
@@ -79,7 +97,7 @@ export async function getApplicantById(id: string) {
     .select()
     .from(recruitApplicants)
     .where(eq(recruitApplicants.id, id));
-  return found ?? null;
+  return found ? { ...found, ...shortTeamsOf(found) } : null;
 }
 
 /** 상태 전이 검증을 위해 대상 지원자들의 현재 상태를 한 번에 읽는다. */

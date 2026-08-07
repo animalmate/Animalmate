@@ -175,10 +175,13 @@
     그 항목을 받지 않는다. 비대면 면접만 라디오가 아니라 체크박스(체크=비대면, 미체크=대면).
     ⚠ **항목 구성 자체는 고정**이다 — recruit_applicants 컬럼과 1:1 이고 심사·집계 화면이 그 컬럼을 읽는다.
     바꿀 수 있는 것은 문구·안내·선택지·필수 여부뿐. 지망 팀도 여기 있고 `teams` 테이블(운영진 조직)과 별개다.
-    옛 키(`essayIntroLabel` 등)(성별·지원경로·OT·면접방식 선택지,
-    문항 2개). 미설정이면 `src/recruit/apply-form.ts` 의 기본값을 쓴다. 지망 팀 목록은 여기 두지 않고
-    `teams` 테이블을 그대로 쓴다(회장단이 회원 관리에서 바꾸면 지원서도 따라간다).
-    폐기 시 익명 집계만 archived_stats 로 잔존.
+    `wishTeamOptions` 에는 **팀 이름만** 넣는다("1팀") — 고른 값이 그대로 `recruit_applicants` 에
+    저장돼 심사·집계 화면의 팀 배지가 되기 때문이다. 지역·집결지 안내는 `teamDescription`(자유 문구)이
+    맡고 지원서의 희망 팀 문항 위에 그대로 보인다. 옛 형식("1팀 - 강남(집결지 강남역)")으로 저장된
+    기수는 `resolveApplyForm` 이 읽을 때 팀 이름만 남기고 원문을 `teamDescription` 으로 옮긴다
+    (2026-08-07). 이미 접수된 지원자 행의 긴 값은 `src/recruit/applicants.ts` 가 읽을 때 줄인다.
+    옛 키(`essayIntroLabel`·`wishTeam2ExtraOptions` 등)는 무시한다. 미설정이면
+    `src/recruit/apply-form.ts` 의 기본값을 쓴다. 폐기 시 익명 집계만 archived_stats 로 잔존.
   - `recruit_slots` (id, cohort_id, **panel?**, starts_at, duration_min=20, link?, venue?, is_remote, created_by, created_at)
     — 면접 슬롯(조×시간 한 칸). cohort_id 인덱스(0014).
     **`panel` = 소속 조 이름**('A조'·'B조'·'비대면 파견', 0026). 조는 **방 하나를 잡고 하루 종일 유지되는

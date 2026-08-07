@@ -37,8 +37,6 @@ const ALWAYS_ON: FieldKey[] = ['name', 'phone'];
 
 /** 선택지 목록을 쓰는 문항과, 그 목록이 설정의 어느 키인지. */
 const OPTION_LISTS: { key: keyof ApplyFormConfig; title: string; hint: string }[] = [
-  { key: 'wishTeamOptions', title: '희망 팀 선택지', hint: '신입이 배정되는 봉사 팀입니다. 회원 관리의 운영진 팀(기획팀·홍보팀 등)과는 별개입니다.' },
-  { key: 'wishTeam2ExtraOptions', title: '2순위에만 추가할 선택지', hint: '예: 2순위 팀 배치 희망하지 않음. 비워 두면 추가 선택지가 없습니다.' },
   { key: 'genderOptions', title: '성별 선택지', hint: '' },
   { key: 'applyRouteOptions', title: '지원 경로 선택지', hint: '' },
   { key: 'expectedFrequencyOptions', title: '예상 참여 주기 선택지', hint: '' },
@@ -119,9 +117,39 @@ export function ApplyFormEditor({
         })}
       </div>
 
+      {/* 지망 팀 — 선택지에는 팀 이름만, 지역·집결지 안내는 팀 설명이 맡는다.
+          선택한 값이 그대로 지원자 행에 저장돼 심사·집계 화면의 팀 배지가 되기 때문이다. */}
+      <div className="space-y-4 border-t border-ink-100 pt-5">
+        <h3 className="text-sm font-bold text-ink-900">지망 팀</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field
+            label="희망 팀 선택지 (줄바꿈으로 구분)"
+            hint="1팀, 2팀처럼 팀 이름만 적습니다. 여기 적은 문구가 심사 화면의 팀 이름이 됩니다."
+          >
+            <textarea
+              className={`${taCls} h-28`}
+              placeholder={'1팀\n2팀\n3팀'}
+              value={listToLines(value.wishTeamOptions)}
+              onChange={(e) => setList('wishTeamOptions', e.target.value)}
+            />
+          </Field>
+          <Field
+            label="팀 설명"
+            hint="봉사 지역·집결지를 적으면 지원서의 희망 팀 문항 위에 그대로 보입니다. 비워 두면 나오지 않습니다."
+          >
+            <textarea
+              className={`${taCls} h-28`}
+              placeholder={'1팀 — 강남 (집결지: 강남역)\n2팀 — 성북 (집결지: 성신여대입구역)'}
+              value={value.teamDescription}
+              onChange={(e) => onChange({ ...value, teamDescription: e.target.value })}
+            />
+          </Field>
+        </div>
+      </div>
+
       {/* 선택지 목록 */}
       <div className="space-y-4 border-t border-ink-100 pt-5">
-        <h3 className="text-sm font-bold text-ink-900">선택지 목록 (줄바꿈으로 구분)</h3>
+        <h3 className="text-sm font-bold text-ink-900">그 밖의 선택지 목록 (줄바꿈으로 구분)</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {OPTION_LISTS.map(({ key, title, hint }) => (
             <Field key={String(key)} label={title} hint={hint || undefined}>

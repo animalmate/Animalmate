@@ -9,6 +9,8 @@
 // ⚠ 항목 자체(어떤 필드를 받는가)는 고정이다 — recruit_applicants 의 컬럼과 1:1 로 묶여 있고
 //   심사·집계 화면이 그 컬럼을 읽기 때문이다. 바꿀 수 있는 것은 문구·안내·선택지·필수 여부다.
 
+import { shortTeamName } from './team-name';
+
 /** 문항 하나의 표시 설정. */
 export interface FieldConfig {
   /** 문항 제목. 비우면 그 문항을 지원서에서 뺀다(이름·전화번호는 제외 — 항상 받는다). */
@@ -50,10 +52,16 @@ export interface ApplyFormConfig {
   /**
    * 지망 팀 목록. 회원 관리의 teams 테이블(기획팀·홍보팀 등 운영진 조직)과는 별개다 —
    * 여기는 신입이 배정되는 봉사 팀이다.
+   *
+   * **팀 이름만 넣는다**("1팀", "2팀" …). 고른 값이 그대로 지원자 행에 저장돼 심사·집계 화면의
+   * 팀 배지가 되기 때문이다. 지역·집결지 안내는 아래 teamDescription 이 맡는다.
    */
   wishTeamOptions: string[];
-  /** 2순위에만 추가로 붙는 선택지(예: "2순위 팀 배치 희망하지 않음"). */
-  wishTeam2ExtraOptions: string[];
+  /**
+   * 팀 설명. 지원서의 희망 팀 문항 위에 줄바꿈 그대로 보인다
+   * (예: "1팀 — 강남 (집결지: 강남역)"). 비워 두면 아무것도 나오지 않는다.
+   */
+  teamDescription: string;
   /** 가치관 문항에서 고르는 주제. 지원자는 주제 하나를 고르고 장문으로 답한다. */
   essayValuesTopics: string[];
   otAttendOptions: string[];
@@ -96,7 +104,7 @@ export const DEFAULT_APPLY_FORM: ApplyFormConfig = {
       '예상 활동 참여 주기',
       '애니멀메이트는 격주로 진행되는 봉사 활동뿐만 아니라, 정기 행사 및 번개 모임 등 친목 도모 활동 또한 진행하고 있습니다.\n*애니멀메이트는 어떠한 행사나 봉사도 참여를 의무화하지 않고 있습니다.'
     ),
-    wishTeam1: f('희망 팀 조사(1순위)', '팀 - 봉사지 지역(집결지)'),
+    wishTeam1: f('희망 팀 조사(1순위)'),
     wishTeam2: f(
       '희망 팀 조사(2순위)',
       '애니멀메이트는 지원자 상황에 따라 2순위 팀에 배치되실 수 있습니다.\n팀은 소속 팀 파악 및 인원 구분을 위한 배치로 타 팀 봉사 신청과 참여에 별도의 제약은 두고 있지 않습니다.'
@@ -122,7 +130,7 @@ export const DEFAULT_APPLY_FORM: ApplyFormConfig = {
   ],
   expectedFrequencyOptions: ['매주 1회', '격주 1회', '달에 1번', '한 학기에 1번', '기타'],
   wishTeamOptions: ['1팀', '2팀', '3팀', '4팀', '5팀'],
-  wishTeam2ExtraOptions: ['2순위 팀 배치 희망하지 않음'],
+  teamDescription: '',
   essayValuesTopics: [
     '국내 유기견 실태',
     '강아지 번식장 문제',
@@ -176,6 +184,14 @@ export function resolveApplyForm(raw: unknown): ApplyFormConfig {
     fields.essayValues = { ...fields.essayValues, label: o.essayValuesLabel };
   }
 
+  // 지망 팀 선택지에서 지역 꼬리를 떼어 팀 이름만 남긴다("1팀 - 강남(집결지 강남역)" → "1팀").
+  // 고른 값이 그대로 지원자 행에 저장돼 심사·집계 화면의 팀 배지가 되기 때문이다.
+  const rawTeams = cleanList(o.wishTeamOptions, DEFAULT_APPLY_FORM.wishTeamOptions);
+  const shortTeams = rawTeams.map((t) => shortTeamName(t) ?? t);
+  // 줄였더니 이름이 겹치면(1팀 - 강남 / 1팀 - 송파) 팀 하나가 사라진다. 그럴 땐 손대지 않는다.
+  const teamsCollapsed = new Set(shortTeams).size !== shortTeams.length;
+  const shortened = !teamsCollapsed && shortTeams.some((t, i) => t !== rawTeams[i]);
+
   return {
     fields,
     genderOptions: cleanList(o.genderOptions, DEFAULT_APPLY_FORM.genderOptions),
@@ -184,11 +200,10 @@ export function resolveApplyForm(raw: unknown): ApplyFormConfig {
       o.expectedFrequencyOptions,
       DEFAULT_APPLY_FORM.expectedFrequencyOptions
     ),
-    wishTeamOptions: cleanList(o.wishTeamOptions, DEFAULT_APPLY_FORM.wishTeamOptions),
-    // 여긴 "비우면 없음"이 정상이라 빈 배열을 허용한다.
-    wishTeam2ExtraOptions: Array.isArray(o.wishTeam2ExtraOptions)
-      ? (o.wishTeam2ExtraOptions as unknown[]).map((x) => String(x).trim()).filter(Boolean)
-      : DEFAULT_APPLY_FORM.wishTeam2ExtraOptions,
+    wishTeamOptions: teamsCollapsed ? rawTeams : shortTeams,
+    // 옛 형식 이어받기: 지역·집결지를 선택지 문구에 붙여 저장한 기수가 있다. 회장단이 직접 쓴
+    // 안내라 버리지 않고 '팀 설명'으로 옮긴다 — 새로 저장한 팀 설명이 있으면 그쪽이 이긴다.
+    teamDescription: cleanText(o.teamDescription, shortened ? rawTeams.join('\n') : ''),
     essayValuesTopics: Array.isArray(o.essayValuesTopics)
       ? (o.essayValuesTopics as unknown[]).map((x) => String(x).trim()).filter(Boolean)
       : DEFAULT_APPLY_FORM.essayValuesTopics,

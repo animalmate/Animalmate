@@ -365,6 +365,13 @@ export function PublicRecruitApplyPanel({
             <section className="space-y-4">
               <SectionHeading step={2}>활동 계획</SectionHeading>
 
+              {/* 팀 설명은 선택지에서 뺀 지역·집결지 안내다. 고르기 전에 읽어야 하므로 문항 위에 둔다. */}
+              {(on('wishTeam1') || on('wishTeam2')) && config.teamDescription.trim() !== '' && (
+                <div className="whitespace-pre-line rounded-xl border border-ink-100 bg-cream-25 p-3.5 text-[13px] leading-relaxed text-ink-600">
+                  {config.teamDescription}
+                </div>
+              )}
+
               {on('wishTeam1') && (
                 <Field {...fp('wishTeam1')}>
                   <Select value={form.wishTeam1} onChange={(e) => set('wishTeam1', e.target.value)}>
@@ -389,11 +396,6 @@ export function PublicRecruitApplyPanel({
                           {t}
                         </option>
                       ))}
-                    {config.wishTeam2ExtraOptions.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
                   </Select>
                 </Field>
               )}

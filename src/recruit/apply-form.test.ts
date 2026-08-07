@@ -47,14 +47,43 @@ describe('지원서 양식 설정 정규화', () => {
     expect(resolveApplyForm({ wishTeamOptions: ['가팀', '나팀'] }).wishTeamOptions).toEqual(['가팀', '나팀']);
   });
 
+  it('지망 팀 선택지에서 지역 꼬리를 떼고, 그 안내는 팀 설명으로 옮긴다', () => {
+    // 고른 값이 그대로 지원자 행에 저장돼 심사 화면의 팀 배지가 된다 — 배지에는 팀 이름만 남긴다.
+    const r = resolveApplyForm({
+      wishTeamOptions: ['1팀 - 강남(집결지 강남역)', '2팀 - 성북(집결지 성신여대입구역)'],
+    });
+    expect(r.wishTeamOptions).toEqual(['1팀', '2팀']);
+    expect(r.teamDescription).toBe('1팀 - 강남(집결지 강남역)\n2팀 - 성북(집결지 성신여대입구역)');
+  });
+
+  it('직접 쓴 팀 설명이 이어받은 값보다 우선한다', () => {
+    const r = resolveApplyForm({
+      wishTeamOptions: ['1팀 - 강남'],
+      teamDescription: '1팀은 강남에서 모입니다',
+    });
+    expect(r.wishTeamOptions).toEqual(['1팀']);
+    expect(r.teamDescription).toBe('1팀은 강남에서 모입니다');
+  });
+
+  it('줄이면 이름이 겹치는 선택지는 손대지 않는다(팀이 사라지면 안 된다)', () => {
+    const raw = ['1팀 - 강남', '1팀 - 송파'];
+    const r = resolveApplyForm({ wishTeamOptions: raw });
+    expect(r.wishTeamOptions).toEqual(raw);
+    expect(r.teamDescription).toBe('');
+  });
+
+  it('팀 설명은 비어 있는 것이 기본이고, 빈 값을 존중한다', () => {
+    expect(resolveApplyForm({}).teamDescription).toBe('');
+    expect(resolveApplyForm({ wishTeamOptions: ['1팀 - 강남'], teamDescription: '' }).teamDescription).toBe('');
+  });
+
   it('선택지의 공백·빈 항목은 걸러내고, 전부 비면 기본값으로 되돌린다', () => {
     expect(resolveApplyForm({ genderOptions: ['  남 ', '', '   '] }).genderOptions).toEqual(['남']);
     expect(resolveApplyForm({ genderOptions: [] }).genderOptions).toEqual(DEFAULT_APPLY_FORM.genderOptions);
   });
 
-  it('2순위 추가 선택지와 가치관 주제는 비워 두는 것도 정상이다', () => {
-    // 이 둘은 "없음"이 유효한 설정이라 기본값으로 되돌리지 않는다.
-    expect(resolveApplyForm({ wishTeam2ExtraOptions: [] }).wishTeam2ExtraOptions).toEqual([]);
+  it('가치관 주제는 비워 두는 것도 정상이다', () => {
+    // "없음"이 유효한 설정이라 기본값으로 되돌리지 않는다.
     expect(resolveApplyForm({ essayValuesTopics: [] }).essayValuesTopics).toEqual([]);
   });
 
