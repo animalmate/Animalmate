@@ -76,6 +76,23 @@ function SlotChip({
   );
 }
 
+/**
+ * 지원자 정보 한 칸(라벨 위, 값 아래).
+ *
+ * 예전에는 학교·학과·연락처를 가운뎃점으로 이어 붙인 한 줄이었다. 면접 중에 "생년월일이 뭐였지"를
+ * 눈으로 찾아야 했고, 라벨이 없어 값만 보고는 무엇인지 알기 어려웠다. 값마다 이름을 붙여 세운다.
+ */
+function Fact({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[12px] font-semibold text-ink-400">{label}</dt>
+      <dd className="truncate text-[15px] font-semibold text-ink-900" title={value ?? undefined}>
+        {value?.trim() ? value : <span className="font-medium text-ink-300">미기재</span>}
+      </dd>
+    </div>
+  );
+}
+
 export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
@@ -191,14 +208,23 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     }
   }, [selectedCohortId, fetchData]);
 
-  // 지원자를 바꿀 때 내 입력칸을 반드시 새로 맞춘다.
-  // 예전엔 초기화가 없어서, A 에게 쓴 점수·총평이 그대로 남아 B 의 기록으로 저장될 수 있었다.
-  // 이미 내가 채점한 지원자라면 그 값을 되살려, 덮어쓰는 줄 모르고 다시 매기는 일도 막는다.
+  // 지원자를 바꿀 때만 하는 일 — 메모를 넘기고 새 지원자의 메모를 읽고, 안내 문구를 지운다.
+  //
+  // ⚠ 이 셋을 아래 점수 복원 효과와 한 덩어리로 두면 **점수를 저장할 때마다** 함께 돈다
+  // (저장 → fetchData → scores 가 새 배열). 그래서 "저장했습니다" 안내가 뜨자마자 지워져
+  // 면접관은 저장이 됐는지 알 수 없었고, 메모도 방금 보낸 저장과 경쟁하며 다시 읽혔다.
   useEffect(() => {
     if (!selectedApplicantId) return;
     flushMemo();
     fetchPersonalMemo(selectedApplicantId);
     setMessage('');
+  }, [selectedApplicantId, flushMemo]);
+
+  // 내 점수·총평 입력칸을 지금 지원자의 저장된 값으로 맞춘다.
+  // 예전엔 초기화가 없어서, A 에게 쓴 점수·총평이 그대로 남아 B 의 기록으로 저장될 수 있었다.
+  // 이미 내가 채점한 지원자라면 그 값을 되살려, 덮어쓰는 줄 모르고 다시 매기는 일도 막는다.
+  useEffect(() => {
+    if (!selectedApplicantId) return;
     const mine = scores.find(
       (s) =>
         s.applicantId === selectedApplicantId &&
@@ -207,7 +233,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     );
     setMyScore(mine ? parseFloat(mine.score).toFixed(1) : NO_SCORE);
     setMyComment(mine?.comment ?? '');
-  }, [selectedApplicantId, viewerUserId, scores, flushMemo]);
+  }, [selectedApplicantId, viewerUserId, scores]);
 
   const fetchCohorts = async () => {
     try {
@@ -270,7 +296,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
       });
 
       if (res.ok) {
-        setMessage('✅ 면접 점수가 성공적으로 저장되었습니다 (상태 자동 전이).');
+        setMessage('✅ 면접 점수를 저장했습니다. 상태가 면접 완료로 바뀝니다.');
         await fetchData();
       } else {
         const data = await res.json();
@@ -392,10 +418,12 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[24px] font-bold text-ink-900">4. 면접 당일 콘솔 (pc화면 전용, 면접 채점용)</h1>
+            <h1 className="text-[24px] font-bold text-ink-900">4. 면접 당일 콘솔</h1>
             <HelpButton screen="recruit-console" />
           </div>
-          <p className="mt-1 text-sm text-ink-500">동일 면접 슬롯에 입장한 지원자그룹을 선택하여 실시간 질문 메모 및 평가 점수를 부여합니다.</p>
+          <p className="mt-1 text-sm text-ink-500">
+            같은 조에 들어온 지원자를 골라 메모하고 점수를 매깁니다. 노트북에서 쓰는 화면입니다.
+          </p>
         </div>
 
         {/* 다른 모집 화면과 같은 툴바 셀렉트로 맞춘다(높이·테두리 제각각이던 파란 상자를 걷어냈다).
@@ -456,10 +484,11 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
         {/* 좌측 면접 순서 목록 */}
         <Card className="lg:col-span-4 p-4 space-y-3">
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-ink-400">
-              면접 대상자 ({filteredApplicants.length}명)
+            {/* 한글에 uppercase·tracking-wider 를 걸면 자간만 벌어져 오히려 읽기 나쁘다. */}
+            <span className="text-[13px] font-bold text-ink-500">
+              면접 대상자 {filteredApplicants.length}명
             </span>
-            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[12px] font-bold text-blue-700">
               내 채점 {myScoredCount}/{filteredApplicants.length}
             </span>
           </div>
@@ -472,12 +501,12 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
           {rowTimes.length > 0 && panelNames.length > 0 && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-ink-400">조 · 시간</span>
+                <span className="text-[12px] font-bold text-ink-500">조 · 시간</span>
                 <button
                   type="button"
                   onClick={() => setSelectedSlotFilter('ALL')}
                   aria-pressed={selectedSlotFilter === 'ALL'}
-                  className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition-colors ${
+                  className={`rounded-lg border px-2 py-1 text-[12px] font-bold transition-colors ${
                     selectedSlotFilter === 'ALL'
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-ink-200 bg-white text-ink-500 hover:bg-cream-50'
@@ -488,12 +517,12 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
               </div>
               {/* 조가 많으면 가로로 넘친다 — 표 안에서만 스크롤시킨다(페이지를 밀지 않는다). */}
               <div className="overflow-x-auto">
-                <table className="w-full border-separate border-spacing-0.5 text-[10px]">
+                <table className="w-full border-separate border-spacing-0.5 text-[11px]">
                   <thead>
                     <tr>
-                      <th className="w-10" />
+                      <th className="w-11" />
                       {panelNames.map((p) => (
-                        <th key={p} className="truncate px-1 pb-0.5 text-[10px] font-bold text-ink-500" title={p}>
+                        <th key={p} className="truncate px-1 pb-0.5 text-[11px] font-bold text-ink-500" title={p}>
                           {p}
                         </th>
                       ))}
@@ -502,7 +531,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                   <tbody>
                     {rowTimes.map((t) => (
                       <tr key={t}>
-                        <th className="pr-1 text-right font-mono text-[10px] font-semibold text-ink-400">
+                        <th className="pr-1 text-right font-mono text-[11px] font-semibold text-ink-500">
                           {formatTimeKo(t)}
                         </th>
                         {panelNames.map((p) => {
@@ -578,7 +607,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
               <div key={group.slotId ?? 'unassigned'} className="space-y-2">
                 {/* 슬롯 머리 — 이 시간에 어느 방에서 누가 보는 조인지. 같이 들어가는 사람이 아래에 모여 있다. */}
                 <div
-                  className={`flex flex-wrap items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] ${
+                  className={`flex flex-wrap items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] ${
                     group.isNow ? 'bg-blue-600 text-white' : 'bg-cream-100 text-ink-700'
                   }`}
                 >
@@ -628,35 +657,44 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                       : 'border-ink-200 bg-white hover:border-blue-300 hover:bg-cream-25'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-ink-900 flex items-center gap-1.5">
-                      {app.name}
-                      <span className="text-[10px] font-semibold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
+                  {/* 시각·장소는 슬롯 머리에 한 번만 적는다 — 줄마다 되풀이하면 정작
+                      이름과 채점 여부가 묻힌다. 대신 '내 채점 여부'를 이름과 같은 줄로 올린다:
+                      다음 지원자가 들어오는 중에 훑는 값이 바로 이것이다. */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[15px] font-bold text-ink-900">{app.name}</span>
+                      <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[11px] font-semibold text-blue-800">
                         {effectiveTeam}
                       </span>
                     </span>
-                    {/* 시각·장소는 슬롯 머리에 한 번만 적는다 — 줄마다 되풀이하면 정작
-                        이름과 채점 여부가 묻힌다. */}
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-ink-500 mt-1.5">
-                    <span>{app.school}</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        BADGE_TONE_CLASS[recruitStatusBadge(app.status).tone]
-                      }`}
-                    >
-                      {recruitStatusBadge(app.status).label}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex items-center justify-between">
-                    <span
-                      className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-bold ${
+                      className={`shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-bold ${
                         myScore !== undefined ? 'bg-blue-600 text-white' : 'bg-amber-100 text-amber-800'
                       }`}
                     >
                       {myScore !== undefined ? `내 ${myScore.toFixed(1)}점` : '내 채점 전'}
                     </span>
-                    <span className="text-[11px] text-ink-400">
+                  </div>
+                  {/* 2지망은 예전에 이 화면 어디에도 없었다 — 팀 배치를 의논하려면 함께 보여야 한다. */}
+                  <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] text-ink-500">
+                    <span className="truncate">
+                      1지망 {app.wishTeam1 || '-'} · 2지망 {app.wishTeam2 || '-'}
+                    </span>
+                    {/* 이 목록은 전원이 '서류 합격'이라 그 딱지는 모든 줄에 똑같이 붙어 아무 뜻이 없었다.
+                        면접 완료·불참처럼 **달라진 것**만 딱지로 남긴다. */}
+                    {app.status !== 'doc_pass' && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          BADGE_TONE_CLASS[recruitStatusBadge(app.status).tone]
+                        }`}
+                      >
+                        {recruitStatusBadge(app.status).label}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-ink-400">
+                    <span className="truncate">{app.school}</span>
+                    <span className="shrink-0">
                       {intAvg !== null ? `전체 평균 ${intAvg}점 · ${mine.length}명` : '채점한 면접관 없음'}
                     </span>
                   </div>
@@ -672,103 +710,127 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
         <div className="lg:col-span-8 space-y-6">
           {selectedApp ? (
             <Card className="space-y-6 p-6">
-              {/* 면접 대상자 헤더 */}
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-cream-200 pb-5">
-                <div>
-                  <h2 className="text-2xl font-bold text-ink-900">{selectedApp.name}</h2>
-                  <p className="text-xs text-ink-500 mt-1 font-medium">
-                    {selectedApp.school} {selectedApp.department} · 연락처: {formatPhone(selectedApp.phone)}
-                  </p>
-                </div>
+              {/* 면접 대상자 헤더 — 면접 중에 확인하는 사실을 라벨과 함께 한 곳에 모은다. */}
+              <div className="space-y-4 border-b border-cream-200 pb-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-2xl font-bold text-ink-900">{selectedApp.name}</h2>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[12px] font-bold ${
+                        BADGE_TONE_CLASS[recruitStatusBadge(selectedApp.status).tone]
+                      }`}
+                    >
+                      {recruitStatusBadge(selectedApp.status).label}
+                    </span>
+                  </div>
 
-                <div className="text-right space-y-1">
-                  {selectedSlot && (
-                    <div className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
-                      <span>
-                        면접 시각: {new Date(selectedSlot.startsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} ({selectedSlot.durationMin}분)
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedSlot && (
+                      <span className="rounded-lg bg-blue-50 px-3 py-1.5 text-[13px] font-bold text-blue-700">
+                        면접{' '}
+                        {new Date(selectedSlot.startsAt).toLocaleTimeString('ko-KR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}{' '}
+                        · {selectedSlot.durationMin}분
                       </span>
-                    </div>
-                  )}
-                  {selectedApp.interviewLink && (
-                    <div>
+                    )}
+                    {selectedApp.interviewLink && (
                       <a
                         href={selectedApp.interviewLink}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs text-blue-600 font-semibold underline hover:text-blue-700"
+                        className="rounded-lg border border-blue-200 px-3 py-1.5 text-[13px] font-bold text-blue-700 no-underline hover:bg-blue-50"
                       >
-                        면접 접속 URL 열기
+                        면접 링크 열기 ↗
                       </a>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
+
+                {/* 1·2지망과 생년월일은 예전에 이 화면 어디에도 없어서 지원서를 따로 열어야 했다. */}
+                <dl className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+                  <Fact
+                    label="학교·학과"
+                    value={[selectedApp.school, selectedApp.department].filter(Boolean).join(' ')}
+                  />
+                  <Fact label="생년월일" value={selectedApp.birthDate} />
+                  <Fact label="연락처" value={formatPhone(selectedApp.phone)} />
+                  <Fact label="1지망" value={selectedApp.wishTeam1} />
+                  <Fact label="2지망" value={selectedApp.wishTeam2} />
+                </dl>
               </div>
 
               {/* 면접 출결 — 오지 않은 사람은 면접관이 여기서 표시한다. 점수를 매길 수 없는 사람을
                   그냥 비워 두면 나중에 "채점을 안 한 것"과 구분되지 않는다.
                   잘못 눌러도 바로 되돌릴 수 있어서 확인 팝업은 두지 않는다(결정 33 은 되돌릴 수 없는 것에만). */}
-              <div className="-mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-cream-50 px-3 py-2">
-                <span className="text-[11px] font-bold text-ink-500">면접 출결</span>
-                {selectedApp.status === 'interview_noshow' ? (
-                  <>
-                    <span className="rounded-md bg-coral-100 px-2 py-0.5 text-xs font-bold text-coral-700">
-                      면접 불참
+              {/* 조 이동과 출결을 한 줄에 둔다. 같은 모양의 띠 두 개가 위아래로 붙어 있으면
+                  둘 다 그냥 배경으로 보인다 — 왼쪽은 '누구를 볼까', 오른쪽은 '왔는가'로 나눈다.
+                  같은 조: 한 방에서 여러 명을 동시에 보므로 왼쪽 목록까지 가지 않고 옆 사람으로 넘어간다.
+                  출결: 잘못 눌러도 바로 되돌릴 수 있어 확인 팝업은 두지 않는다(결정 33 은 되돌릴 수 없는 것에만). */}
+              <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-cream-50 px-3.5 py-2.5">
+                {selectedGroup && selectedGroup.applicants.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[12px] font-bold text-ink-500">
+                      같은 조 {selectedGroup.applicants.length}명
                     </span>
+                    {selectedGroup.applicants.map((a: any) => {
+                      const done = myInterviewScores[a.id] !== undefined;
+                      const active = a.id === selectedApplicantId;
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setSelectedApplicantId(a.id)}
+                          className={`min-h-tap rounded-lg px-3 text-[13px] font-bold transition-colors ${
+                            active
+                              ? 'bg-blue-600 text-white'
+                              : done
+                                ? 'border border-ink-200 bg-white text-ink-700 hover:bg-cream-100'
+                                : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                          }`}
+                          title={done ? '내 채점 완료' : '내 채점 전'}
+                        >
+                          {a.name}
+                          {done ? ' ✓' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {attendanceError ? (
+                    <span className="text-[12px] font-semibold text-error" role="alert">
+                      {attendanceError}
+                    </span>
+                  ) : null}
+                  {selectedApp.status === 'interview_noshow' ? (
+                    <>
+                      <span className="rounded-md bg-coral-100 px-2 py-0.5 text-[13px] font-bold text-coral-700">
+                        면접 불참
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void setAttendance(false)}
+                        disabled={attendanceBusy}
+                        className="min-h-tap rounded-lg border border-ink-200 bg-white px-3 text-[13px] font-bold text-ink-700 hover:bg-cream-100 disabled:opacity-50"
+                      >
+                        {attendanceBusy ? '저장 중…' : '왔어요(되돌리기)'}
+                      </button>
+                    </>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => void setAttendance(false)}
+                      onClick={() => void setAttendance(true)}
                       disabled={attendanceBusy}
-                      className="min-h-tap rounded-lg border border-ink-200 bg-white px-2.5 text-xs font-bold text-ink-700 hover:bg-cream-100 disabled:opacity-50"
+                      className="min-h-tap rounded-lg border border-coral-300 bg-white px-3 text-[13px] font-bold text-coral-700 hover:bg-coral-50 disabled:opacity-50"
                     >
-                      {attendanceBusy ? '저장 중…' : '왔어요(되돌리기)'}
+                      {attendanceBusy ? '저장 중…' : '면접에 안 왔어요'}
                     </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void setAttendance(true)}
-                    disabled={attendanceBusy}
-                    className="min-h-tap rounded-lg border border-coral-300 bg-white px-2.5 text-xs font-bold text-coral-700 hover:bg-coral-50 disabled:opacity-50"
-                  >
-                    {attendanceBusy ? '저장 중…' : '면접에 안 왔어요'}
-                  </button>
-                )}
-                {attendanceError ? (
-                  <span className="text-[11px] font-medium text-error" role="alert">
-                    {attendanceError}
-                  </span>
-                ) : null}
-              </div>
-
-              {/* 같은 조에 함께 들어온 사람들. 한 방에서 여러 명을 동시에 보므로, 채점하다
-                  옆 사람으로 바로 넘어갈 수 있어야 한다(왼쪽 목록까지 갈 필요 없이). */}
-              {selectedGroup && selectedGroup.applicants.length > 1 && (
-                <div className="-mt-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-cream-50 px-3 py-2">
-                  <span className="text-[11px] font-bold text-ink-500">같은 조 ({selectedGroup.applicants.length}명)</span>
-                  {selectedGroup.applicants.map((a: any) => {
-                    const done = myInterviewScores[a.id] !== undefined;
-                    const active = a.id === selectedApplicantId;
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => setSelectedApplicantId(a.id)}
-                        className={`min-h-tap rounded-lg px-2.5 text-xs font-bold transition-colors ${
-                          active
-                            ? 'bg-blue-600 text-white'
-                            : done
-                            ? 'bg-white text-ink-700 border border-ink-200 hover:bg-cream-100'
-                            : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                        }`}
-                        title={done ? '내 채점 완료' : '내 채점 전'}
-                      >
-                        {a.name}
-                        {done ? ' ✓' : ''}
-                      </button>
-                    );
-                  })}
+                  )}
                 </div>
-              )}
+              </div>
 
               {/* 지원서 핵심 보기 */}
               {/* 면접 중에는 점수 입력칸이 화면 밖으로 밀리면 안 된다 — 길면 접어 두고 펼쳐 본다. */}
@@ -780,19 +842,19 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
               {/* 내 개인 실시간 메모 카드 */}
               <div className="rounded-xl border border-cream-200 bg-cream-50 p-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-ink-900">내 개인 질문/관찰 실시간 메모</h3>
-                  {memoState === 'saving' && <span className="text-[11px] font-semibold text-ink-500">자동 저장 중…</span>}
-                  {memoState === 'saved' && <span className="text-[11px] font-semibold text-ink-500">자동 저장됨</span>}
+                  <h3 className="text-[13px] font-bold text-ink-900">내 메모 (나만 봅니다)</h3>
+                  {memoState === 'saving' && <span className="text-[12px] font-semibold text-ink-500">자동 저장 중…</span>}
+                  {memoState === 'saved' && <span className="text-[12px] font-semibold text-ink-500">자동 저장됨</span>}
                   {/* 저장 실패를 알려주지 않으면 면접이 끝난 뒤에야 메모가 없다는 걸 안다. */}
                   {memoState === 'error' && (
-                    <span className="text-[11px] font-semibold text-error" role="alert">
+                    <span className="text-[12px] font-semibold text-error" role="alert">
                       저장 실패 — 내용을 복사해 두세요
                     </span>
                   )}
                 </div>
                 <AutoGrowTextarea
                   minRows={4}
-                  placeholder="면접 진행 중 관찰한 답변 태도, 답변 내용, 질문 기록 (입력 시 자동 저장)..."
+                  placeholder="답변과 태도, 물어볼 것을 적어 두세요. 쓰는 대로 자동 저장됩니다."
                   value={personalMemo}
                   onChange={(e) => handleMemoChange(e.target.value)}
                   onBlur={flushMemo}
@@ -800,91 +862,94 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                 />
               </div>
 
-              {/* 면접 점수 입력 카드 */}
-              <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/70 via-cream-50 to-blue-50/70 p-5 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-ink-900">
-                    내 면접 점수 심사
-                    {myExistingScore && (
-                      <span className="ml-2 text-xs font-semibold text-ink-500">
-                        (이미 {parseFloat(myExistingScore.score).toFixed(1)}점 매김 — 저장하면 덮어씁니다)
-                      </span>
-                    )}
-                  </h3>
-                  <span className="text-xs text-blue-700 font-semibold">0.0 ~ 10.0점 (0.5 단위)</span>
+              {/* 면접 점수 입력 카드 — 이 화면에서 가장 자주 하는 일이라 가장 크게 둔다.
+                  예전에는 그라데이션 배경 위에 점수 버튼이 작은 글씨로 흘러가듯 놓여 있어서
+                  '지금 몇 점이 눌려 있는지'가 배경색에 묻혔다. 흰 카드에 격자로 세운다. */}
+              <div className="space-y-4 rounded-2xl border-[1.5px] border-blue-200 bg-white p-5 shadow-card">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-base font-bold text-ink-900">내 면접 점수</h3>
+                  <span className="text-[13px] font-semibold text-ink-500">0.0 ~ 10.0점 · 0.5 단위</span>
                 </div>
 
-                {/* 퀵 버튼은 5.0 부터라 낮은 점수를 아예 줄 수 없었다 — 직접 입력칸을 둔다. */}
-                <div className="flex flex-wrap items-end gap-4">
-                  <div className="w-32">
-                    <Field label="점수 직접 입력">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="10"
-                        step="0.5"
-                        placeholder="미입력"
-                        value={myScore}
-                        onChange={(e) => setMyScore(e.target.value)}
-                      />
-                    </Field>
-                  </div>
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-semibold text-ink-500">자주 쓰는 점수:</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {QUICK_SCORES.map((scoreVal) => (
-                        <button
-                          key={scoreVal}
-                          type="button"
-                          onClick={() => setMyScore(scoreVal)}
-                          aria-pressed={myScore === scoreVal}
-                          className={`min-h-tap rounded-lg px-2.5 text-xs font-bold transition-colors ${
-                            myScore === scoreVal
-                              ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
-                              : 'bg-white text-ink-700 border border-ink-200 hover:bg-cream-100'
-                          }`}
-                        >
-                          {scoreVal}점
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                {myExistingScore && (
+                  <p className="rounded-lg bg-cream-100 px-3 py-2 text-[13px] font-semibold text-ink-700">
+                    이미 {parseFloat(myExistingScore.score).toFixed(1)}점을 매겼습니다 — 저장하면 덮어씁니다.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-5 gap-2">
+                  {QUICK_SCORES.map((scoreVal) => (
+                    <button
+                      key={scoreVal}
+                      type="button"
+                      onClick={() => setMyScore(scoreVal)}
+                      aria-pressed={myScore === scoreVal}
+                      className={`min-h-tap rounded-xl text-sm font-bold transition-colors ${
+                        myScore === scoreVal
+                          ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
+                          : 'border border-ink-200 bg-white text-ink-700 hover:bg-cream-100'
+                      }`}
+                    >
+                      {scoreVal}
+                    </button>
+                  ))}
                 </div>
 
-                <div className="space-y-2">
-                  {/* 총평은 여러 줄로 쓰는 값이다 — 한 줄 입력칸이라 줄바꿈이 안 됐다. */}
-                  <Field label="면접 평가 총평 코멘트">
-                    <AutoGrowTextarea
-                      minRows={3}
-                      placeholder="면접관 종합 평가 총평 코멘트..."
-                      value={myComment}
-                      onChange={(e) => setMyComment(e.target.value)}
+                {/* 퀵 버튼은 5.0 부터라 낮은 점수를 아예 줄 수 없었다 — 직접 입력칸을 남겨 둔다. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-[13px] font-semibold text-ink-500" htmlFor="interview-score-input">
+                    직접 입력
+                  </label>
+                  {/* 폭은 감싼 div 로 준다 — CONTROL 의 w-full 과 같은 특이도라 className 으로 주면
+                      어느 쪽이 이길지 CSS 출력 순서에 달린다(ui.tsx ControlSize 주석). */}
+                  <div className="w-24">
+                    <Input
+                      id="interview-score-input"
+                      uiSize="sm"
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="0.5"
+                      placeholder="미입력"
+                      value={myScore}
+                      onChange={(e) => setMyScore(e.target.value)}
                     />
-                  </Field>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
+                {/* 총평은 여러 줄로 쓰는 값이다 — 한 줄 입력칸이라 줄바꿈이 안 됐다. */}
+                <Field label="면접 평가 총평">
+                  <AutoGrowTextarea
+                    minRows={3}
+                    placeholder="면접관 종합 평가 총평…"
+                    value={myComment}
+                    onChange={(e) => setMyComment(e.target.value)}
+                  />
+                </Field>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-cream-200 pt-3">
                   {message ? (
                     <StatusMessage text={message} />
-                  ) : !hasScore ? (
-                    <span className="text-xs text-ink-500">점수를 입력하거나 아래 버튼에서 골라 주세요.</span>
                   ) : (
-                    <span />
+                    <span className="text-[13px] text-ink-500">
+                      {hasScore ? '저장하면 상태가 면접 완료로 바뀝니다.' : '위에서 점수를 고르거나 직접 입력해 주세요.'}
+                    </span>
                   )}
                   <Button
                     type="button"
                     disabled={savingScore || !hasScore}
                     onClick={handleSaveInterviewScore}
+                    className="px-6"
                   >
-                    {savingScore ? '저장 중…' : '면접 점수 저장 (상태 전이)'}
+                    {savingScore ? '저장 중…' : '면접 점수 저장'}
                   </Button>
                 </div>
               </div>
 
               {/* 다른 면접관 기록 */}
               <div className="space-y-3 pt-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400">
-                  타 면접관 점수 기록 ({otherInterviewScores.length}건)
+                <h3 className="text-[13px] font-bold text-ink-500">
+                  다른 면접관 점수 {otherInterviewScores.length}건
                 </h3>
                 {otherInterviewScores.length > 0 ? (
                   <div className="space-y-2">
