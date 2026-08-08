@@ -20,9 +20,15 @@
 
 | 서비스 | 로그인 수단 | 인수인계 시 조치 |
 |---|---|---|
-| Vercel | ① `animalmate1@gmail.com`(공용, primary) ② **개인 GitHub `hanchaehun`** | ①로 로그인되는 것을 **먼저 확인**한 뒤 ②를 **제거**한다. 순서를 바꾸면 아무도 못 들어간다 |
-| GitHub Org `animalmate` | 개인 계정 `hanchaehun` 1명(= 유일한 owner) | 공용 Gmail 계정을 **owner 로 추가**한 뒤 개인 계정을 정리 |
-| 그 외(Supabase·네이버·Gmail 등) | ⬜ 미조사 | 인수인계 전에 같은 방식으로 확인해 이 표를 채운다 |
+| Vercel | ① `animalmate1@gmail.com`(공용, primary) ② GitHub **`animalmate1`**(공용) | ✅ 해소(2026-08-08). 개인 GitHub `hanchaehun` 을 빼고 공용 계정으로 갈아끼웠다 — Git 연동이 이 연결을 쓰므로 제거가 아니라 교체다 |
+| GitHub Org `animalmate` | 공용 계정 **`animalmate1`**(owner) + 개인 `hanchaehun`(owner) | ✅ 이중화(2026-08-08). 개인 계정 제거는 **겨울 인계 때** — 지금 빼면 개발자가 push 를 못 한다 |
+| Supabase | `animalmate1@gmail.com`(공용) 단독 | ✅ 해소(2026-08-08). 개인 GitHub 로그인이 걸려 있던 것을 조직 멤버 교체로 정리했다 |
+| 네이버(개발자센터·봇) | 공용 네이버 `animalmate1@naver.com` | ✅ 공용 계정 |
+| UptimeRobot · Gemini(AI Studio) | 공용 Gmail | ✅ 공용 계정. 단 **Gemini 결제수단은 아직 개인 카드**(아래) |
+
+> **아직 개인에게 묶인 것: Gemini 결제 카드 하나.** 카드가 끊기면 챗봇만 멈춘다(발행·모집·
+> 캘린더·로그인은 무관). 동아리 카드로 바꾸되 순서는 **추가 → 청구 확인 → 개인 카드 제거** 다.
+> 먼저 빼면 무료 티어로 떨어져 호출 제한에 자주 막힌다.
 
 > **Vercel 은 Hobby(무료)라 멤버 초대가 불가능하다** — 팀 협업 기능은 Pro 전용(개발자 좌석 $20/인·월).
 > 그래서 Vercel 인계는 "초대"가 아니라 **계정 로그인 수단 인계**다. 프로젝트 이전은 필요 없다
