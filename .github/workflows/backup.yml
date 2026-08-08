@@ -241,7 +241,8 @@ jobs:
         uses: actions/github-script@v7
         env:
           # 인수인계 때 리포 변수 ALERT_ASSIGNEE 만 바꾸면 담당자가 옮겨간다.
-          ALERT_ASSIGNEE: ${{ vars.ALERT_ASSIGNEE || 'hanchaehun' }}
+          # 기본값은 동아리 공용 계정이다 — 변수가 지워져도 떠난 개인 계정으로 돌아가지 않게.
+          ALERT_ASSIGNEE: ${{ vars.ALERT_ASSIGNEE || 'animalmate1' }}
         with:
           script: |
             const label = 'backup-failure';
