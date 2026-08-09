@@ -261,7 +261,7 @@ async function capture(page: Page, device: Device): Promise<void> {
   await highlight(page, 'label:has(> span:text-is("양식 불러오기"))');
   await shot(page, 'template', device);
 
-  // 제일 자주 나는 실수 — 화면이 이미 설명하고 있는 그 상자를 그대로 가리킨다.
+  // {{ }} 는 지우지 마세요 — 화면이 이미 설명하고 있는 그 상자를 그대로 가리킨다.
   // 클래스가 아니라 **화면에 적힌 문구**로 찾아 올라간다(클래스는 디자인을 손대면 바뀐다).
   await openForm();
   await highlight(
