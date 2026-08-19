@@ -7,6 +7,8 @@ import {
   detectDelimiter,
   autoMapHeaders,
   missingRequiredMappings,
+  mapRowsToApplicants,
+  normalizeBirthDate,
 } from './csv';
 
 // 지원서에 항목을 추가하고 CSV 경로(csv.ts·업로드 화면·bulkCreateApplicants)를 빠뜨리면
@@ -122,5 +124,100 @@ describe('필수 항목 연결 검사', () => {
   it('머리글에 없는 열을 가리키면 연결되지 않은 것으로 본다', () => {
     // 다른 파일을 다시 붙여넣으면 이전 연결이 남는다 — 화면엔 연결된 듯 보이는데 서버는 전부 버린다.
     expect(missingRequiredMappings(headers, { name: '이름', phone: '연락처' })).toEqual(['name']);
+  });
+});
+
+// 실제 구글 폼(2026-08 기준 18문항) 응답을 그대로 내려받았을 때의 모양.
+// 여기서 고정하는 것은 "문항 문구가 이대로일 때 전 항목이 자동으로 연결된다"는 사실이다 —
+// 문항 문구를 손보면 이 테스트가 먼저 깨져야 업로드 화면에서 헤매지 않는다.
+const GOOGLE_FORM_CSV = `타임스탬프,이름,성별,생년월일(YYYYMMDD),전화번호,학교,학과,이메일,지원경로,자기소개,가치관 확인,다른 대외 활동 또는 아르바이트 등의 활동 계획 여부,예상 활동 참여 주기,희망 팀 조사(1순위),희망 팀 조사(2순위),주소,ot참가 여부,비대면 면접 여부(희망자만 체크),영문 이름
+2026. 8. 1 오후 3:24:05,김서준,여,20020903,01012345678,가온대학교,수의예과,seojun@naver.com,에브리타임,"안녕하세요, 저는 강아지를 좋아합니다.
+줄바꿈도 있습니다.",국내 유기견 실태에 대한 제 생각은...,편의점 알바 주 2회,격주 1회,1팀,3팀,건대입구역,참석 가능,비대면 면접 희망,Kim Seojun
+2026. 8. 1 오후 4:00:00,윤하윤,남,2002.09.09,1098765432,다래대학교,경영학과,hayoon@naver.com,인스타그램,자기소개입니다.,번식장 문제에 대한 생각,없음,매주 1회,2팀,4팀,상수역,참석 가능,,
+2026. 8. 1 오후 5:00:00,권예준,여,200209.03,01055556666,미르대학교,사회복지학과,yejun@naver.com,지인 소개,자기소개3,생각3,없음,달에 1번,3팀,5팀,왕십리역,불참,,`;
+
+describe('실제 구글 폼 응답 CSV', () => {
+  it('18개 문항이 전부 자동 연결되고 타임스탬프만 남는다', () => {
+    const { headers, rows } = parseCsv(GOOGLE_FORM_CSV);
+    const m = autoMapHeaders(headers);
+    expect(missingRequiredMappings(headers, m)).toEqual([]);
+    expect(rows).toHaveLength(3);
+
+    // 연결되지 않아도 되는 열은 구글이 붙이는 타임스탬프뿐이다.
+    const used = new Set(Object.values(m));
+    expect(headers.filter((h) => !used.has(h))).toEqual(['타임스탬프']);
+
+    // 문항이 하나뿐인 '가치관 확인'이 주제 항목으로 새지 않는다(주제는 별도 문항이 없다).
+    expect(m.essayValues).toBe('가치관 확인');
+    expect(m.essayValuesTopic).toBeUndefined();
+    // 소문자 'ot참가 여부'도 잡는다.
+    expect(m.otAttend).toBe('ot참가 여부');
+    // '주소' 문항은 인근 역 칸으로 간다(저장은 역명만 하는 것이 원칙 — PII 최소화).
+    expect(m.nearStation).toBe('주소');
+  });
+
+  it('전화번호와 생년월일이 저장 형태로 정리되어 실린다', () => {
+    const { headers, rows } = parseCsv(GOOGLE_FORM_CSV);
+    const m = autoMapHeaders(headers);
+    const { applicants, skipped } = mapRowsToApplicants(headers, rows, m);
+
+    expect(skipped).toEqual([]);
+    expect(applicants.map((a) => a.phone)).toEqual([
+      '01012345678',
+      '01098765432', // 시트가 떼어먹은 앞 0 을 되살린다
+      '01055556666',
+    ]);
+    expect(applicants.map((a) => a.birthDate)).toEqual(['2002.09.03', '2002.09.09', '2002.09.03']);
+    expect(applicants[0]!.essayIntro).toContain('\n');
+    // 필수가 아닌 문항은 빈 채로 온다.
+    expect(applicants[1]!.remoteInterviewWish).toBeUndefined();
+    expect(applicants[1]!.englishName).toBeUndefined();
+  });
+});
+
+describe('생년월일 표기 정리', () => {
+  it('주관식으로 섞여 들어오는 표기를 YYYY.MM.DD 로 맞춘다', () => {
+    expect(normalizeBirthDate('20020903')).toBe('2002.09.03');
+    expect(normalizeBirthDate('2002.09.09')).toBe('2002.09.09');
+    expect(normalizeBirthDate('200209.03')).toBe('2002.09.03'); // 연월만 붙여 쓴 사람
+    expect(normalizeBirthDate('2002-9-3')).toBe('2002.09.03');
+    expect(normalizeBirthDate('2002. 9. 3')).toBe('2002.09.03');
+    expect(normalizeBirthDate('2002.0903')).toBe('2002.09.03');
+  });
+
+  it('두 자리 연도는 아직 오지 않은 해면 1900년대로 본다', () => {
+    const today = new Date('2026-08-19T00:00:00Z');
+    expect(normalizeBirthDate('020903', today)).toBe('2002.09.03');
+    expect(normalizeBirthDate('990101', today)).toBe('1999.01.01');
+  });
+
+  it('해석이 확실하지 않으면 원문을 그대로 둔다', () => {
+    // 잘못 고친 생일은 되돌릴 근거가 없다 — 애매하면 사람이 보게 남긴다.
+    expect(normalizeBirthDate('2002년 가을')).toBe('2002년 가을');
+    expect(normalizeBirthDate('20021345')).toBe('20021345'); // 13월 45일
+    expect(normalizeBirthDate('2002')).toBe('2002');
+    expect(normalizeBirthDate('  ')).toBe('');
+  });
+});
+
+// 예전에는 이름·전화번호가 빈 행을 조용히 버리고 "읽어온 N명"만 보여 줬다.
+// 50명을 올렸는데 48명이 들어가도 화면에서는 알 방법이 없었다.
+describe('등록되지 못한 행 집계', () => {
+  const csv = `이름,전화번호,학교
+김서준,01011112222,가온대
+윤하윤,,다래대
+,01033334444,미르대
+이지유,01055556666,한별대`;
+
+  it('버려진 행의 위치와 남은 값을 함께 돌려준다', () => {
+    const { headers, rows } = parseCsv(csv);
+    const m = autoMapHeaders(headers);
+    const { applicants, skipped } = mapRowsToApplicants(headers, rows, m);
+
+    expect(applicants.map((a) => a.name)).toEqual(['김서준', '이지유']);
+    expect(skipped).toEqual([
+      { row: 2, name: '윤하윤', phone: undefined },
+      { row: 3, name: undefined, phone: '01033334444' },
+    ]);
   });
 });

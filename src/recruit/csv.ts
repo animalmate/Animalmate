@@ -2,6 +2,8 @@
 // 스펙: docs/09-RECRUIT-DESIGN.md §5
 // 따옴표, 줄바꿈, 이스케이프쌍("")을 지원하는 상태 기반 CSV 파서.
 
+import { normalizeImportedPhone } from '@/lib/phone';
+
 export interface ParsedCsv {
   headers: string[];
   rows: string[][];
@@ -121,17 +123,72 @@ export interface ApplicantImportInput {
 }
 
 /**
- * 헤더 매핑({ [applicantField]: csvHeader })을 사용하여 행 데이터를 ApplicantImportInput으로 변환
+ * 생년월일 표기를 `YYYY.MM.DD` 로 맞춘다.
+ *
+ * 왜 필요한가: 지원서는 `YYYYMMDD` 로 안내하지만 주관식이라 실제 응답은 제각각으로 온다
+ * — "20020903", "2002.09.09", "200209.03", "2002-09-03", "020903". 심사·면접 화면은 이 값을
+ * 그대로 보여 주므로, 손대지 않으면 한 명씩 표기가 달라 나이를 눈으로 비교하기 어렵다.
+ *
+ * **해석이 확실할 때만** 바꾼다. 자릿수가 맞지 않거나 월·일이 범위를 벗어나면 원문을 그대로 둔다
+ * — 지원자가 적어 낸 값을 우리가 지어내지 않는다(잘못 고친 생일은 되돌릴 근거가 없다).
  */
-export function mapRowToApplicant(
-  headers: string[],
-  row: string[],
-  mapping: Record<string, string>
-): ApplicantImportInput | null {
+export function normalizeBirthDate(raw: string, today: Date = new Date()): string {
+  const trimmed = raw.trim();
+  // 숫자 덩어리로 끊는다. "2002. 9. 3"(3덩어리)와 "200209.03"(2덩어리)이 서로 다른 모양이라
+  // 전부 이어 붙여 8자리로 보면 "200293" 처럼 뜻이 달라진다.
+  const parts = trimmed.split(/[^0-9]+/).filter((p) => p !== '');
+  let y = '';
+  let m = '';
+  let d = '';
+
+  if (parts.length === 3) {
+    [y, m, d] = parts as [string, string, string];
+  } else if (parts.length === 2 && parts[0]!.length === 6) {
+    // "200209.03" — 연월이 붙고 일만 떨어진 모양.
+    y = parts[0]!.slice(0, 4);
+    m = parts[0]!.slice(4);
+    d = parts[1]!;
+  } else if (parts.length === 2 && parts[0]!.length === 4 && parts[1]!.length === 4) {
+    // "2002.0903"
+    y = parts[0]!;
+    m = parts[1]!.slice(0, 2);
+    d = parts[1]!.slice(2);
+  } else if (parts.length === 1 && parts[0]!.length === 8) {
+    y = parts[0]!.slice(0, 4);
+    m = parts[0]!.slice(4, 6);
+    d = parts[0]!.slice(6);
+  } else if (parts.length === 1 && parts[0]!.length === 6) {
+    // "020903" — 두 자리 연도. 아직 오지 않은 해면 1900년대로 본다(2026년이면 27~99 → 19xx).
+    y = parts[0]!.slice(0, 2);
+    m = parts[0]!.slice(2, 4);
+    d = parts[0]!.slice(4);
+  } else {
+    return trimmed;
+  }
+
+  if (y.length === 2) {
+    const yy = Number(y);
+    const currentTwo = today.getFullYear() % 100;
+    y = String(yy <= currentTwo ? 2000 + yy : 1900 + yy);
+  }
+  if (y.length !== 4 || m.length > 2 || d.length > 2) return trimmed;
+
+  const year = Number(y);
+  const month = Number(m);
+  const day = Number(d);
+  const inRange =
+    year >= 1900 && year <= today.getFullYear() && month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  if (!inRange) return trimmed;
+
+  return `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
+}
+
+/** 연결된 열에서 값을 읽는 함수를 만든다(빈 칸은 undefined). 매핑·누락 판정이 같은 눈으로 보게 한다. */
+function fieldReader(headers: string[], row: string[], mapping: Record<string, string>) {
   const headerMap = new Map<string, number>();
   headers.forEach((h, idx) => headerMap.set(h, idx));
 
-  const getValue = (fieldKey: string): string | undefined => {
+  return (fieldKey: string): string | undefined => {
     const csvHeader = mapping[fieldKey];
     if (!csvHeader) return undefined;
     const idx = headerMap.get(csvHeader);
@@ -139,6 +196,17 @@ export function mapRowToApplicant(
     const val = row[idx]?.trim();
     return val && val !== '' ? val : undefined;
   };
+}
+
+/**
+ * 헤더 매핑({ [applicantField]: csvHeader })을 사용하여 행 데이터를 ApplicantImportInput으로 변환
+ */
+export function mapRowToApplicant(
+  headers: string[],
+  row: string[],
+  mapping: Record<string, string>
+): ApplicantImportInput | null {
+  const getValue = fieldReader(headers, row, mapping);
 
   const name = getValue('name');
   const phone = getValue('phone');
@@ -147,14 +215,15 @@ export function mapRowToApplicant(
     return null; // 필수 필드 미비 시 비활성
   }
 
-  // 전화번호 정규화 (숫자만 추출하거나 하이픈 통일)
-  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const birthDate = getValue('birthDate');
 
   return {
     name,
-    phone: cleanPhone,
+    // 숫자만 남기는 데서 그치지 않는다 — 시트를 거치며 떨어진 앞 0 을 되살려야 지원자가
+    // 자기 번호로 결과를 조회할 수 있다(lookup 은 이름+전화 완전 일치).
+    phone: normalizeImportedPhone(phone),
     gender: getValue('gender'),
-    birthDate: getValue('birthDate'),
+    birthDate: birthDate ? normalizeBirthDate(birthDate) : undefined,
     school: getValue('school'),
     department: getValue('department'),
     email: getValue('email'),
@@ -171,6 +240,42 @@ export function mapRowToApplicant(
     essayValuesTopic: getValue('essayValuesTopic'),
     englishName: getValue('englishName'),
   };
+}
+
+/** 이름·전화번호가 없어 등록되지 못한 행. 사람이 원본에서 찾을 수 있게 위치와 남은 값을 함께 준다. */
+export interface SkippedRow {
+  /** 머리글을 뺀 데이터 기준 몇 번째 행인가(1부터). 자기소개서에 줄바꿈이 있어 파일 줄 번호와는 다르다. */
+  row: number;
+  name?: string;
+  phone?: string;
+}
+
+/**
+ * 행 전체를 지원자로 바꾸고, **버려진 행을 함께 돌려준다**.
+ *
+ * 왜 세는가: mapRowToApplicant 는 이름이나 전화번호가 비면 조용히 null 을 준다. 예전에는 그대로
+ * 버리고 "읽어온 지원자 N명"만 보여 줬는데, 50명을 올렸는데 48명만 들어가도 화면에서는 알 수가 없다
+ * (48 이 맞는 숫자인지 아는 사람은 없다). 몇 행이 왜 빠졌는지 같이 보여 줘야 사람이 판단할 수 있다.
+ */
+export function mapRowsToApplicants(
+  headers: string[],
+  rows: string[][],
+  mapping: Record<string, string>
+): { applicants: ApplicantImportInput[]; skipped: SkippedRow[] } {
+  const applicants: ApplicantImportInput[] = [];
+  const skipped: SkippedRow[] = [];
+
+  rows.forEach((row, idx) => {
+    const applicant = mapRowToApplicant(headers, row, mapping);
+    if (applicant) {
+      applicants.push(applicant);
+      return;
+    }
+    const getValue = fieldReader(headers, row, mapping);
+    skipped.push({ row: idx + 1, name: getValue('name'), phone: getValue('phone') });
+  });
+
+  return { applicants, skipped };
 }
 
 /**

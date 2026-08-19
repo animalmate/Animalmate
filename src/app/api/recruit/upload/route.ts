@@ -4,11 +4,10 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import {
   parseCsv,
-  mapRowToApplicant,
+  mapRowsToApplicants,
   detectDuplicates,
   missingRequiredMappings,
   REQUIRED_MAPPING_LABELS,
-  ApplicantImportInput,
 } from '@/recruit/csv';
 import { bulkCreateApplicants, listApplicantsByCohort } from '@/recruit/applicants';
 
@@ -45,14 +44,9 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    const parsedApplicants: ApplicantImportInput[] = [];
-
-    rows.forEach((row) => {
-      const app = mapRowToApplicant(headers, row, mapping);
-      if (app) {
-        parsedApplicants.push(app);
-      }
-    });
+    // 이름·전화번호가 빈 행은 등록되지 않는다. **몇 행이 왜 빠졌는지 함께** 돌려준다 —
+    // 숫자만 보여 주면 50명을 올리고 48명이 들어가도 사람이 알아챌 방법이 없다.
+    const { applicants: parsedApplicants, skipped } = mapRowsToApplicants(headers, rows, mapping);
 
     const existing = await listApplicantsByCohort(cohortId);
     const { duplicateIndexes, uniqueApplicants } = detectDuplicates(parsedApplicants, existing);
@@ -60,11 +54,14 @@ export async function POST(req: Request): Promise<Response> {
     // 확정 전 사전검증 단계
     if (!confirmImport) {
       return NextResponse.json({
+        totalRows: rows.length,
         totalParsed: parsedApplicants.length,
         duplicateCount: duplicateIndexes.length,
         uniqueCount: uniqueApplicants.length,
         sample: uniqueApplicants.slice(0, 5),
         duplicateIndexes,
+        invalidCount: skipped.length,
+        invalidRows: skipped.slice(0, 10),
       });
     }
 
@@ -74,6 +71,7 @@ export async function POST(req: Request): Promise<Response> {
       success: true,
       importedCount: created.length,
       skippedCount: duplicateIndexes.length,
+      invalidCount: skipped.length,
     });
   } catch (e) {
     return internalError('recruit/upload POST', e);

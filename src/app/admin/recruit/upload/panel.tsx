@@ -5,6 +5,7 @@ import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { autoMapHeaders, parseCsv, missingRequiredMappings, REQUIRED_MAPPING_LABELS } from '@/recruit/csv';
+import { decodeCsvBytes } from '@/recruit/csv-file';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, CardField, Field, RowCard, Select, StatusMessage, TableCards } from '@/components/ui';
 
@@ -134,6 +135,10 @@ export function RecruitUploadPanel({ role }: { role: Role }) {
         setPreviewResult(data);
         if (data.totalParsed === 0) {
           setMessage('⚠️ 읽어온 지원자가 0명입니다. 항목 연결(특히 이름·전화번호)과 붙여넣은 범위에 머리글 행이 포함됐는지 확인해 주세요.');
+        } else if (data.invalidCount > 0) {
+          setMessage(
+            `⚠️ ${data.totalRows}행 중 ${data.invalidCount}행이 이름·전화번호가 비어 등록되지 않습니다. 아래 목록을 확인해 주세요.`
+          );
         }
       } else {
         setMessage(`❌ 미리보기 오류: ${data.message || data.error}`);
@@ -159,7 +164,10 @@ export function RecruitUploadPanel({ role }: { role: Role }) {
       });
       const data = await res.json();
       if (res.ok) {
-        setMessage(`✅ 업로드 성공! 총 ${data.importedCount}명 등록됨 (기존 중복 ${data.skippedCount}명 자동 제외)`);
+        const invalid = data.invalidCount > 0 ? `, 이름·전화번호가 비어 제외 ${data.invalidCount}행` : '';
+        setMessage(
+          `✅ 업로드 성공! 총 ${data.importedCount}명 등록됨 (기존 중복 ${data.skippedCount}명 자동 제외${invalid})`
+        );
         setPreviewResult(null);
       } else {
         setMessage(`❌ 업로드 실패: ${data.message || data.error}`);
@@ -236,7 +244,23 @@ export function RecruitUploadPanel({ role }: { role: Role }) {
                   const file = e.target.files?.[0];
                   e.target.value = '';
                   if (!file) return;
-                  handleCsvInput(await file.text());
+                  // file.text() 를 바로 쓰지 않는다 — 무엇을 받았든 UTF-8 로 읽어 버려서
+                  // .xlsx 는 "PK♥♦…" 로, 엑셀이 저장한 CP949 는 "�̸�" 로 들어왔다(csv-file.ts).
+                  const decoded = decodeCsvBytes(await file.arrayBuffer());
+                  if (!decoded.ok) {
+                    setCsvText('');
+                    setHeaders([]);
+                    setMapping(BLANK_MAPPING);
+                    setPreviewResult(null);
+                    setMessage(`❌ ${decoded.message}`);
+                    return;
+                  }
+                  handleCsvInput(decoded.text);
+                  if (decoded.encoding === 'cp949') {
+                    setMessage(
+                      'ℹ️ 엑셀이 저장한 CSV(CP949)로 보여 글자 인코딩을 되살려 읽었습니다. 아래 미리보기에서 이름이 깨지지 않았는지 확인해 주세요.'
+                    );
+                  }
                 }}
               />
             </label>
@@ -317,6 +341,30 @@ export function RecruitUploadPanel({ role }: { role: Role }) {
                 <div className="text-xl font-bold text-blue-600 mt-0.5">{previewResult.uniqueCount}명</div>
               </div>
             </div>
+
+            {/* 이름·전화번호가 빈 행은 등록되지 않는다. 숫자만 맞춰 보고 넘어가면 몇 명이 조용히
+                빠져도 알 수 없으므로, 빠진 행을 찾아갈 수 있게 위치와 남은 값을 같이 보여 준다. */}
+            {previewResult.invalidCount > 0 && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-[13px] text-amber-900" role="alert">
+                <p className="font-bold">
+                  <Icon name="alert" size={14} className="inline" /> 이름 또는 전화번호가 비어 있어 등록되지 않는 행이{' '}
+                  {previewResult.invalidCount}개 있습니다 (읽어온 전체 {previewResult.totalRows}행 중).
+                </p>
+                <ul className="mt-1.5 space-y-0.5 text-xs">
+                  {previewResult.invalidRows?.map((r: { row: number; name?: string; phone?: string }) => (
+                    <li key={r.row}>
+                      · {r.row}번째 행 — 이름 {r.name || '(비어 있음)'} / 전화번호 {r.phone || '(비어 있음)'}
+                    </li>
+                  ))}
+                  {previewResult.invalidCount > (previewResult.invalidRows?.length ?? 0) && (
+                    <li>· … 외 {previewResult.invalidCount - previewResult.invalidRows.length}행</li>
+                  )}
+                </ul>
+                <p className="mt-1.5 text-xs">
+                  원본에서 채워 넣고 다시 붙여넣거나, 이대로 등록한 뒤 해당 지원자만 따로 확인해 주세요.
+                </p>
+              </div>
+            )}
 
             <h3 className="text-xs font-bold text-ink-700">등록 예정 지원자 미리보기 (샘플 5건)</h3>
             {/* 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
