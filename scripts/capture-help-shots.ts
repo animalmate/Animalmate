@@ -233,6 +233,21 @@ async function highlight(page: Page, selector: string | Locator): Promise<Locato
   return target;
 }
 
+/**
+ * 팝업 장에서 가리킬 것 — 배경이 아니라 **흰 상자(패널)** 다.
+ *
+ * ⚠ `getByRole('dialog')` 를 그대로 넘기면 안 된다. `Modal` 은 `role="dialog"` 를 화면을 덮는
+ * 배경(`fixed inset-0`)에 달고 있어서 그 `boundingBox()` 는 **뷰포트 전체**다. 그걸 `shot()` 에
+ * 주면 `focusClip()` 이 화면 전체를 돌려줘 자른 효과가 사라진다 — 2026-08-19 첫 실행에서
+ * preview·kakao-notice 두 장만 1040×800 으로 남아 배율이 64% 에 묶였다(나머지는 97%).
+ * 패널은 그 배경의 첫 자식이다.
+ */
+async function dialogPanel(page: Page): Promise<Locator> {
+  const panel = page.getByRole('dialog').first().locator('> div').first();
+  await panel.waitFor();
+  return panel;
+}
+
 /** 가리키는 것 위아래로 남길 여백(CSS px). 잘라 낸 뒤에도 "화면 어디쯤"인지 감이 남을 만큼. */
 const FOCUS_PAD = 80;
 /** 너무 얇게 잘리면 무엇을 보고 있는지 모른다. 최소 이만큼은 남긴다. */
@@ -330,9 +345,7 @@ async function capture(page: Page, device: Device): Promise<void> {
   await openForm();
   await fillOnce();
   await page.getByRole('button', { name: '미리보기' }).first().click();
-  const previewDialog = page.getByRole('dialog').first();
-  await previewDialog.waitFor();
-  await shot(page, 'preview', device, previewDialog);
+  await shot(page, 'preview', device, await dialogPanel(page));
 
   // 7. 큐로 돌아와 상태 — 미완성 건을 가리킨다.
   await page.goto(`${BASE}/reservations`, { waitUntil: 'networkidle' });
@@ -342,9 +355,7 @@ async function capture(page: Page, device: Device): Promise<void> {
   // 8. 카카오톡 공지 예약 팝업.
   await page.goto(`${BASE}/reservations`, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: '카카오톡 공지 예약' }).first().click();
-  const kakaoDialog = page.getByRole('dialog').first();
-  await kakaoDialog.waitFor();
-  await shot(page, 'kakao-notice', device, kakaoDialog);
+  await shot(page, 'kakao-notice', device, await dialogPanel(page));
 
   // kakao-open·kakao-send 는 카카오톡 **앱** 화면이라 여기서 찍을 수 없다.
   // 사람이 찍어 준 것을 public/help/reservations/ 에 그대로 둔다(2026-08-06).
