@@ -38,9 +38,16 @@ const OUT_DIR = 'public/help/reservations';
  * 팀장단은 공지를 PC 로 걸고 단톡 예약은 폰으로 하는 식으로 기기를 섞어 쓴다 —
  * 한쪽만 보여주면 다른 기기를 쓰는 사람이 "내 화면은 왜 다르지"에서 멈춘다.
  * 폭 390 은 이 앱이 카드 목록으로 갈아타는 `lg` 미만 구간(모바일 레이아웃)에 든다.
+ *
+ * PC 폭을 1280 → 1040 으로 줄인 이유(2026-08-19): 콘솔 본문은 `max-w-[1000px]` 이라
+ * 1280 에서는 좌우 280px 이 **언제나 빈 여백**이다. 캡처를 슬라이드에 넣으면 그 여백까지
+ * 같이 줄어들어 정작 읽어야 할 내용이 작아진다. 1040 은 여백만 걷어내고 `lg`(1024) 는 넘겨
+ * PC 레이아웃을 그대로 유지하는 지점이다.
+ * ⚠ 다시 찍은 뒤 `queue.pc.png` 의 상단 메뉴가 잘려 보이면 1120 까지 올린다
+ *   (메뉴 줄은 `overflow-x-auto` 라 레이아웃이 깨지지는 않고 오른쪽이 밀릴 뿐이다).
  */
 const DEVICES = {
-  pc: { width: 1280, height: 800 },
+  pc: { width: 1040, height: 800 },
   mobile: { width: 390, height: 844 },
 } as const;
 type Device = keyof typeof DEVICES;
@@ -211,7 +218,7 @@ async function waitForServer(timeoutMs = 60_000): Promise<void> {
  * 대상에 테두리를 그린다. **캡처 전에 실제 요소에 그리는 것**이 핵심이다 —
  * 나중에 이미지 위에 좌표로 화살표를 얹으면 UI 가 조금만 움직여도 엉뚱한 곳을 가리키게 된다.
  */
-async function highlight(page: Page, selector: string | Locator): Promise<void> {
+async function highlight(page: Page, selector: string | Locator): Promise<Locator> {
   const target = (typeof selector === 'string' ? page.locator(selector) : selector).first();
   await target.scrollIntoViewIfNeeded();
   await target.evaluate((el: HTMLElement) => {
@@ -222,26 +229,66 @@ async function highlight(page: Page, selector: string | Locator): Promise<void> 
     el.style.position = el.style.position || 'relative';
     el.style.zIndex = '40';
   });
+  // 잘라 찍을 자리를 아는 것은 여기뿐이다 — 호출부가 `shot()` 에 그대로 넘긴다.
+  return target;
 }
 
-async function shot(page: Page, key: string, device: Device): Promise<void> {
+/** 가리키는 것 위아래로 남길 여백(CSS px). 잘라 낸 뒤에도 "화면 어디쯤"인지 감이 남을 만큼. */
+const FOCUS_PAD = 80;
+/** 너무 얇게 잘리면 무엇을 보고 있는지 모른다. 최소 이만큼은 남긴다. */
+const FOCUS_MIN_H = 320;
+
+/**
+ * 가리키는 것 둘레만 남기는 잘라내기 사각형.
+ *
+ * **좌우는 화면 폭 그대로 두고 위아래만 자른다** — 좌우까지 자르면 그 화면의 어느 자리인지
+ * 감이 사라진다. 어둡게 덮는 처리(`highlight`)도 그대로 남아 맥락은 유지된다.
+ *
+ * 좌표계: `page.screenshot({ clip })` 은 `fullPage` 가 아닐 때 **뷰포트 기준**이고
+ * `boundingBox()` 도 뷰포트 기준이라 둘이 그대로 맞는다(스크롤 보정이 필요 없다).
+ */
+async function focusClip(page: Page, target: Locator) {
+  const box = await target.boundingBox();
+  const vp = page.viewportSize();
+  // 못 재면 화면 전체로 떨어진다 — 캡처가 아예 없는 것보다는 낫다.
+  if (!box || !vp) return undefined;
+
+  let y = Math.max(0, Math.floor(box.y - FOCUS_PAD));
+  const bottom = Math.min(vp.height, Math.ceil(box.y + box.height + FOCUS_PAD));
+  let height = bottom - y;
+  if (height < FOCUS_MIN_H) {
+    height = Math.min(vp.height, FOCUS_MIN_H);
+    y = Math.max(0, Math.min(y, vp.height - height));
+  }
+  return { x: 0, y, width: vp.width, height };
+}
+
+/**
+ * `focus` 를 주면 그 둘레만 남기고 잘라 찍는다. 안 주면 화면 전체 —
+ * "이 화면이 통째로 어떻게 생겼나"가 요점인 장(1번 예약 큐)에만 그렇게 둔다.
+ *
+ * 왜 자르는가(2026-08-19): 1280×800 을 통째로 찍으면 슬라이드 안에서 55% 로 줄어 캡처 속
+ * 글씨가 7.2px 이 된다. 팝업을 어떻게 배치해도 70% 를 못 넘어서, 답은 **찍을 때 자르는 것**뿐이다.
+ */
+async function shot(page: Page, key: string, device: Device, focus?: Locator): Promise<void> {
   const known = WALK_STEPS.some((s) => s.key === key);
   if (!known) throw new Error(`단계 목록에 없는 키입니다: ${key}`);
   const file = autoShotFile(key, device);
-  await page.screenshot({ path: `${OUT_DIR}/${file}` });
-  log(`찍음 ${file}`);
+  const clip = focus ? await focusClip(page, focus) : undefined;
+  await page.screenshot({ path: `${OUT_DIR}/${file}`, clip });
+  log(`찍음 ${file}${clip ? ` (${clip.width}×${clip.height})` : ' (화면 전체)'}`);
 }
 
 async function capture(page: Page, device: Device): Promise<void> {
-  // 1. 예약 큐 — 전체 모습.
+  // 1. 예약 큐 — 전체 모습. **이 장만 화면 전체다**(잘라 찍지 않는다) — 여기서 요점은
+  //    "큐가 통째로 어떻게 생겼나"이지 어느 한 요소가 아니다.
   // (둘러보기 팝업 자체는 컨텍스트 초기 스크립트로 막아 뒀다 — 안 그러면 찍는 화면을 자기가 덮는다.)
   await page.goto(`${BASE}/reservations`, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: '예약 큐', exact: true }).waitFor();
   await shot(page, 'queue', device);
 
   // 2. 새 예약 버튼.
-  await highlight(page, 'a[href="/reservations/new"]');
-  await shot(page, 'new-button', device);
+  await shot(page, 'new-button', device, await highlight(page, 'a[href="/reservations/new"]'));
 
   // 3~6. 새 예약 화면.
   const openForm = async () => {
@@ -254,47 +301,50 @@ async function capture(page: Page, device: Device): Promise<void> {
   };
 
   await openForm();
-  await highlight(page, 'label:has(> span:text-is("종류"))');
-  await shot(page, 'kind', device);
+  await shot(page, 'kind', device, await highlight(page, 'label:has(> span:text-is("종류"))'));
 
   await openForm();
-  await highlight(page, 'label:has(> span:text-is("양식 불러오기"))');
-  await shot(page, 'template', device);
+  await shot(page, 'template', device, await highlight(page, 'label:has(> span:text-is("양식 불러오기"))'));
 
   // {{ }} 는 지우지 마세요 — 화면이 이미 설명하고 있는 그 상자를 그대로 가리킨다.
   // 클래스가 아니라 **화면에 적힌 문구**로 찾아 올라간다(클래스는 디자인을 손대면 바뀐다).
   await openForm();
-  await highlight(
+  await shot(
     page,
-    page
-      .locator('span:text-is("이 표시, 그냥 두면 알아서 채워집니다")')
-      .locator('xpath=ancestor::div[contains(@class,"shadow-card")][1]')
+    'placeholders',
+    device,
+    await highlight(
+      page,
+      page
+        .locator('span:text-is("이 표시, 그냥 두면 알아서 채워집니다")')
+        .locator('xpath=ancestor::div[contains(@class,"shadow-card")][1]')
+    )
   );
-  await shot(page, 'placeholders', device);
 
   // 회차 칸은 **채워진 모습**이어야 무엇을 적는 곳인지 보인다. 빈 폼은 아무것도 말해 주지 않는다.
   await openForm();
   await fillOnce();
-  await highlight(page, 'button:text-is("+ 일정 추가")');
-  await shot(page, 'rows', device);
+  await shot(page, 'rows', device, await highlight(page, 'button:text-is("+ 일정 추가")'));
 
+  // 팝업 장은 팝업 자체가 가리키는 것이다 — 뒤에 깔린 어두운 배경까지 찍을 이유가 없다.
   await openForm();
   await fillOnce();
   await page.getByRole('button', { name: '미리보기' }).first().click();
-  await page.getByRole('dialog').waitFor();
-  await shot(page, 'preview', device);
+  const previewDialog = page.getByRole('dialog').first();
+  await previewDialog.waitFor();
+  await shot(page, 'preview', device, previewDialog);
 
   // 7. 큐로 돌아와 상태 — 미완성 건을 가리킨다.
   await page.goto(`${BASE}/reservations`, { waitUntil: 'networkidle' });
   await page.getByText('미완성', { exact: false }).first().waitFor();
-  await highlight(page, 'li:has-text("미완성")');
-  await shot(page, 'queue-after', device);
+  await shot(page, 'queue-after', device, await highlight(page, 'li:has-text("미완성")'));
 
   // 8. 카카오톡 공지 예약 팝업.
   await page.goto(`${BASE}/reservations`, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: '카카오톡 공지 예약' }).first().click();
-  await page.getByRole('dialog').waitFor();
-  await shot(page, 'kakao-notice', device);
+  const kakaoDialog = page.getByRole('dialog').first();
+  await kakaoDialog.waitFor();
+  await shot(page, 'kakao-notice', device, kakaoDialog);
 
   // kakao-open·kakao-send 는 카카오톡 **앱** 화면이라 여기서 찍을 수 없다.
   // 사람이 찍어 준 것을 public/help/reservations/ 에 그대로 둔다(2026-08-06).

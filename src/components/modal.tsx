@@ -15,6 +15,7 @@ export function Modal({
   // 도움말처럼 읽을거리가 들어가는 팝업은 넓어야 줄이 짧게 끊기지 않는다.
   // xl 은 표(면접 시간표)처럼 가로로 넓은 내용용.
   size = 'md',
+  fill = false,
   footer,
   headerExtra,
 }: {
@@ -23,6 +24,19 @@ export function Modal({
   children: ReactNode;
   /** 2xl 은 **화면 캡처를 읽어야 하는** 팝업용(둘러보기) — 1280px 캡처가 절반으로 줄면 글씨가 안 보인다. */
   size?: 'md' | 'lg' | 'xl' | '2xl';
+  /**
+   * 내용이 **스스로 높이를 나눠 쓰는** 팝업(둘러보기)용.
+   *
+   * 기본값(false)은 본문 칸이 스크롤 상자다 — 내용이 길면 아래로 밀리고 스크롤이 생긴다.
+   * 그런데 그림과 글이 같이 있는 팝업에서는 그러면 안 된다: 그림이 자기 높이를 먼저 정하면
+   * 남는 자리가 얼마든 글이 스크롤 밖으로 밀려난다(2026-08-19, 둘러보기 실측 — 쓸 수 있는
+   * 527px 중 그림이 497px 을 가져가 글에 30px 만 남았다).
+   *
+   * `fill` 을 주면 본문 칸을 **높이가 정해진 상자**로 넘긴다(스크롤 없음). 그러면 안에서
+   * `flex-1 min-h-0` 이 "글이 쓰고 남은 자리"를 실제로 계산할 수 있어, 글이 밀려나는 일이
+   * 구조적으로 불가능해진다. 팝업 높이도 슬라이드마다 흔들리지 않게 고정으로 잡는다.
+   */
+  fill?: boolean;
   /**
    * 바닥 줄을 통째로 바꾼다. 안 주면 지금까지처럼 폭 전체 `닫기` 버튼 하나다.
    * 슬라이드(둘러보기)처럼 **닫기 말고 다른 동작이 바닥에 있어야 하는** 팝업에만 쓴다 —
@@ -106,9 +120,12 @@ export function Modal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-modal outline-none ${
-          size === '2xl' ? 'max-w-[92rem]' : size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
-        }`}
+        // `fill` 은 높이를 **고정**한다(92vh). 내용에 맡기면 슬라이드를 넘길 때마다 팝업이
+        // 늘었다 줄었다 해서 눈이 '다음' 버튼을 매번 다시 찾는다. `max-h-full` 은 배경 여백(p-4)
+        // 까지 더해 화면 밖으로 나가는 것을 막는 안전선이다.
+        className={`flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-modal outline-none ${
+          fill ? 'h-[92vh] max-h-full' : 'max-h-[85vh]'
+        } ${size === '2xl' ? 'max-w-[92rem]' : size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg'}`}
       >
         <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-5 py-3.5">
           <h2 className="text-base font-semibold text-ink-900">{title}</h2>
@@ -124,7 +141,9 @@ export function Modal({
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className={`min-h-0 flex-1 px-5 py-4 ${fill ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
+          {children}
+        </div>
         <div className="border-t border-ink-100 px-5 py-3">
           {footer ?? (
             <SecondaryButton type="button" onClick={onClose} className="w-full">

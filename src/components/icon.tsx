@@ -142,6 +142,12 @@ const P: Record<string, ReactElement> = {
       <path d="M11 18h2" />
     </>
   ),
+  zoomIn: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5M11 8v6M8 11h6" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof P;
