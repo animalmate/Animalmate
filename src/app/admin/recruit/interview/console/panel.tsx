@@ -312,6 +312,13 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const currentInterviewScores = scores.filter(
     (s) => s.applicantId === selectedApplicantId && s.stage === 'interview'
   );
+  // 서류 채점 기록 — 면접관이 "서류에서 무엇을 보고 이 사람을 넘겼는지" 알고 들어간다.
+  // 서류에서 "이건 면접 때 물어보자"고 적어 둔 것이 면접에 닿지 않는 것이 더 큰 손해라고 봤다
+  // (선입견 우려는 짚었고, 사용자가 항상 보이는 쪽으로 정했다 — 2026-08-20).
+  // 이 화면은 이미 기수 전체 점수를 받아 두고 stage 로 걸러 쓰기만 했다. 요청이 늘지 않는다.
+  const documentScores = scores.filter(
+    (s) => s.applicantId === selectedApplicantId && s.stage === 'document'
+  );
   // 내 점수까지 "타 면접관"으로 섞여 있었다. 어느 게 내 기록인지 몰라 수정도 못 했다.
   const otherInterviewScores = currentInterviewScores.filter((s) => s.scorerUserId !== viewerUserId);
   const myExistingScore = currentInterviewScores.find((s) => s.scorerUserId === viewerUserId);
@@ -482,7 +489,12 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
       {/* 2열 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* 좌측 면접 순서 목록 */}
-        <Card className="lg:col-span-4 p-4 space-y-3">
+        {/* 우패널(지원서·점수 입력)을 읽으려고 내리면 이 목록이 같이 밀려 올라갔다. 면접 당일에는
+            다음 사람을 계속 눌러야 해서 그 왕복이 특히 잦다. 바깥 그리드가 `items-start` 라 그대로 먹는다.
+            **카드 전체를 스크롤 상자로 만들지 않는다** — 그러면 위 시간대 그리드까지 같이 스크롤돼
+            "목록만 스크롤한다"는 아래 의도가 깨진다. 대신 카드를 뷰포트 높이로 묶고
+            목록이 `flex-1 min-h-0` 으로 남은 자리를 쓴다(결정 111 과 같은 방식). */}
+        <Card className="lg:col-span-4 p-4 space-y-3 lg:sticky lg:top-6 lg:flex lg:flex-col lg:max-h-[calc(100vh-3rem)]">
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
             {/* 한글에 uppercase·tracking-wider 를 걸면 자간만 벌어져 오히려 읽기 나쁘다. */}
             <span className="text-[13px] font-bold text-ink-500">
@@ -602,7 +614,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
           )}
 
           {/* 목록만 스크롤한다(위 시간대 그리드는 따라 내려가지 않는다). */}
-          <div className="max-h-[560px] space-y-4 overflow-y-auto">
+          <div className="max-h-[560px] space-y-4 overflow-y-auto lg:max-h-none lg:flex-1 lg:min-h-0">
             {groups.map((group) => (
               <div key={group.slotId ?? 'unassigned'} className="space-y-2">
                 {/* 슬롯 머리 — 이 시간에 어느 방에서 누가 보는 조인지. 같이 들어가는 사람이 아래에 모여 있다. */}
@@ -838,6 +850,33 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                 <EssayBlock label="자기소개" text={selectedApp.essayIntro} collapsible collapsedHeight={180} />
                 <EssayBlock label="가치관 및 계기" text={selectedApp.essayValues} collapsible collapsedHeight={180} />
               </div>
+
+              {/* 서류 채점 기록 — 내 메모 **위**에 둔다. 면접 중에 쓰는 칸(메모)이 아니라
+                  들어가기 전에 훑는 것이라 순서가 위이고, 글씨는 메모 카드보다 한 단계 작다
+                  (메모가 주인공 자리를 뺏기면 안 된다). 접지 않고 항상 펼쳐 둔다. */}
+              {documentScores.length > 0 && (
+                <div className="rounded-xl border border-cream-200 bg-white px-3.5 py-2.5 space-y-1.5">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+                    서류 채점 기록 {documentScores.length}건
+                  </h3>
+                  {documentScores.map((s) => (
+                    <div key={s.id} className="flex gap-2 text-[12px] leading-relaxed">
+                      <span className="shrink-0 font-bold text-ink-700">
+                        {parseFloat(s.score).toFixed(1)}점
+                      </span>
+                      {/* 누가 준 점수인지 없으면 면접에서 되물을 수도 없다. */}
+                      <span className="shrink-0 font-semibold text-ink-500">
+                        {staffNames[s.scorerUserId] || '이름 미상'}
+                      </span>
+                      {s.comment ? (
+                        <span className="whitespace-pre-wrap text-ink-700">{s.comment}</span>
+                      ) : (
+                        <span className="text-ink-400">코멘트 없음</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* 내 개인 실시간 메모 카드 */}
               <div className="rounded-xl border border-cream-200 bg-cream-50 p-4 space-y-2">

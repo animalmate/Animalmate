@@ -254,7 +254,12 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
       {/* 2열 스플릿 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* 좌측 지원자 목록 */}
-        <Card className="lg:col-span-4 p-4 space-y-3 max-h-[750px] overflow-y-auto">
+        {/* 우패널을 읽으려고 내리면 목록이 같이 밀려 올라가, 다음 지원자를 고르려면 도로 올라와야 했다
+            (33기 203명에서는 그 왕복이 계속된다). 바깥 그리드가 `items-start` 라 sticky 가 그대로 먹는다
+            — `items-stretch` 였다면 카드가 늘어나 sticky 가 무효가 된다.
+            높이는 고정 px 이 아니라 **뷰포트 기준**이어야 한다. 750px 인 채로 붙이면 낮은 화면에서
+            카드 아래가 화면 밖으로 나가 영영 닿지 못한다. 모바일(lg 미만)은 위아래로 쌓이므로 걸지 않는다. */}
+        <Card className="lg:col-span-4 p-4 space-y-3 max-h-[750px] overflow-y-auto lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)]">
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
             <span className="text-xs font-bold uppercase tracking-wider text-ink-400">
               지원자 목록 ({filteredApplicants.length}명)
@@ -328,7 +333,11 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
                     </span>
                   </div>
                   <p className="text-xs text-ink-500 mt-1 font-medium">
-                    {selectedApp.school} {selectedApp.department} · 연락처: {formatPhone(selectedApp.phone)} · {selectedApp.email}
+                    {/* 생년월일 — 서류 단계에서도 나이를 보고 판단한다. 표기는 결정 114 로 `YYYY.MM.DD`
+                        로 통일돼 있어 지원자끼리 나란히 놓고 비교할 수 있다(업로드 시점에 맞춰진다). */}
+                    {selectedApp.school} {selectedApp.department}
+                    {selectedApp.birthDate ? ` · ${selectedApp.birthDate}` : ''} · 연락처:{' '}
+                    {formatPhone(selectedApp.phone)} · {selectedApp.email}
                   </p>
                 </div>
                 <div className="text-right space-y-1.5">
