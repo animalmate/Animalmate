@@ -8,7 +8,7 @@ import { users, recruitCohorts, recruitApplicants, recruitScores, screenNotes, a
 import { recordScore, deleteScore, getScoresForCohort } from '@/recruit/scores';
 import { aggregateScoresByApplicant } from '@/recruit/aggregate';
 import { purgeCohortApplicants, PurgeNotAllowedError } from '@/recruit/purge';
-import { listApplicantsByIds } from '@/recruit/applicants';
+import { listApplicantsByIds, listApplicantIdsByCohort } from '@/recruit/applicants';
 import { buildNoteKey } from '@/recruit/note-keys';
 import { TEST_DATABASE_URL } from './db-url';
 
@@ -139,6 +139,46 @@ suite('모집 채점 — 자동 상태 전이·집계·폐기 (실 DB)', () => {
     const id = await makeApplicant('서류점수', 'received');
     await recordScore(id, scorers[0]!, 'document', 6.5);
     expect(await statusOf(id)).toBe('received');
+  });
+
+  // 저장 응답이 바뀐 상태를 함께 준다 — 화면이 이 값으로 딱지만 고치고 명단 전체(자기소개서 전문
+  // 포함, 203명이면 수백 KB)를 다시 받지 않는다. 값이 틀리면 화면이 조용히 어긋나므로 실 DB 로 고정한다.
+  it('점수를 저장하면 바뀐 상태를 함께 돌려준다', async () => {
+    const doc = await makeApplicant('응답상태-서류', 'received');
+    // 서류 채점은 상태를 바꾸지 않으므로 돌려줄 것이 없다(화면도 딱지를 건드리지 않는다).
+    expect(await recordScore(doc, scorers[0]!, 'document', 7.0)).toEqual({ applicantStatus: null });
+
+    const iv = await makeApplicant('응답상태-면접', 'doc_pass');
+    expect(await recordScore(iv, scorers[0]!, 'interview', 8.0)).toEqual({
+      applicantStatus: 'interview_done',
+    });
+    expect(await statusOf(iv)).toBe('interview_done');
+
+    // 이미 면접 완료인 사람을 다시 채점해도 지금 상태를 그대로 돌려준다(화면이 딱지를 지우지 않게).
+    expect(await recordScore(iv, scorers[1]!, 'interview', 9.0)).toEqual({
+      applicantStatus: 'interview_done',
+    });
+
+    // 최종 결정된 사람은 채점해도 상태가 유지된다 — 응답도 그 사실을 그대로 말한다.
+    const done = await makeApplicant('응답상태-최종', 'final_pass');
+    expect(await recordScore(done, scorers[0]!, 'interview', 9.5)).toEqual({
+      applicantStatus: 'final_pass',
+    });
+  });
+
+  it('집계용 id 조회가 그 기수만, 전부 준다', async () => {
+    // 점수 API 는 예전에 지원자 전문을 읽어 id 만 뽑아 버렸다. 그 조회를 id 전용으로 바꿨으므로
+    // "범위가 그대로인지"를 실 DB 로 확인한다 — 기수가 새면 다른 기수 점수까지 집계에 섞인다.
+    const mine = await db
+      .select({ id: recruitApplicants.id })
+      .from(recruitApplicants)
+      .where(eq(recruitApplicants.cohortId, cohortId));
+    const ids = await listApplicantIdsByCohort(cohortId);
+    expect([...ids].sort()).toEqual(mine.map((r) => r.id).sort());
+
+    const otherId = await makeApplicant('다른기수사람', 'received', otherCohortId);
+    expect(await listApplicantIdsByCohort(cohortId)).not.toContain(otherId);
+    expect(await listApplicantIdsByCohort(otherCohortId)).toContain(otherId);
   });
 
   it('집계가 평균·최고·최저·표본 부족을 실제 저장값대로 낸다', async () => {

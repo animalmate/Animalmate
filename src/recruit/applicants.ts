@@ -92,6 +92,31 @@ export async function listApplicantsByCohortSlim(cohortId: string) {
   return rows.map((r) => ({ ...r, ...shortTeamsOf(r) }));
 }
 
+/**
+ * 집계에 쓸 **id 만** 읽는다.
+ *
+ * 점수 조회(`/api/recruit/scores?cohortId=`)는 "이 기수에 누가 있나"만 알면 되는데 예전에는
+ * `listApplicantsByCohort` 를 불러 자기소개서 전문까지 끌어왔다. 채점 화면은 점수를 저장할 때마다
+ * 이 API 를 다시 부르므로, 203명 기수에서는 한 명 채점할 때마다 수백 KB 를 읽고 버린 셈이다.
+ */
+export async function listApplicantIdsByCohort(cohortId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: recruitApplicants.id })
+    .from(recruitApplicants)
+    .where(eq(recruitApplicants.cohortId, cohortId));
+  return rows.map((r) => r.id);
+}
+
+/** 중복 판정(이름+전화)에 쓰는 두 칸만 읽는다. 업로드 미리보기가 기수 전체와 맞춰 볼 때 쓴다. */
+export async function listApplicantDupKeysByCohort(
+  cohortId: string
+): Promise<{ name: string; phone: string }[]> {
+  return db
+    .select({ name: recruitApplicants.name, phone: recruitApplicants.phone })
+    .from(recruitApplicants)
+    .where(eq(recruitApplicants.cohortId, cohortId));
+}
+
 export async function getApplicantById(id: string) {
   const [found] = await db
     .select()

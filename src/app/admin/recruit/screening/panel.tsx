@@ -52,6 +52,24 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
     }
   }, []);
 
+  /**
+   * 점수만 다시 받는다. **채점을 저장한 뒤에 달라지는 것은 점수뿐이다** — 지원자 명단과
+   * 자기소개서 전문은 그대로다(서류 채점은 상태를 바꾸지 않는다).
+   *
+   * 예전에는 저장할 때마다 명단까지 통째로 다시 받았다. 203명 기수에서는 한 명 채점할 때마다
+   * 자기소개서 전문 한 벌(수백 KB)이 오갔고, 그동안 저장 버튼이 잠겨 있었다 — 채점은 203번
+   * 반복하는 일이라 이 왕복이 화면이 느린 이유가 된다.
+   */
+  const refreshScores = useCallback(async () => {
+    const res = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
+    const data = await res.json();
+    if (data.scores) {
+      setScores(data.scores);
+      setAggregations(data.aggregations || {});
+    }
+    if (data.viewerUserId) setViewerUserId(data.viewerUserId);
+  }, [selectedCohortId]);
+
   const fetchApplicantsAndScores = useCallback(async () => {
     // 이 화면은 자기소개서 전문을 읽으므로 slim 을 쓰지 않는다. 대신 두 요청을 동시에 보낸다.
     const [appRes, scoreRes] = await Promise.all([
@@ -131,7 +149,7 @@ export function RecruitScreeningPanel({ role }: { role: Role }) {
 
       if (res.ok) {
         setMessage('✅ 서류 심사 점수가 정상 반영되었습니다.');
-        await fetchApplicantsAndScores();
+        await refreshScores();
       } else {
         const data = await res.json();
         setMessage(`❌ 오류: ${data.message || data.error}`);

@@ -153,6 +153,21 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     if (pending) void saveMemo(pending.applicantId, pending.content);
   }, [saveMemo]);
 
+  /**
+   * 점수만 다시 받는다. 면접 점수를 저장하면 지원자 상태도 바뀌지만, 그 값은 저장 응답이
+   * 그대로 돌려주므로(`applicantStatus`) 명단을 통째로 다시 받을 이유가 없다.
+   *
+   * 예전에는 저장할 때마다 슬롯·명단·점수 셋을 전부 다시 받았다. 명단에는 자기소개서 전문이
+   * 들어 있어 203명 기수에서는 한 명 채점할 때마다 수백 KB 가 오갔다 — 면접 당일에 그 지연이
+   * 그대로 손에 걸린다.
+   */
+  const refreshScores = useCallback(async () => {
+    const res = await fetch(`/api/recruit/scores?cohortId=${selectedCohortId}`);
+    const data = await res.json();
+    if (data.scores) setScores(data.scores);
+    if (data.viewerUserId) setViewerUserId(data.viewerUserId);
+  }, [selectedCohortId]);
+
   const fetchData = useCallback(async () => {
     // 세 요청을 차례로 기다리면 점수를 저장할 때마다 화면이 1.5초씩 멈춘다.
     // 지원서 전문을 보여주는 화면이라 지원자는 slim 으로 받지 않는다.
@@ -281,6 +296,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
 
   const handleSaveInterviewScore = async () => {
     if (!selectedApplicantId || !hasScore) return;
+    const applicantId = selectedApplicantId;
     setSavingScore(true);
     setMessage('');
     try {
@@ -288,18 +304,24 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          applicantId: selectedApplicantId,
+          applicantId,
           stage: 'interview',
           score: myScore,
           comment: myComment,
         }),
       });
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
         setMessage('✅ 면접 점수를 저장했습니다. 상태가 면접 완료로 바뀝니다.');
-        await fetchData();
+        // 상태 딱지는 서버가 돌려준 값으로 그 자리에서 고친다(명단을 다시 받지 않는다).
+        if (data.applicantStatus) {
+          setApplicants((prev) =>
+            prev.map((a) => (a.id === applicantId ? { ...a, status: data.applicantStatus } : a))
+          );
+        }
+        await refreshScores();
       } else {
-        const data = await res.json();
         setMessage(`❌ 오류: ${data.message || data.error}`);
       }
     } finally {

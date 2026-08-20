@@ -6,7 +6,7 @@ import { validateScore } from '@/recruit/score-rules';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
 import { aggregateScoresByApplicant } from '@/recruit/aggregate';
-import { listApplicantsByCohort } from '@/recruit/applicants';
+import { listApplicantIdsByCohort } from '@/recruit/applicants';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,9 +26,13 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   if (cohortId) {
-    const scores = await getScoresForCohort(cohortId);
-    const applicants = await listApplicantsByCohort(cohortId);
-    const applicantIds = applicants.map((a) => a.id);
+    // 집계에 필요한 것은 "이 기수에 누가 있나"뿐이다. 예전에는 지원자 전문을 읽어 id 만 뽑아 버렸는데,
+    // 채점 화면이 점수를 저장할 때마다 이 API 를 다시 부르므로 203명 기수에서는 한 명 채점할 때마다
+    // 자기소개서 전문을 한 벌씩 읽고 버리는 셈이었다. 두 조회는 서로를 필요로 하지 않아 함께 띄운다.
+    const [scores, applicantIds] = await Promise.all([
+      getScoresForCohort(cohortId),
+      listApplicantIdsByCohort(cohortId),
+    ]);
     const aggregations = aggregateScoresByApplicant(applicantIds, scores);
 
     // 내가 매긴 점수를 화면에서 골라내려면 내 userId 가 필요하다(면접 콘솔의 '내 점수' 구분).
@@ -65,8 +69,9 @@ export async function POST(req: Request): Promise<Response> {
     }
     checkLength('코멘트', comment, LIMITS.contentMd);
 
-    await recordScore(applicantId, actor.userId, stage, numScore, comment);
-    return NextResponse.json({ success: true });
+    // 바뀐 상태를 함께 돌려준다 — 화면이 목록 전체를 다시 받지 않고 딱지만 고칠 수 있게(면접 단계).
+    const { applicantStatus } = await recordScore(applicantId, actor.userId, stage, numScore, comment);
+    return NextResponse.json({ success: true, applicantStatus });
   } catch (e) {
     if (e instanceof InputTooLongError) {
       return NextResponse.json({ error: 'too_long', message: e.message }, { status: 400 });
