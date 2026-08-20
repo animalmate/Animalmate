@@ -261,48 +261,133 @@ export function mapRowsToApplicants(
   headers: string[],
   rows: string[][],
   mapping: Record<string, string>
-): { applicants: ApplicantImportInput[]; skipped: SkippedRow[] } {
+): { applicants: ApplicantImportInput[]; skipped: SkippedRow[]; sourceRows: number[] } {
   const applicants: ApplicantImportInput[] = [];
   const skipped: SkippedRow[] = [];
+  // applicants[i] 가 원본 몇 번째 행에서 왔는지. 빠진 행이 있으면 두 번호가 어긋나므로
+  // (48명만 남은 파일에서 12번째 지원자는 원본 13행일 수 있다) 따로 들고 다닌다.
+  const sourceRows: number[] = [];
 
   rows.forEach((row, idx) => {
     const applicant = mapRowToApplicant(headers, row, mapping);
     if (applicant) {
       applicants.push(applicant);
+      sourceRows.push(idx + 1);
       return;
     }
     const getValue = fieldReader(headers, row, mapping);
     skipped.push({ row: idx + 1, name: getValue('name'), phone: getValue('phone') });
   });
 
-  return { applicants, skipped };
+  return { applicants, skipped, sourceRows };
+}
+
+/**
+ * 구글 폼 응답의 제출 시각 열을 찾는다(없으면 -1).
+ *
+ * 이 값은 **저장하지 않는다** — 미리보기에서 "어느 쪽이 나중에 낸 것인가"를 사람에게 보여 주는
+ * 데만 쓴다. 열이 없어도 판단은 된다: 구글 폼 CSV 는 시간순이라 행 번호가 곧 제출 순서다(결정 117).
+ */
+export function findTimestampColumn(headers: string[]): number {
+  return headers.findIndex((h) => /타임\s*스탬프|timestamp|응답\s*시각|제출\s*시(각|간)/i.test(h.trim()));
+}
+
+/** 중복으로 빠지는 행과, 그 자리에 **남는 쪽**. 무엇이 버려지는지 화면이 말할 수 있게 한다. */
+export interface DuplicateHit {
+  /** 버려지는 쪽의 `newApplicants` 안 위치 */
+  index: number;
+  /** 남는 쪽의 `newApplicants` 안 위치. 이미 등록된 지원자면 `null`. */
+  keptIndex: number | null;
 }
 
 /**
  * 이름+전화번호 중복 감지
+ *
+ * **먼저 낸 것이 남고 뒤엣것이 빠진다**(결정 117). 구글 폼 CSV 는 시간순이므로, 같은 사람이
+ * 고쳐서 다시 낸 경우 결과적으로 **고친 쪽이 버려진다.** 시스템이 재제출인지 동명이인+번호 오기인지
+ * 구별할 수 없어 이 규칙을 바꾸지 않았다 — 대신 어느 행이 어느 행 때문에 빠지는지를 돌려주어
+ * 사람이 업로드 전에 고를 수 있게 한다.
  */
 export function detectDuplicates(
   newApplicants: ApplicantImportInput[],
   existingApplicants: { name: string; phone: string }[]
-): { duplicateIndexes: number[]; uniqueApplicants: ApplicantImportInput[] } {
-  const existingSet = new Set(
-    existingApplicants.map((a) => `${a.name.trim()}_${a.phone.replace(/[^0-9]/g, '')}`)
-  );
+): {
+  duplicateIndexes: number[];
+  uniqueApplicants: ApplicantImportInput[];
+  duplicateHits: DuplicateHit[];
+} {
+  const dupKey = (a: { name: string; phone: string }) =>
+    `${a.name.trim()}_${a.phone.replace(/[^0-9]/g, '')}`;
+  // 값 = 남는 쪽의 위치. 이미 등록된 지원자는 파일 안에 위치가 없으므로 null 로 둔다.
+  const kept = new Map<string, number | null>();
+  for (const a of existingApplicants) kept.set(dupKey(a), null);
 
   const duplicateIndexes: number[] = [];
+  const duplicateHits: DuplicateHit[] = [];
   const uniqueApplicants: ApplicantImportInput[] = [];
 
   newApplicants.forEach((item, idx) => {
-    const key = `${item.name.trim()}_${item.phone.replace(/[^0-9]/g, '')}`;
-    if (existingSet.has(key)) {
+    const key = dupKey(item);
+    if (kept.has(key)) {
       duplicateIndexes.push(idx);
+      duplicateHits.push({ index: idx, keptIndex: kept.get(key) ?? null });
     } else {
       uniqueApplicants.push(item);
-      existingSet.add(key); // 동일 파일 내 중복도 방지
+      kept.set(key, idx); // 동일 파일 내 중복도 방지
     }
   });
 
-  return { duplicateIndexes, uniqueApplicants };
+  return { duplicateIndexes, uniqueApplicants, duplicateHits };
+}
+
+/** 미리보기가 보여 주는 중복쌍 — 빠지는 행과 남는 행을, 각각 언제 낸 것인지와 함께. */
+export interface DuplicatePair {
+  /** 빠지는 행(머리글 제외, 1부터) */
+  row: number;
+  name: string;
+  /** 빠지는 쪽 제출 시각. 타임스탬프 열이 없으면 빈 값. */
+  submittedAt: string;
+  /** 남는 행. 이미 등록된 지원자라 파일 안에 짝이 없으면 `null`. */
+  keptRow: number | null;
+  keptSubmittedAt: string;
+}
+
+/**
+ * 중복 판정 결과를 사람이 읽을 수 있는 쌍으로 바꾼다.
+ *
+ * 규칙을 화면·서버·테스트가 각자 베껴 적지 않도록 여기 한 곳에 둔다(같은 이유로 `autoMapHeaders`
+ * 도 공유한다 — 베낀 쪽만 고쳐 놓아 실제 버그를 놓친 적이 있다).
+ */
+export function buildDuplicatePairs(params: {
+  headers: string[];
+  rows: string[][];
+  applicants: ApplicantImportInput[];
+  sourceRows: number[];
+  hits: DuplicateHit[];
+  limit?: number;
+}): DuplicatePair[] {
+  const { headers, rows, applicants, sourceRows, hits, limit = 10 } = params;
+  const tsCol = findTimestampColumn(headers);
+  const submittedAt = (idx: number): string => {
+    const rowNo = sourceRows[idx];
+    if (tsCol < 0 || rowNo === undefined) return '';
+    return (rows[rowNo - 1]?.[tsCol] ?? '').trim();
+  };
+
+  return hits.slice(0, limit).flatMap((hit) => {
+    const row = sourceRows[hit.index];
+    const name = applicants[hit.index]?.name;
+    if (row === undefined || name === undefined) return []; // 도달하지 않는다(둘은 같은 길이)
+    return [
+      {
+        row,
+        name,
+        submittedAt: submittedAt(hit.index),
+        keptRow: hit.keptIndex === null ? null : (sourceRows[hit.keptIndex] ?? null),
+        keptSubmittedAt: hit.keptIndex === null ? '' : submittedAt(hit.keptIndex),
+      },
+    ];
+  });
 }
 
 /**

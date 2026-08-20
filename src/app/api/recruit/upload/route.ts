@@ -7,9 +7,11 @@ import {
   mapRowsToApplicants,
   detectDuplicates,
   missingRequiredMappings,
+  buildDuplicatePairs,
   REQUIRED_MAPPING_LABELS,
 } from '@/recruit/csv';
-import { bulkCreateApplicants, listApplicantsByCohort } from '@/recruit/applicants';
+import { looksLikeAddress } from '@/recruit/near-station';
+import { bulkCreateApplicants, listApplicantDupKeysByCohort } from '@/recruit/applicants';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,13 +48,39 @@ export async function POST(req: Request): Promise<Response> {
 
     // 이름·전화번호가 빈 행은 등록되지 않는다. **몇 행이 왜 빠졌는지 함께** 돌려준다 —
     // 숫자만 보여 주면 50명을 올리고 48명이 들어가도 사람이 알아챌 방법이 없다.
-    const { applicants: parsedApplicants, skipped } = mapRowsToApplicants(headers, rows, mapping);
+    const {
+      applicants: parsedApplicants,
+      skipped,
+      sourceRows,
+    } = mapRowsToApplicants(headers, rows, mapping);
 
-    const existing = await listApplicantsByCohort(cohortId);
-    const { duplicateIndexes, uniqueApplicants } = detectDuplicates(parsedApplicants, existing);
+    // 중복 판정은 이름·전화만 있으면 된다. 기수 전체를 전문까지 읽어 오면 203명 기수에서
+    // 미리보기 한 번에 수백 KB 를 읽고 버린다.
+    const existing = await listApplicantDupKeysByCohort(cohortId);
+    const { duplicateIndexes, uniqueApplicants, duplicateHits } = detectDuplicates(
+      parsedApplicants,
+      existing
+    );
 
     // 확정 전 사전검증 단계
     if (!confirmImport) {
+      // "중복 N명"만으로는 그게 재제출인지(=고친 쪽이 버려지는 중인지) 알 길이 없었다.
+      // 어느 행이 어느 행 때문에 빠지는지, 각각 언제 낸 것인지를 함께 준다(결정 117).
+      // 제출 시각은 저장하지 않는다 — 미리보기에서만 쓴다.
+      const duplicatePairs = buildDuplicatePairs({
+        headers,
+        rows,
+        applicants: parsedApplicants,
+        sourceRows,
+        hits: duplicateHits,
+      });
+
+      // 주소 경고는 **등록될 전부**를 센다. 예전에는 샘플 5행에만 배지를 그려서, 진짜 상세 주소가
+      // 6번째 행부터면 아무도 보지 못했다(33기 실제 1건).
+      const addressLike = uniqueApplicants
+        .map((a, idx) => ({ name: a.name, nearStation: a.nearStation ?? '', idx }))
+        .filter((a) => looksLikeAddress(a.nearStation));
+
       return NextResponse.json({
         totalRows: rows.length,
         totalParsed: parsedApplicants.length,
@@ -60,8 +88,11 @@ export async function POST(req: Request): Promise<Response> {
         uniqueCount: uniqueApplicants.length,
         sample: uniqueApplicants.slice(0, 5),
         duplicateIndexes,
+        duplicatePairs,
         invalidCount: skipped.length,
         invalidRows: skipped.slice(0, 10),
+        addressLikeCount: addressLike.length,
+        addressLikeRows: addressLike.slice(0, 5).map(({ name, nearStation }) => ({ name, nearStation })),
       });
     }
 

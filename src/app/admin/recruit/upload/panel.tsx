@@ -5,6 +5,8 @@ import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { autoMapHeaders, parseCsv, missingRequiredMappings, REQUIRED_MAPPING_LABELS } from '@/recruit/csv';
+// 주소 판별은 서버(전 행 집계)와 같은 함수를 쓴다 — 양쪽에 따로 적으면 한쪽만 고쳐진다.
+import { looksLikeAddress } from '@/recruit/near-station';
 import { decodeCsvBytes } from '@/recruit/csv-file';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, CardField, Field, RowCard, Select, StatusMessage, TableCards } from '@/components/ui';
@@ -16,12 +18,6 @@ const BLANK_MAPPING: Record<string, string> = {
   nearStation: '', otAttend: '', remoteInterviewWish: '', essayIntro: '', essayValues: '',
   essayValuesTopic: '', englishName: '',
 };
-
-// "인근 역"에 역명 대신 주소를 적어 낸 지원자를 잡아낸다.
-// 표(PC)와 카드(모바일)가 같은 판정을 쓰도록 뽑아 뒀다.
-function looksLikeAddress(nearStation?: string | null): boolean {
-  return Boolean(nearStation) && /[시구동번지]/.test(nearStation!);
-}
 
 function AddressChip() {
   return (
@@ -362,6 +358,71 @@ export function RecruitUploadPanel({ role }: { role: Role }) {
                 </ul>
                 <p className="mt-1.5 text-xs">
                   원본에서 채워 넣고 다시 붙여넣거나, 이대로 등록한 뒤 해당 지원자만 따로 확인해 주세요.
+                </p>
+              </div>
+            )}
+
+            {/* 중복은 "먼저 낸 것이 남고 뒤엣것이 빠진다"(결정 117). 33기 중복 3쌍이 전부 재제출이라
+                고친 쪽이 버려질 뻔했는데, 화면에는 "중복 N명"밖에 없어 알 방법이 없었다.
+                어느 행이 어느 행 때문에 빠지는지 · 각각 언제 낸 것인지를 보여 주면 사람이 고를 수 있다. */}
+            {previewResult.duplicatePairs?.length > 0 && (
+              <div className="rounded-xl border border-coral-300 bg-coral-50 p-3.5 text-[13px] text-coral-700">
+                <p className="font-bold">
+                  이름·전화번호가 같아 빠지는 행이 {previewResult.duplicateCount}개 있습니다 — 먼저 낸 쪽이
+                  남습니다.
+                </p>
+                <ul className="mt-1.5 space-y-0.5 text-xs">
+                  {previewResult.duplicatePairs.map(
+                    (d: {
+                      row: number;
+                      name: string;
+                      submittedAt: string;
+                      keptRow: number | null;
+                      keptSubmittedAt: string;
+                    }) => (
+                      <li key={d.row}>
+                        · {d.row}번째 행 {d.name}
+                        {d.submittedAt ? ` (${d.submittedAt})` : ''} —{' '}
+                        {d.keptRow === null
+                          ? '이미 등록된 지원자입니다'
+                          : `${d.keptRow}번째 행${d.keptSubmittedAt ? ` (${d.keptSubmittedAt})` : ''}이 남습니다`}
+                      </li>
+                    )
+                  )}
+                  {previewResult.duplicateCount > previewResult.duplicatePairs.length && (
+                    <li>· … 외 {previewResult.duplicateCount - previewResult.duplicatePairs.length}건</li>
+                  )}
+                </ul>
+                <p className="mt-1.5 text-xs">
+                  고쳐서 다시 낸 것이라면, 원본에서 먼저 낸 줄을 지우고 다시 붙여넣으면 고친 쪽이 등록됩니다.
+                </p>
+              </div>
+            )}
+
+            {/* 주소 경고는 등록될 전 행을 센다. 샘플 5건에만 배지를 그리던 때는 6번째 행부터의
+                주소가 아무에게도 보이지 않았다. */}
+            {previewResult.addressLikeCount > 0 && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-[13px] text-amber-900">
+                <p className="font-bold">
+                  가까운 역 칸에 주소로 보이는 값이 {previewResult.addressLikeCount}건 있습니다.
+                </p>
+                <ul className="mt-1.5 space-y-0.5 text-xs">
+                  {previewResult.addressLikeRows?.map(
+                    (a: { name: string; nearStation: string }, idx: number) => (
+                      <li key={idx}>
+                        · {a.name} — {a.nearStation}
+                      </li>
+                    )
+                  )}
+                  {previewResult.addressLikeCount > (previewResult.addressLikeRows?.length ?? 0) && (
+                    <li>
+                      · … 외 {previewResult.addressLikeCount - previewResult.addressLikeRows.length}건
+                    </li>
+                  )}
+                </ul>
+                <p className="mt-1.5 text-xs">
+                  이대로 등록해도 됩니다. 면접 배정은 역 이름으로 조를 나누니, 등록 뒤 배정 화면에서 역명으로
+                  줄여 두면 편합니다.
                 </p>
               </div>
             )}
