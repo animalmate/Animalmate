@@ -85,7 +85,7 @@
     치환(`final-render.ts`). events 가 장소·정원의 유일한 저장소이므로 회차별 수정이 본문과 어긋날 수 없다.
     치환 후에도 남은 키가 있으면 **게시하지 않는다**(markReady 차단 + 워커가 failed 확정, audit `post.blocked`).
     발행 성공 시 치환된 최종 제목·본문을 `scheduled_posts` 에 저장한다(발행된 글은 수정 불가 = 이 기록이 원본).
-- ~~`recurring_rules`~~ — **삭제됨(마이그레이션 0020, 2026-07-28)**. 일괄 생성 도우미를 없앤
+- **`recurring_rules` 테이블은 삭제됐다**(마이그레이션 0020, 2026-07-28). 일괄 생성 도우미를 없앤
   2026-07-24 이후로 읽고 쓰는 코드(`batch-generate.ts`, `recurring-rules.ts`, `month-weekday.ts`,
   `/reservations/batch`, `/api/reservations/batch`)가 전부 사라졌고, 데이터 보존을 위해 남겨 두었으나
   **0행이라 보존할 것도 없었다**. `events.rule_id` 컬럼과 `month_week` enum 도 함께 제거.
@@ -158,7 +158,7 @@
   - `expenses` (id, spent_on date, category[operating|event|etc], description, amount, receipt_url?,
     recorded_by, memo?, created_at) — 지출 기록 대장. 영수증 이미지 = Supabase Storage(비공개 버킷) URL.
     수정 이력은 audit_logs 로. **승인 플로우 없음**(결재 시스템 아님, 기록 대장). 정산 요청 접수는 v2.
-- ~~**F9 신입 모집**: `recruit_applicants`(phone_hash 만 저장)~~ **개정·구현 2026-07-25**(결정 #7 번복,
+- **F9 신입 모집 — 개정·구현 2026-07-25**(옛 계획은 `recruit_applicants` 에 phone_hash 만 저장. 결정 #7 번복,
   07-DECISIONS 24, 상세 설계 = `09-RECRUIT-DESIGN.md`). v1은 서류·면접 심사를 사이트에서 직접 수행하므로
   구글폼 전 필드를 **원문 저장**한다(마이그레이션 0013, 전 테이블 RLS ON). 대신 주소는 역명으로 축소,
   열람 staff+/export board-only, cohort hard delete 로 보관을 제한한다. 조회는 이름+전화 정확 일치(해시 폐기),
@@ -213,7 +213,7 @@
   - **상태 자동 전환**: 면접 점수 최초 저장 시 doc_pass→interview_done, 점수 0개로 감소 시 interview_done→doc_pass
     (같은 트랜잭션). 면접불참(interview_noshow)은 **면접관(운영진)이 면접 콘솔에서 표시**하고 되돌릴 수도 있다
     (2026-07-31, 07-DECISIONS 67). 순수 함수 `nextStatusOnScoreChange` 로 분리(단위 테스트).
-  - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 5회 + 실패 10회 시 1시간 차단
+  - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 60회(총량) + 같은 이름 실패 10회/시간
     (`rate_limits` 재사용, 버킷 `recruit_lookup`/`recruit_lookup_fail`). **시도 입력값(이름·전화)은 저장하지 않는다**
     — 비지원자 PII 수집 금지(규칙 #4/#5). 결정 #8의 "시도 로그"는 카운터로 대체(07-DECISIONS 25).
   - RLS: 신규 8테이블 생성과 동시에 RLS 활성화(규칙 #8, RLS 테스트가 누락을 자동 감지).
@@ -268,7 +268,7 @@
      (`src/auth/inactivity-expiry.ts`, 07-DECISIONS 82). 딱 1년째는 아직 유효(경계에서 일찍 뺏지 않는다).
      한 번도 안 들어온 계정은 **가입 시각** 기준. 판단 근거가 둘 다 없으면 만료시키지 않는다.
      내리면 활성 회장단·시스템관리자가 0이 되는 경우에는 **내리지 않고 메일로 알린다**(콘솔 잠금 방지).
-     ~~`term_end` 경과 기준~~ 은 폐기 — 연장 수단이 없어 전원이 동시에 강등되는 구조였다.
+     옛 `term_end` 경과 기준은 폐기했다 — 연장 수단이 없어 전원이 동시에 강등되는 구조였다.
   ② **비활성화(수동)**: 회장단이 회원 관리에서 접근을 회수(복구 가능).
   ③ **탈퇴**: 되돌릴 수 없음 + 개인정보 삭제(07-DECISIONS 30).
 
