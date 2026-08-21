@@ -80,11 +80,32 @@ function SlotChip({
  * 예전에는 학교·학과·연락처를 가운뎃점으로 이어 붙인 한 줄이었다. 면접 중에 "생년월일이 뭐였지"를
  * 눈으로 찾아야 했고, 라벨이 없어 값만 보고는 무엇인지 알기 어려웠다. 값마다 이름을 붙여 세운다.
  */
-function Fact({ label, value }: { label: string; value: string | null | undefined }) {
+function Fact({
+  label,
+  value,
+  className = '',
+}: {
+  label: string;
+  value: string | null | undefined;
+  /** 칸 폭(그리드 span). 값 길이가 제각각이라 칸마다 다르게 준다. */
+  className?: string;
+}) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <dt className="text-[12px] font-semibold text-ink-400">{label}</dt>
-      <dd className="truncate text-[15px] font-semibold text-ink-900" title={value ?? undefined}>
+      {/*
+        예전에는 `truncate`(한 줄 + …)였다. 33기 실측으로 **203명 중 104명의 학교·학과가 잘려 있었다**
+        — 칸이 148px 인데 15자면 185px 이 필요했다. 화면을 넓혀도 본문이 max-width 로 묶여 있어
+        1920px 에서도 칸은 153px 이라 똑같이 잘렸다(노트북만의 문제가 아니었다).
+
+        `line-clamp-4` 는 **최대치일 뿐**이라 짧은 값의 높이는 그대로다(203명 중 201명이 1~2줄).
+        한글은 어절 사이 공백이 드물어 학교 이름 하나가 이미 두 줄을 먹는다 — 그래서 33기 최대
+        54자를 담으려면 4줄이 필요했다(3줄로는 46자에서 이미 넘쳤다). 지망 칸도 같은 규칙을 쓰는데
+        줄임 후 최대가 16자(“2순위 팀 배치 희망하지 않음”)라 2줄이면 끝난다.
+        clamp 를 아예 빼지 않는 이유는, 누가 문장을 적어 넣었을 때 머리글이 밀려나지 않게 하는
+        방어선은 남겨 두기 위해서다.
+      */}
+      <dd className="line-clamp-4 break-words text-[15px] font-semibold text-ink-900" title={value ?? undefined}>
         {value?.trim() ? value : <span className="font-medium text-ink-300">미기재</span>}
       </dd>
     </div>
@@ -823,15 +844,19 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                 </div>
 
                 {/* 1·2지망과 생년월일은 예전에 이 화면 어디에도 없어서 지원서를 따로 열어야 했다. */}
-                <dl className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+                {/* 칸 폭을 값 길이에 맞춰 나눈다. 다섯을 똑같이 나누면(옛 `grid-cols-5`)
+                    학교·학과만 늘 모자라고 생년월일·연락처는 남는다 — 33기 실측 기준
+                    학교·학과 평균 13자·최대 54자, 나머지는 길이가 고정에 가깝다. */}
+                <dl className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-12">
                   <Fact
                     label="학교·학과"
                     value={[selectedApp.school, selectedApp.department].filter(Boolean).join(' ')}
+                    className="col-span-2 sm:col-span-6 lg:col-span-4"
                   />
-                  <Fact label="생년월일" value={selectedApp.birthDate} />
-                  <Fact label="연락처" value={formatPhone(selectedApp.phone)} />
-                  <Fact label="1지망" value={selectedApp.wishTeam1} />
-                  <Fact label="2지망" value={selectedApp.wishTeam2} />
+                  <Fact label="생년월일" value={selectedApp.birthDate} className="sm:col-span-3 lg:col-span-2" />
+                  <Fact label="연락처" value={formatPhone(selectedApp.phone)} className="sm:col-span-3 lg:col-span-2" />
+                  <Fact label="1지망" value={selectedApp.wishTeam1} className="sm:col-span-3 lg:col-span-2" />
+                  <Fact label="2지망" value={selectedApp.wishTeam2} className="sm:col-span-3 lg:col-span-2" />
                 </dl>
               </div>
 
