@@ -532,7 +532,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
             **카드 전체를 스크롤 상자로 만들지 않는다** — 그러면 위 시간대 그리드까지 같이 스크롤돼
             "목록만 스크롤한다"는 아래 의도가 깨진다. 대신 카드를 뷰포트 높이로 묶고
             목록이 `flex-1 min-h-0` 으로 남은 자리를 쓴다(결정 111 과 같은 방식). */}
-        <Card className="lg:col-span-4 p-4 space-y-3 lg:sticky lg:top-6 lg:flex lg:flex-col lg:max-h-[calc(100vh-3rem)]">
+        <Card className="lg:col-span-4 p-4 space-y-3 lg:sticky lg:top-6 lg:flex lg:flex-col lg:max-h-[calc(100vh-3rem)] lg:overflow-hidden">
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
             {/* 한글에 uppercase·tracking-wider 를 걸면 자간만 벌어져 오히려 읽기 나쁘다. */}
             <span className="text-[13px] font-bold text-ink-500">
@@ -565,9 +565,14 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                   전체 {allScoredCount}/{teamApplicants.length}
                 </button>
               </div>
-              {/* 조가 많으면 가로로 넘친다 — 표 안에서만 스크롤시킨다(페이지를 밀지 않는다). */}
-              <div className="overflow-x-auto">
-                <table className="w-full border-separate border-spacing-0.5 text-[11px]">
+              {/* 조가 많으면 가로로, 시간대가 많으면 세로로 넘친다 — **둘 다 표 안에서만** 스크롤시킨다.
+                  세로를 묶지 않으면 33기(16시간대 × 4조 ≈ 420px)처럼 표가 길어졌을 때 카드의
+                  남은 높이를 이 표가 다 먹고, 아래 지원자 목록이 몇 줄로 찌부러진다.
+                  노트북 세로 해상도(768px → 뷰포트 ~640px)에서 실제로 그렇게 보인다.
+                  `w-full min-w-max` — 좁으면 제 너비를 지켜 가로 스크롤하고, 넓으면 칸을 채운다.
+                  `w-full` 만 있으면 조가 늘어날수록 칸이 눌려 '5/5' 가 두 줄로 접힌다. */}
+              <div className="max-h-[34vh] overflow-auto lg:max-h-[38vh]">
+                <table className="w-full min-w-max border-separate border-spacing-0.5 text-[11px]">
                   <thead>
                     <tr>
                       <th className="w-11" />
@@ -651,8 +656,11 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
             </div>
           )}
 
-          {/* 목록만 스크롤한다(위 시간대 그리드는 따라 내려가지 않는다). */}
-          <div className="max-h-[560px] space-y-4 overflow-y-auto lg:max-h-none lg:flex-1 lg:min-h-0">
+          {/* 목록만 스크롤한다(위 시간대 그리드는 따라 내려가지 않는다).
+              `lg:min-h-[220px]` 가 **바닥**이다 — 위 표가 길어도 목록이 두어 줄로 찌부러지지 않는다.
+              옛 `min-h-0` 은 "얼마든지 줄어도 된다"는 뜻이라, 화면이 짧은 노트북에서 정확히 그렇게 됐다.
+              카드가 뷰포트를 넘기면 표 쪽이 먼저 스크롤을 맡는다(위 max-h). */}
+          <div className="max-h-[560px] space-y-4 overflow-y-auto lg:max-h-none lg:flex-1 lg:min-h-[220px]">
             {groups.map((group) => (
               <div key={group.slotId ?? 'unassigned'} className="space-y-2">
                 {/* 슬롯 머리 — 이 시간에 어느 방에서 누가 보는 조인지. 같이 들어가는 사람이 아래에 모여 있다. */}
