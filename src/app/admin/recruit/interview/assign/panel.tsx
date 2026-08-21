@@ -4,7 +4,8 @@ import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
-import { slotPlaceLabel, slotPanelNumbers, slotPanelLabel, suggestNextPanelName } from '@/recruit/display';
+import { suggestNextPanelName } from '@/recruit/display';
+import { StepHeading, AssignProgress } from './step-heading';
 import { timeAxisOf } from '@/recruit/timetable';
 import type { DutyRow } from '@/recruit/duty-rules';
 import { isPrivileged } from '@/auth/permissions';
@@ -50,6 +51,8 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [message, setMessage] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
+  // 조 만들기 폼의 접힘. null = 사람이 아직 손대지 않음 → 조가 하나도 없을 때만 저절로 펼친다.
+  const [createOpen, setCreateOpen] = useState<boolean | null>(null);
   // 되돌리기 더미. 엑셀에는 Ctrl+Z 가 있는데 화면에는 없어서, 수십 명을 잘못 옮기면
   // 한 명씩 되짚어야 했다. 앞자리만 들고 있으면 되돌리기는 같은 일괄 배정 한 번이다.
   const [undoStack, setUndoStack] = useState<
@@ -391,6 +394,13 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
 
   // 이미 있는 조 이름(중복 생성 방지 + 안내). 슬롯이 곧 조 목록이다.
   const existingPanels = [...new Set(slots.map((s) => (s.panel ?? '').trim()).filter(Boolean))];
+  const isCreateOpen = createOpen ?? existingPanels.length === 0;
+
+  // 2단계 머리글이 쓰는 두 숫자. 진행 막대는 "몇 명 남았나", 경고는 "당일 빌 자리가 있나"를 본다.
+  const unassignedCount = applicants.filter((a) => !a.slotId).length;
+  const slotsMissingInterviewer = slots.filter(
+    (s) => (slotInterviewersMap[s.id] ?? []).length === 0 && applicants.some((a) => a.slotId === s.id)
+  ).length;
   const panelsKey = existingPanels.join('|');
 
   // 기수를 바꾸거나 슬롯을 다시 받으면 그 기수에 **없는** 이름으로 기본값을 맞춘다.
@@ -402,9 +412,6 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     // Z조까지 찼으면 빈 문자열이 온다 — 그때는 칸을 비우지 말고 사람이 쓴 값을 그대로 둔다.
     if (next) setPanelName(next);
   }, [panelsKey]);
-
-  // 같은 시각·같은 장소 슬롯(동시 진행 조)에 번호를 매긴다. 드롭다운·카드가 같은 번호를 쓴다.
-  const panelNumbers = slotPanelNumbers(slots);
 
   // 시간표 팝업에 넘길 모양으로 한 번만 접는다.
   // 이름만 넣는다 — 팀까지 붙이면 칸이 길어져 표가 지저분해지고, 공지에 필요하지도 않다.
@@ -433,10 +440,12 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[24px] font-bold text-ink-900">3. 면접 배정 (10분 단위 &amp; 면접관 배정)</h1>
+            <h1 className="text-[24px] font-bold text-ink-900">3. 면접 배정</h1>
             <HelpButton screen="recruit-assign" />
           </div>
-          <p className="mt-1 text-sm text-ink-500">면접 슬롯을 10분 단위로 세분화하여 생성하고, 지원자 및 운영진 면접관을 배정합니다.</p>
+          {/* 옛 제목은 '10분 단위 & 면접관 배정'이었다 — 칸을 하나씩 만들던 시절의 말이라
+              지금 화면(조 단위로 한 번에 만들고 시간표에 앉힌다)과 맞지 않았다. */}
+          <p className="mt-1 text-sm text-ink-500">조를 만들고, 지원자와 면접관을 시간표에 앉힙니다.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -480,10 +489,33 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
 
       {/* 1. 조 만들기 — 조 = 방 하나를 잡고 하루 종일 유지되는 트랙(지난 기수 시간표의 A조·B조·비대면 파견).
              시작~종료를 소요 시간으로 잘라 슬롯을 한 번에 만든다. 예전에는 칸을 하나씩 만들게 해서
-             10:00~18:00 을 30분으로 쪼개면 같은 폼을 16번 채워야 했다. */}
-      <Card className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 pb-4">
-          <h2 className="text-base font-bold text-ink-900">면접 조 만들기</h2>
+             10:00~18:00 을 30분으로 쪼개면 같은 폼을 16번 채워야 했다.
+
+             조를 다 만들고 나면 이 폼은 다시 쓸 일이 거의 없다. 그런데도 늘 펼쳐져 있어서
+             화면 첫 판을 통째로 차지했고, 정작 매일 쓰는 배정 보드는 스크롤 아래에 있었다.
+             **이미 조가 있으면 접어 둔다** — 필요하면 '조 추가'로 편다. */}
+      <Card className={isCreateOpen ? 'space-y-5' : 'space-y-0'}>
+        <StepHeading
+          step={1}
+          divider={isCreateOpen}
+          title="조 만들기"
+          hint={
+            existingPanels.length > 0
+              ? `${existingPanels.join(' · ')} — 슬롯 ${slots.length}칸`
+              : '먼저 조를 만들어야 지원자를 앉힐 자리가 생깁니다'
+          }
+          state={existingPanels.length > 0 ? 'done' : 'current'}
+          right={
+            <SecondaryButton type="button" onClick={() => setCreateOpen(!isCreateOpen)} aria-expanded={isCreateOpen}>
+              <Icon name={isCreateOpen ? 'chevronDown' : 'plus'} size={14} className="mr-1 inline" />
+              {isCreateOpen ? '접기' : '조 추가'}
+            </SecondaryButton>
+          }
+        />
+
+        {isCreateOpen && (
+        <>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {/* 두 값 중 하나를 고르는 것이므로 라디오 그룹으로 묶는다(키보드 화살표 이동·스크린리더 대응). */}
           <div
             role="radiogroup"
@@ -617,146 +649,52 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
             ? '비대면 조는 화상 링크가 지원자 조회 화면에 그대로 노출됩니다.'
             : '면접 장소는 “0. 공고·마감 설정”에서 등록한 프리셋 중에서 고릅니다.'}
         </p>
+        </>
+        )}
 
         <StatusMessage text={message} />
-      </Card>
-
-      {/* 2. 생성된 슬롯별 운영진(면접관) 및 지원자 배정 관리 */}
-      <Card className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 pb-3">
-          <h2 className="text-base font-bold text-ink-900">
-            생성된 면접 슬롯 및 운영진(면접관) 배정 현황 ({slots.length}개 슬롯)
-          </h2>
-          {/* 카드가 흩어져 있으면 전체 흐름이 안 보인다. 공지에 붙일 표는 한 장으로 봐야 한다. */}
-          <SecondaryButton type="button" onClick={() => setShowTimetable(true)} disabled={slots.length === 0}>
-            현재 현황 보기
-          </SecondaryButton>
-        </div>
-
-        {slots.length === 0 ? (
-          <div className="text-center py-8 text-xs text-ink-400">
-            생성된 면접 슬롯이 없습니다. 위에서 면접 슬롯을 먼저 만들어주세요.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {slots.map((slot) => {
-              const assignedApps = applicants.filter((a) => a.slotId === slot.id);
-              const interviewers = slotInterviewersMap[slot.id] || [];
-
-              return (
-                <div key={slot.id} className="rounded-2xl border border-cream-200 bg-white p-4 space-y-3 shadow-card">
-                  <div className="flex items-start justify-between border-b border-cream-100 pb-2.5">
-                    <div>
-                      <span className="text-sm font-bold text-ink-900 flex items-center gap-1.5">
-                        <Icon name="clock" size={14} className="text-ink-500" />
-                        {new Date(slot.startsAt).toLocaleString('ko-KR', {
-                          month: 'numeric',
-                          day: 'numeric',
-                          weekday: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}{' '}
-                        ({slot.durationMin}분)
-                        {/* 카드도 드롭다운과 같은 조 이름을 쓴다 — 안 그러면 똑같이 생긴 카드 둘 중
-                            어느 것이 드롭다운의 A조인지 알 수 없다. */}
-                        {slotPanelLabel(slot, panelNumbers) && (
-                          <span className="rounded bg-ink-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            {slotPanelLabel(slot, panelNumbers)}
-                          </span>
-                        )}
-                      </span>
-                      {/* 예전엔 venue 가 있으면 링크를 아예 안 보여줬다 — 비대면 슬롯인데
-                          어디로 들어가는지 이 카드에서 확인할 수 없었다. 둘 다 보여준다. */}
-                      <p className="text-xs font-semibold text-blue-700 mt-1">{slotPlaceLabel(slot)}</p>
-                      {slot.isRemote && slot.link && (
-                        <p className="mt-0.5 break-all text-[11px] text-ink-500">{slot.link}</p>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteSlot(slot.id)}
-                      className="inline-flex min-h-tap items-center px-2 text-xs text-coral-600 font-semibold hover:underline"
-                    >
-                      슬롯 삭제
-                    </button>
-                  </div>
-
-                  {/* 배정된 면접관 운영진 목록 */}
-                  <div className="space-y-1.5">
-                    <span className="text-[11px] font-bold text-ink-500 block">
-                      배정된 운영진(면접관) ({interviewers.length}명)
-                    </span>
-                    {/* 지원자는 배정해 놓고 면접관을 빠뜨리면 면접 당일 그 시간대에 아무도 없다.
-                        슬롯을 만든 직후에는 늘 0명이므로, 지원자가 있을 때만 경고한다. */}
-                    {interviewers.length === 0 && assignedApps.length > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                        <Icon name="alert" size={12} className="inline" /> 면접관 없음 — 지원자 {assignedApps.length}명 배정됨
-                      </span>
-                    )}
-                    {/* 여기서는 보기만 한다 — 면접관을 고치는 곳은 아래 배정 보드 한 군데다.
-                        두 군데서 고칠 수 있으면 어느 쪽이 먹었는지 헷갈리고, 이 칸은 계정 없는
-                        면접관(0028)을 다루지도 못한다. */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {interviewers.map((int: any, i: number) => (
-                        <span
-                          key={int.userId ?? `name-${int.name}-${i}`}
-                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${
-                            int.userId ? 'bg-blue-100 text-blue-900' : 'bg-cream-100 text-ink-700'
-                          }`}
-                          title={int.userId ? undefined : '계정 없이 이름만 — 면접 콘솔 채점은 못 합니다'}
-                        >
-                          {int.name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 배정된 지원자 목록 */}
-                  <div className="space-y-1 pt-1 border-t border-cream-100">
-                    <span className="text-[11px] font-bold text-ink-500 block">
-                      면접 대상자 지원자 ({assignedApps.length}명)
-                    </span>
-                    {assignedApps.length === 0 ? (
-                      <span className="text-[11px] text-ink-400 italic">배정된 지원자 없음</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {assignedApps.map((app) => (
-                          <span key={app.id} className="text-xs bg-cream-100 text-ink-900 px-2 py-0.5 rounded font-medium">
-                            {app.name} ({app.assignedTeam || app.wishTeam1 || '팀미지정'})
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </Card>
 
       {/* 3. 지원자 배정 보드 — 미배정 명단에서 골라 시간표에 앉힌다.
           예전에는 지원자 한 줄에 슬롯 드롭다운 하나였다(200명 = 드롭다운 200번). */}
       <Card className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 pb-3">
-          <span className="text-sm font-bold text-ink-900">
-            지원자 배정 ({applicants.filter((a) => !a.slotId).length}명 미배정 / 전체 {applicants.length}명)
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* 단축키만 두면 아무도 있는 줄 모른다 — 버튼으로도 보여 주고 단축키를 옆에 적는다. */}
-            {undoStack.length > 0 && (
-              <SecondaryButton type="button" onClick={handleUndo} title="Ctrl+Z">
-                <Icon name="refresh" size={14} className="mr-1 inline" />
-                되돌리기 ({undoStack[undoStack.length - 1]!.label})
-              </SecondaryButton>
-            )}
-            {/* 회장단은 대개 엑셀에서 표를 이미 완성해 온다 — 그걸 다시 손으로 옮기게 하지 않는다. */}
-            <SecondaryButton type="button" onClick={() => setShowPaste(true)} disabled={existingPanels.length === 0}>
-              <Icon name="layers" size={14} className="mr-1 inline" />
-              엑셀 시간표 붙여넣기
+        <StepHeading
+          step={2}
+          title="지원자·면접관 배정"
+          hint="왼쪽에서 사람을 고르고, 오른쪽 시간표의 줄을 누르면 앉습니다"
+          state={existingPanels.length === 0 ? 'todo' : unassignedCount === 0 ? 'done' : 'current'}
+          right={
+            <>
+              <AssignProgress done={applicants.length - unassignedCount} total={applicants.length} />
+              {/* 면접관을 빠뜨린 줄은 당일 그 시간대에 아무도 없다는 뜻이다 — 숫자로 남겨 둔다. */}
+              {slotsMissingInterviewer > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                  <Icon name="alert" size={12} className="inline" />
+                  면접관 없는 줄 {slotsMissingInterviewer}
+                </span>
+              )}
+            </>
+          }
+        />
+
+        {/* 가장 빠른 길을 가장 눈에 띄게 둔다. 회장단은 대개 엑셀에서 표를 이미 완성해 오는데,
+            그 버튼이 카드 구석의 회색 글씨면 아무도 못 찾고 200번을 손으로 넣는다. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" onClick={() => setShowPaste(true)} disabled={existingPanels.length === 0}>
+            <Icon name="layers" size={15} className="mr-1.5 inline" />
+            엑셀 시간표 붙여넣기
+          </Button>
+          <SecondaryButton type="button" onClick={() => setShowTimetable(true)} disabled={slots.length === 0}>
+            <Icon name="doc" size={14} className="mr-1 inline" />
+            시간표 한 장으로 보기
+          </SecondaryButton>
+          {/* 단축키만 두면 아무도 있는 줄 모른다 — 버튼으로도 보여 주고 단축키를 옆에 적는다. */}
+          {undoStack.length > 0 && (
+            <SecondaryButton type="button" onClick={handleUndo} title="Ctrl+Z">
+              <Icon name="refresh" size={14} className="mr-1 inline" />
+              되돌리기 ({undoStack[undoStack.length - 1]!.label}) · Ctrl+Z
             </SecondaryButton>
-          </div>
+          )}
         </div>
 
         <AssignBoard
@@ -770,11 +708,13 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
           onUnassign={(applicantId) => handleBulkAssign([{ applicantId, slotId: null }])}
           onFillInterviewers={handleFillInterviewers}
           onNoteChange={handleNoteChange}
+          onDeleteSlot={handleDeleteSlot}
         />
       </Card>
 
 
       <DutyRoster
+        step={3}
         cohortId={selectedCohortId}
         startTimes={startTimes}
         durationAt={durationAt}

@@ -63,6 +63,7 @@ export function AssignBoard({
   onUnassign,
   onFillInterviewers,
   onNoteChange,
+  onDeleteSlot,
 }: {
   applicants: BoardApplicant[];
   slots: BoardSlot[];
@@ -77,6 +78,8 @@ export function AssignBoard({
   /** 채우기 핸들 — 이 슬롯들의 면접관을 이 한 벌로 덮어쓴다. 계정이 없으면 이름만 넘긴다. */
   onFillInterviewers: (slotIds: string[], people: InterviewerRef[]) => void;
   onNoteChange: (slotId: string, note: string) => void;
+  /** 그 줄(슬롯)을 지운다. 예전에는 카드 42장짜리 별도 목록에만 있어서 표에서 표로 오갔다. */
+  onDeleteSlot: (slotId: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
@@ -116,7 +119,13 @@ export function AssignBoard({
         name,
         slots: [...list].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
       }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+      // 이름순(ko)으로 두면 '비대면 A조'가 'A조'보다 **앞에** 선다(한글이 라틴보다 먼저다).
+      // 지난 기수 표도, 사람 머릿속 순서도 A조 → B조 → 비대면이다. 먼저 시작하는 조를 앞에 둔다.
+      .sort(
+        (a, b) =>
+          new Date(a.slots[0]?.startsAt ?? 0).getTime() - new Date(b.slots[0]?.startsAt ?? 0).getTime() ||
+          a.name.localeCompare(b.name, 'ko')
+      );
   }, [slots]);
 
   // 타이핑 칸이 쓰는 후보 목록. 이미 앉은 사람도 넣는다 — 이름을 치면 그 자리에서 옮겨진다
@@ -216,6 +225,32 @@ export function AssignBoard({
     <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
       {/* ── 미배정 명단 ─────────────────────────────────────────── */}
       <div className="flex max-h-[70vh] flex-col gap-2 rounded-xl border border-cream-200 bg-cream-25 p-3">
+        {/* 이 보드는 **고르기 → 앉히기** 두 동작이 전부인데, 예전에는 그 사실이 사람을 고른 뒤에야
+            회색 글씨로 나타났다. 처음 여는 사람은 왼쪽 이름을 눌러도 아무 일이 안 일어나는 것처럼
+            보여서 손이 멈춘다. 두 단계를 **늘 그려 두고 지금 단계만 불을 켠다.** */}
+        <ol className="flex items-center gap-1 text-[11px] font-bold">
+          {[
+            { n: 1, label: '사람 고르기', on: selected.size === 0 },
+            { n: 2, label: '시간표 줄 누르기', on: selected.size > 0 },
+          ].map((st) => (
+            <li
+              key={st.n}
+              className={`flex flex-1 items-center gap-1 rounded-lg px-2 py-1.5 ${
+                st.on ? 'bg-coral-500 text-white' : 'bg-white text-ink-400'
+              }`}
+            >
+              <span
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                  st.on ? 'bg-white text-coral-600' : 'bg-cream-200 text-ink-400'
+                }`}
+              >
+                {st.n}
+              </span>
+              <span className="truncate">{st.label}</span>
+            </li>
+          ))}
+        </ol>
+
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-ink-900">미배정 {pool.length}명</span>
           {selected.size > 0 && (
@@ -279,14 +314,13 @@ export function AssignBoard({
           )}
         </div>
 
-        {selected.size > 0 && (
-          <p className="rounded-lg bg-coral-50 px-2 py-1.5 text-[11px] font-semibold text-coral-700">
-            {selected.size}명 선택됨 — 오른쪽 시간표의 줄을 누르세요.
-            <span className="mt-0.5 block font-normal text-ink-500">
-              Shift 로 범위 선택. 줄에 이름을 쳐서 넣어도 됩니다.
-            </span>
-          </p>
-        )}
+        <p className="rounded-lg bg-white px-2 py-1.5 text-[11px] text-ink-500">
+          {selected.size > 0 ? (
+            <strong className="text-coral-700">{selected.size}명 선택됨 — 오른쪽 표에서 앉힐 줄을 누르세요.</strong>
+          ) : (
+            <>여러 명을 눌러 한 번에 앉힐 수 있습니다. <strong>Shift</strong> 로 범위 선택.</>
+          )}
+        </p>
       </div>
 
       {/* ── 시간표 ──────────────────────────────────────────────── */}
@@ -299,7 +333,13 @@ export function AssignBoard({
         {panels.map((panel) => (
           <div key={panel.name} className="overflow-hidden rounded-xl border border-cream-200">
             <div className="flex items-center justify-between gap-2 bg-cream-100 px-3 py-2">
-              <span className="text-xs font-bold text-ink-900">{panel.name}</span>
+              <span className="text-xs font-bold text-ink-900">
+                {panel.name}
+                {/* 조마다 몇 명이 들어갔는지 — 조 사이의 쏠림은 여기서만 보인다. */}
+                <span className="ml-1.5 rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-ink-500">
+                  {panel.slots.reduce((n, sl) => n + (assignedBySlot.get(sl.id)?.length ?? 0), 0)}명
+                </span>
+              </span>
               <span className="text-[11px] text-ink-500">
                 {panel.slots[0] ? slotPlaceLabel(panel.slots[0]) : ''}
               </span>
@@ -328,14 +368,33 @@ export function AssignBoard({
                       onPointerEnter={() =>
                         fill && fill.panel === panel.name && setFill({ ...fill, toIdx: idx })
                       }
-                      className={filling ? 'bg-blue-50' : ''}
+                      // 사람을 고른 동안에는 **줄 전체가 놓을 자리**라는 것이 보여야 한다.
+                      // 예전에는 시간 칸에만 hover 색이 있어서, 표 어디를 눌러야 하는지 알 수 없었다.
+                      className={`group ${filling ? 'bg-blue-50' : canPlace ? 'cursor-pointer hover:bg-coral-50' : ''}`}
                     >
-                      <td
-                        className={`p-2 align-top ${canPlace ? 'cursor-pointer hover:bg-coral-50' : ''}`}
-                        onClick={() => canPlace && place(slot.id)}
-                      >
+                      <td className="p-2 align-top" onClick={() => canPlace && place(slot.id)}>
                         <span className="block font-bold text-ink-900">
                           {formatTimeRange(new Date(slot.startsAt).getTime(), slot.durationMin ?? 30)}
+                        </span>
+                        <span className="mt-0.5 flex items-center gap-1.5">
+                          {/* 몇 명이 앉았는지 줄마다 보인다 — 예전에는 이름을 세어야 알 수 있었다. */}
+                          <span className={`text-[10px] font-bold ${seated.length === 0 ? 'text-ink-300' : 'text-ink-500'}`}>
+                            {seated.length}명
+                          </span>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteSlot(slot.id);
+                              }}
+                              title="이 시간대 줄을 지웁니다"
+                              aria-label="이 줄 삭제"
+                              className="rounded px-1 text-[10px] font-bold text-ink-300 opacity-0 transition-opacity hover:bg-coral-100 hover:text-coral-700 focus:opacity-100 group-hover:opacity-100"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </span>
                       </td>
 
@@ -356,8 +415,16 @@ export function AssignBoard({
                               e.preventDefault();
                               setFill({ panel: panel.name, fromIdx: idx, toIdx: idx });
                             }}
-                            className="absolute bottom-1 right-1 h-2.5 w-2.5 cursor-ns-resize rounded-[2px] border border-white bg-blue-600 hover:scale-125"
+                            // 10px 짜리 점은 아무도 못 찾았다. 줄에 손을 올리면 커지고 테두리가 생겨
+                            // '잡을 수 있는 것'으로 보이게 한다(엑셀 채우기 핸들과 같은 자리·같은 커서).
+                            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 cursor-ns-resize rounded-[3px] border-2 border-white bg-blue-600 shadow transition-transform group-hover:scale-125"
                           />
+                        )}
+                        {/* 끄는 동안 몇 칸이 물드는지 숫자로 — 손을 떼고 나서야 아는 것은 되돌릴 거리다. */}
+                        {filling && fill && fill.fromIdx !== fill.toIdx && (
+                          <span className="absolute right-1 top-1 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            {Math.abs(fill.toIdx - fill.fromIdx) + 1}칸
+                          </span>
                         )}
                       </td>
 
@@ -581,10 +648,11 @@ function InterviewerCell({
             if (v === '__NAME__') setTyping(true);
             else if (v) onSet([...current, { userId: v }]);
           }}
-          className="h-5 w-16 border-dashed border-ink-300 bg-cream-50 px-1 text-[10px]"
+          // 20px 짜리 '+' 는 무엇을 고르는 칸인지 알 수 없었다. 칩과 같은 높이로 키우고 이름을 적는다.
+          className="h-6 w-[86px] border-dashed border-ink-300 bg-cream-50 px-1.5 text-[11px]"
           aria-label="면접관 추가"
         >
-          <option value="">+</option>
+          <option value="">+ 면접관</option>
           {staffMembers
             .filter((s) => !takenIds.includes(s.id))
             .map((s) => (
@@ -659,9 +727,10 @@ function NoteCell({
         }
       }}
       maxLength={200}
-      placeholder="—"
+      placeholder="예비석·정비 메모"
       aria-label="비고"
-      className="w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-ink-700 outline-none hover:border-cream-200 focus:border-coral-400 focus:bg-white"
+      // 투명 테두리 + placeholder '—' 는 '읽는 칸'으로 보였다. 점선을 늘 그려 둔다.
+      className="w-full rounded-md border border-dashed border-cream-300 bg-transparent px-1.5 py-1 text-[11px] text-ink-700 outline-none hover:border-ink-300 focus:border-solid focus:border-coral-400 focus:bg-white"
     />
   );
 }

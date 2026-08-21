@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardBlock, CardField, RowCard, Select, StatusMessage, TableCards } from '@/components/ui';
 import { formatTimeRange } from '@/recruit/timetable';
 import { DUTY_ALL, buildDutyRows, findDoubleBookedDuties, type DutyRow } from '@/recruit/duty-rules';
+import { StepHeading } from './step-heading';
 
 export interface DutyAssignmentRecord {
   startsAt: string;
@@ -15,6 +16,7 @@ export interface DutyAssignmentRecord {
 }
 
 export function DutyRoster({
+  step,
   cohortId,
   startTimes,
   durationAt,
@@ -22,6 +24,8 @@ export function DutyRoster({
   canManage,
   onLoaded,
 }: {
+  /** 배정 화면의 몇 번째 단계인가. 카드 셋이 같은 머리글 모양을 쓰도록 번호만 받는다. */
+  step: number;
   cohortId: string;
   startTimes: number[];
   durationAt: Record<number, number>;
@@ -111,30 +115,33 @@ export function DutyRoster({
   if (startTimes.length === 0) {
     return (
       <Card className="space-y-2">
-        <h2 className="text-base font-bold text-ink-900">대기실 업무 배정</h2>
-        <p className="text-xs text-ink-500">
-          면접 슬롯을 먼저 만들어 주세요. 대기실 표는 면접 시간표와 같은 시간축을 씁니다.
-        </p>
+        <StepHeading
+          step={step}
+          title="대기실 업무 배정"
+          hint="면접 슬롯을 먼저 만들어 주세요. 대기실 표는 면접 시간표와 같은 시간축을 씁니다."
+          state="todo"
+        />
       </Card>
     );
   }
 
   return (
     <Card className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 pb-3">
-        <div>
-          <h2 className="text-base font-bold text-ink-900">대기실 업무 배정</h2>
-          <p className="mt-1 text-xs text-ink-500">
-            면접관 말고 <strong>명단 체크·대기실 안내·인솔</strong>을 맡는 사람들입니다. 업무 이름은
-            “0. 공고·마감 설정”에서 바꿉니다.
-          </p>
-        </div>
-        {doubled.length > 0 && (
-          <span className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-700">
-            같은 시간에 두 업무를 맡은 사람 {doubled.length}건
-          </span>
-        )}
-      </div>
+      <StepHeading
+        step={step}
+        title="대기실 업무 배정"
+        hint="면접관 말고 명단 체크·대기실 안내·인솔을 맡는 사람들입니다 (업무 이름은 “0. 공고·마감 설정”에서)"
+        state={rows.some((r) => Object.values(r.byDuty ?? {}).some((c) => c?.userId || c?.userName)) ? 'done' : 'current'}
+        right={
+          <>
+            {doubled.length > 0 && (
+              <span className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-700">
+                같은 시간에 두 업무를 맡은 사람 {doubled.length}건
+              </span>
+            )}
+          </>
+        }
+      />
 
       {/* 업무 수만큼 열이 늘어나는 행렬이라 좁은 화면에서 특히 빨리 넘친다.
           폰에서는 시간대 하나 = 카드 하나로 세운다(업무가 칸 제목 대신 항목 이름이 된다). */}
