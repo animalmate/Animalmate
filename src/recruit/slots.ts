@@ -113,3 +113,16 @@ export async function deleteSlot(slotId: string) {
   const [deleted] = await db.delete(recruitSlots).where(eq(recruitSlots.id, slotId)).returning();
   return deleted ?? null;
 }
+
+/**
+ * 그 줄의 자유 메모를 고친다('예비석 2자리', '면접실 정비').
+ * 빈 문자열은 null 로 — 빈 칸과 지운 칸을 구분해 봐야 화면에 보이는 것은 같다.
+ */
+export async function updateSlotNote(slotId: string, note: string | null) {
+  const [updated] = await db
+    .update(recruitSlots)
+    .set({ note: note?.trim() || null })
+    .where(eq(recruitSlots.id, slotId))
+    .returning();
+  return updated ?? null;
+}

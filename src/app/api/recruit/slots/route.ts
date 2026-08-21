@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
-import { createSlot, createPanelSlots, listSlotsByCohort, listPanelNames, deleteSlot } from '@/recruit/slots';
+import { createSlot, createPanelSlots, listSlotsByCohort, listPanelNames, deleteSlot, getSlotById, updateSlotNote } from '@/recruit/slots';
 import { getSlotsInterviewersMap } from '@/recruit/slot-interviewers';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { internalError } from '@/http/errors';
@@ -124,6 +124,35 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ slot });
   } catch (e) {
     return internalError('recruit/slots POST', e);
+  }
+}
+
+/** 그 줄의 자유 메모('예비석 2자리', '면접실 정비')를 고친다. */
+export async function PATCH(req: Request): Promise<Response> {
+  const actor = await getCurrentActor();
+  if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isPrivileged(actor.role)) {
+    return NextResponse.json({ error: 'forbidden', message: '면접 슬롯 관리는 회장단만 할 수 있습니다.' }, { status: 403 });
+  }
+
+  try {
+    const { id, note } = await req.json();
+    if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
+    if (note !== null && typeof note !== 'string') {
+      return NextResponse.json({ error: 'invalid_note' }, { status: 400 });
+    }
+    // 한 줄짜리 메모다. 길이를 안 막으면 본문을 통째로 붙여 넣어 시간표가 무너진다.
+    if (typeof note === 'string' && note.length > 200) {
+      return NextResponse.json({ error: 'too_long', message: '메모는 200자까지 쓸 수 있습니다.' }, { status: 400 });
+    }
+
+    const before = await getSlotById(String(id));
+    if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+    const updated = await updateSlotNote(String(id), note ?? null);
+    return NextResponse.json({ slot: updated });
+  } catch (e) {
+    return internalError('recruit/slots PATCH', e);
   }
 }
 
