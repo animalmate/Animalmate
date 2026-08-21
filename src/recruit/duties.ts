@@ -1,7 +1,7 @@
 // 면접 당일 대기실 업무 배정 CRUD. 순수 규칙은 duty-rules.ts 에 있다.
 import { db } from '../db/client';
 import { recruitDutyAssignments, users } from '../db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DUTY_ALL } from './duty-rules';
 
 export async function listDutyAssignments(cohortId: string) {
@@ -12,7 +12,8 @@ export async function listDutyAssignments(cohortId: string) {
       duty: recruitDutyAssignments.duty,
       userId: recruitDutyAssignments.userId,
       note: recruitDutyAssignments.note,
-      userName: users.name,
+      // 계정이 있으면 users.name 이 원본이고, 없으면 그 칸에 적은 이름을 쓴다(0028).
+      userName: sql<string | null>`coalesce(${users.name}, ${recruitDutyAssignments.name})`,
     })
     .from(recruitDutyAssignments)
     .leftJoin(users, eq(recruitDutyAssignments.userId, users.id))
@@ -29,12 +30,16 @@ export async function setDutyAssignment(input: {
   startsAt: Date;
   duty: string;
   userId: string | null;
+  /** 계정이 없는 사람의 이름. `userId` 와 둘 중 하나만 온다(0028). */
+  name?: string | null;
   note: string | null;
   actorUserId: string;
 }) {
-  const { cohortId, startsAt, duty, userId, note, actorUserId } = input;
+  const { cohortId, startsAt, duty, userId, name, note, actorUserId } = input;
+  const cleanName = name?.trim() || null;
 
-  const isEmpty = duty === DUTY_ALL ? !note?.trim() : !userId;
+  // 계정도 이름도 없으면 빈 칸이다.
+  const isEmpty = duty === DUTY_ALL ? !note?.trim() : !userId && !cleanName;
   if (isEmpty) {
     await db
       .delete(recruitDutyAssignments)
@@ -55,6 +60,8 @@ export async function setDutyAssignment(input: {
       startsAt,
       duty,
       userId: duty === DUTY_ALL ? null : userId,
+      // 계정이 있으면 이름을 베껴 두지 않는다 — 나중에 이름을 고쳤을 때 두 곳이 어긋난다.
+      name: duty === DUTY_ALL || userId ? null : cleanName,
       note: duty === DUTY_ALL ? note!.trim() : null,
       createdBy: actorUserId,
     })
@@ -62,6 +69,7 @@ export async function setDutyAssignment(input: {
       target: [recruitDutyAssignments.cohortId, recruitDutyAssignments.startsAt, recruitDutyAssignments.duty],
       set: {
         userId: duty === DUTY_ALL ? null : userId,
+        name: duty === DUTY_ALL || userId ? null : cleanName,
         note: duty === DUTY_ALL ? note!.trim() : null,
       },
     })

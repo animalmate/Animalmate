@@ -1,16 +1,17 @@
 // F9 면접 슬롯별 운영진(면접관) 배정 관리 서비스
 import { db } from '../db/client';
 import { recruitSlotInterviewers, users, memberships } from '../db/schema';
-import { eq, and, inArray, isNull } from 'drizzle-orm';
+import { eq, and, inArray, isNull, sql } from 'drizzle-orm';
 import type { Role } from '../auth/permissions';
 
 /** 슬롯에 배정된 면접관 한 명. 화면은 이름만 쓰지만 해제 요청에 userId 가 필요하다. */
 export interface SlotInterviewer {
   id: string;
   slotId: string;
-  userId: string;
+  /** 계정이 연결돼 있으면 그 id. 이름만 적은 사람은 null — 시간표에는 뜨지만 채점은 못 한다. */
+  userId: string | null;
   name: string;
-  /** 활성 멤버십이 없으면 null(탈퇴·만료된 뒤에도 지난 배정 기록은 남는다). */
+  /** 활성 멤버십이 없으면 null(탈퇴·만료된 뒤에도, 이름만 적은 사람도 null). */
   role: Role | null;
 }
 
@@ -68,11 +69,13 @@ export async function getSlotInterviewers(slotId: string): Promise<SlotInterview
       id: recruitSlotInterviewers.id,
       slotId: recruitSlotInterviewers.slotId,
       userId: recruitSlotInterviewers.userId,
-      name: users.name,
+      // 계정이 있으면 users.name 이 원본이다(이름을 고치면 시간표도 따라간다).
+      // 없으면 그 칸에 직접 적은 이름을 쓴다. innerJoin 이면 계정 없는 사람이 통째로 사라진다.
+      name: sql<string>`coalesce(${users.name}, ${recruitSlotInterviewers.name})`,
       role: memberships.role,
     })
     .from(recruitSlotInterviewers)
-    .innerJoin(users, eq(recruitSlotInterviewers.userId, users.id))
+    .leftJoin(users, eq(recruitSlotInterviewers.userId, users.id))
     .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, 'active')))
     .where(eq(recruitSlotInterviewers.slotId, slotId));
 }
@@ -84,11 +87,13 @@ export async function getSlotsInterviewersMap(slotIds: string[]): Promise<Record
       id: recruitSlotInterviewers.id,
       slotId: recruitSlotInterviewers.slotId,
       userId: recruitSlotInterviewers.userId,
-      name: users.name,
+      // 계정이 있으면 users.name 이 원본이다(이름을 고치면 시간표도 따라간다).
+      // 없으면 그 칸에 직접 적은 이름을 쓴다. innerJoin 이면 계정 없는 사람이 통째로 사라진다.
+      name: sql<string>`coalesce(${users.name}, ${recruitSlotInterviewers.name})`,
       role: memberships.role,
     })
     .from(recruitSlotInterviewers)
-    .innerJoin(users, eq(recruitSlotInterviewers.userId, users.id))
+    .leftJoin(users, eq(recruitSlotInterviewers.userId, users.id))
     .leftJoin(memberships, and(eq(users.id, memberships.userId), eq(memberships.status, 'active')))
     .where(inArray(recruitSlotInterviewers.slotId, slotIds));
 
@@ -98,4 +103,49 @@ export async function getSlotsInterviewersMap(slotIds: string[]): Promise<Record
     map[r.slotId]!.push(r);
   }
   return map;
+}
+
+/**
+ * 여러 슬롯의 면접관을 **한 벌로 덮어쓴다** — 엑셀의 채우기 핸들(드래그 복사)에 해당한다.
+ *
+ * 왜 필요한가: 지난 기수 표를 보면 같은 면접관 3명이 연속 3~6칸을 그대로 맡는다
+ * (한 조가 10:30~12:00 을 맡고, 그다음 조가 12:00~13:30 을 맡는 식).
+ * 칸마다 드롭다운을 3번씩 누르면 조 하나에 120번이다. 엑셀이 편했던 이유가 바로 이 반복을
+ * 드래그 한 번으로 끝낸다는 것이라, 같은 동작을 그대로 옮긴다.
+ *
+ * 덮어쓰기(replace)인 이유: 채우기는 "이 칸을 저 칸처럼 만든다"는 뜻이다. 더하기로 두면
+ * 드래그할 때마다 대상 칸에 사람이 쌓여, 지우려면 다시 한 칸씩 눌러야 한다.
+ *
+ * 호출부가 **미리 슬롯의 기수와 userId 자격을 확인해야 한다**(규칙 #6).
+ */
+/** 한 칸에 세울 면접관 한 명 — 계정이 있으면 `userId`, 없으면 이름만. */
+export type InterviewerRef = { userId: string; name?: never } | { userId?: never; name: string };
+
+export async function setSlotInterviewers(slotIds: string[], people: InterviewerRef[]) {
+  if (slotIds.length === 0) return { cleared: 0, added: 0 };
+
+  return db.transaction(async (tx) => {
+    // 한 문장이어야 한다 — 지우고 넣는 사이에 실패하면 그 칸들이 통째로 빈 채 남는다.
+    const cleared = await tx
+      .delete(recruitSlotInterviewers)
+      .where(inArray(recruitSlotInterviewers.slotId, slotIds))
+      .returning({ id: recruitSlotInterviewers.id });
+
+    if (people.length === 0) return { cleared: cleared.length, added: 0 };
+
+    const rows = slotIds.flatMap((slotId) =>
+      people.map((p) => ({
+        slotId,
+        userId: p.userId ?? null,
+        // 계정이 있으면 이름을 베껴 두지 않는다 — 나중에 이름을 고쳤을 때 두 곳이 어긋난다.
+        name: p.userId ? null : p.name!.trim(),
+      }))
+    );
+    const added = await tx
+      .insert(recruitSlotInterviewers)
+      .values(rows)
+      .onConflictDoNothing()
+      .returning({ id: recruitSlotInterviewers.id });
+    return { cleared: cleared.length, added: added.length };
+  });
 }

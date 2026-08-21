@@ -60,16 +60,29 @@ export function DutyRoster({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roles, assignments, startTimes]);
 
-  const save = async (startsAtMs: number, duty: string, userId: string | null, note: string | null) => {
+  const save = async (
+    startsAtMs: number,
+    duty: string,
+    userId: string | null,
+    note: string | null,
+    /** 계정이 없는 사람은 이름만 보낸다(0028) — 대기실 업무는 로그인할 일이 없다. */
+    name: string | null = null
+  ) => {
     // 화면을 먼저 바꾸고 저장한다 — 셀 하나 고를 때마다 전체를 다시 불러오면 느리다.
     setAssignments((prev) => {
       const iso = new Date(startsAtMs).toISOString();
       const rest = prev.filter((a) => !(new Date(a.startsAt).getTime() === startsAtMs && a.duty === duty));
-      const isEmpty = duty === DUTY_ALL ? !note?.trim() : !userId;
+      const isEmpty = duty === DUTY_ALL ? !note?.trim() : !userId && !name?.trim();
       if (isEmpty) return rest;
       return [
         ...rest,
-        { startsAt: iso, duty, userId, note, userName: staffMembers.find((s) => s.id === userId)?.name ?? null },
+        {
+          startsAt: iso,
+          duty,
+          userId,
+          note,
+          userName: userId ? staffMembers.find((s) => s.id === userId)?.name ?? null : name?.trim() || null,
+        },
       ];
     });
 
@@ -79,7 +92,7 @@ export function DutyRoster({
       const res = await fetch('/api/recruit/duties', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cohortId, startsAt: new Date(startsAtMs).toISOString(), duty, userId, note }),
+        body: JSON.stringify({ cohortId, startsAt: new Date(startsAtMs).toISOString(), duty, userId, name, note }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -148,20 +161,13 @@ export function DutyRoster({
                   {roles.map((role) => (
                     <td key={role} className="border-b border-l border-cream-100 p-1.5">
                       {canManage ? (
-                        <Select
-                          uiSize="sm"
-                          value={row.byDuty[role]?.userId ?? ''}
-                          onChange={(e) => save(row.startsAtMs, role, e.target.value || null, null)}
-                          aria-label={`${formatTimeRange(row.startsAtMs, durationAt[row.startsAtMs] ?? 30)} ${role}`}
-                          className="w-full"
-                        >
-                          <option value="">—</option>
-                          {staffMembers.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </Select>
+                        <DutyCellPicker
+                          cell={row.byDuty[role]}
+                          staffMembers={staffMembers}
+                          label={`${formatTimeRange(row.startsAtMs, durationAt[row.startsAtMs] ?? 30)} ${role}`}
+                          onPickUser={(userId) => save(row.startsAtMs, role, userId, null)}
+                          onPickName={(name) => save(row.startsAtMs, role, null, null, name)}
+                        />
                       ) : (
                         <span className="text-ink-700">{row.byDuty[role]?.userName ?? '—'}</span>
                       )}
@@ -254,5 +260,93 @@ export function DutyRoster({
         {saving && <span className="text-xs text-ink-400">저장 중…</span>}
       </div>
     </Card>
+  );
+}
+
+/**
+ * 대기실 한 칸 — 운영진 계정에서 고르거나, 계정이 없는 사람은 이름을 직접 친다(0028).
+ *
+ * 계정을 강제하지 않는 이유: 대기실 업무(명단 체크·인솔)를 맡는 사람은 홈페이지에 로그인할
+ * 일이 전혀 없다. 그런데 계정이 있어야만 넣을 수 있으면 그 사람이 표에서 빠지고, 면접 당일
+ * 그 시간대 안내가 비어 버린다(33기에 실제로 그런 사람이 있었다).
+ */
+function DutyCellPicker({
+  cell,
+  staffMembers,
+  label,
+  onPickUser,
+  onPickName,
+}: {
+  cell?: { userId: string | null; userName: string | null };
+  staffMembers: { id: string; name: string }[];
+  label: string;
+  onPickUser: (userId: string | null) => void;
+  onPickName: (name: string) => void;
+}) {
+  const [typing, setTyping] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  if (typing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setTyping(false);
+          if (draft.trim()) onPickName(draft.trim());
+          setDraft('');
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') {
+            setDraft('');
+            setTyping(false);
+          }
+        }}
+        maxLength={40}
+        placeholder="이름"
+        aria-label={`${label} 이름 직접 입력`}
+        className="w-full rounded-md border border-coral-400 px-1 py-0.5 text-[11px] outline-none"
+      />
+    );
+  }
+
+  // 계정 없이 이름만 들어간 칸은 셀렉트의 어느 항목과도 맞지 않는다 — 그대로 보여 주고 누르면 고친다.
+  if (!cell?.userId && cell?.userName) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(cell.userName ?? '');
+          setTyping(true);
+        }}
+        title="계정 없이 이름만 — 누르면 고칩니다"
+        className="w-full rounded-md bg-cream-100 px-1 py-0.5 text-left text-[11px] font-semibold text-ink-700 hover:bg-cream-200"
+      >
+        {cell.userName}
+      </button>
+    );
+  }
+
+  return (
+    <Select
+      uiSize="sm"
+      value={cell?.userId ?? ''}
+      onChange={(e) => {
+        if (e.target.value === '__NAME__') setTyping(true);
+        else onPickUser(e.target.value || null);
+      }}
+      aria-label={label}
+      className="w-full"
+    >
+      <option value="">—</option>
+      {staffMembers.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.name}
+        </option>
+      ))}
+      <option value="__NAME__">이름 직접 입력…</option>
+    </Select>
   );
 }

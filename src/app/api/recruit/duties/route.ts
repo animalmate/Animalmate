@@ -46,7 +46,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { cohortId, startsAt, duty, userId, note } = body;
+    const { cohortId, startsAt, duty, userId, name, note } = body;
     if (!cohortId || !startsAt || !duty) {
       return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
     }
@@ -66,12 +66,17 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
     if (duty === DUTY_ALL) checkLength('공지 문구', note, LIMITS.title);
+    // 계정 없이 이름만 적는 사람(0028). 길면 표 한 칸이 무너진다.
+    if (typeof name === 'string' && name.trim().length > 40) {
+      return NextResponse.json({ error: 'name_too_long', message: '이름은 40자까지 쓸 수 있습니다.' }, { status: 400 });
+    }
 
     const saved = await setDutyAssignment({
       cohortId,
       startsAt: parsed,
       duty,
       userId: typeof userId === 'string' && userId ? userId : null,
+      name: typeof name === 'string' ? name : null,
       note: typeof note === 'string' ? note : null,
       actorUserId: actor.userId,
     });
