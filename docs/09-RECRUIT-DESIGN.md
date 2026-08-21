@@ -50,8 +50,8 @@ enum:
   **UNIQUE(applicant_id, author_user_id)**. 지원자별 **개인** 메모(작성자당 1개). 면접 콘솔 자동 저장.
 - **`screen_notes`** (context_key PK, content default '', updated_by?, updated_at) —
   화면별 **공용** 메모지. context_key 예: `recruit:doc`, `recruit:interview-assign`, `recruit:interview:<날짜>`.
-- **`recruit_mapping_presets`** (id, name unique, `mapping` jsonb `{필드명: CSV헤더}`, created_by, updated_at) —
-  CSV 열↔필드 매핑 프리셋. 매 기수 열 이름이 달라질 수 있어 저장·재사용.
+- ~~`recruit_mapping_presets`~~ — CSV 열↔필드 매핑 프리셋이었다. 업로드 화면과 함께 쓸 곳이
+  없어져 **마이그레이션 0029 로 드롭**했다(2026-08-21, 결정 130). 운영·테스트 모두 0행이었다.
 
 관계: applicants.slot_id → slots(set null). scores/memos → applicants(cascade). 폐기 = cohort 삭제 →
 slots·applicants cascade → scores·memos cascade. screen_notes·presets 는 cohort 독립(재사용) — 폐기 시 별도 처리.

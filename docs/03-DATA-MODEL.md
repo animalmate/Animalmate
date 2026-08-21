@@ -221,7 +221,8 @@
     comment?, created_at, updated_at) UNIQUE(applicant_id, scorer_user_id, stage). 본인 점수만 수정. DB CHECK 로 범위 강제.
   - `recruit_memos` (id, applicant_id, author_user_id, content, updated_at) UNIQUE(applicant_id, author_user_id)
     — 지원자별 **개인** 메모(작성자당 1개). `screen_notes` (context_key PK, content, updated_by?, updated_at)
-    — 화면별 **공용** 메모지. `recruit_mapping_presets` (id, name uq, mapping jsonb, created_by, updated_at) — CSV 매핑.
+    — 화면별 **공용** 메모지. (`recruit_mapping_presets` = CSV 매핑 프리셋. **0029 로 드롭**했다 —
+    업로드 화면이 없어지면서 읽고 쓰는 코드가 사라졌고, 운영·테스트 모두 0행이었다.)
   - **상태 자동 전환**: 면접 점수 최초 저장 시 doc_pass→interview_done, 점수 0개로 감소 시 interview_done→doc_pass
     (같은 트랜잭션). 면접불참(interview_noshow)은 **면접관(운영진)이 면접 콘솔에서 표시**하고 되돌릴 수도 있다
     (2026-07-31, 07-DECISIONS 67). 순수 함수 `nextStatusOnScoreChange` 로 분리(단위 테스트).
