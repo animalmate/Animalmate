@@ -616,18 +616,6 @@ export const screenNotes = pgTable('screen_notes', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ⚠ **고아 테이블**(2026-08-21, 결정 123). CSV 업로드 화면을 지우면서 이것을 읽고 쓰는 코드가
-// 전부 없어졌다. 드롭은 되돌릴 수 없고 급하지도 않아 남겨 둔다 — 정리 계획은 `04-TODO.md`.
-// CSV 열↔필드 매핑 프리셋(매 기수 열 이름이 달라질 수 있어 저장·재사용). mapping = { 필드명: CSV헤더 }.
-export const recruitMappingPresets = pgTable('recruit_mapping_presets', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull().unique(),
-  mapping: jsonb('mapping').$type<Record<string, string>>().notNull(),
-  createdBy: uuid('created_by')
-    .notNull()
-    .references(() => users.id),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
 
 // ── 동아리 일정(캘린더) ────────────────────────────────────────────────
 // 총회·MT·정기회의처럼 **날짜가 있는 모든 것**. 봉사 회차(events)와는 별개다:

@@ -1,0 +1,1 @@
+DROP TABLE "recruit_mapping_presets" CASCADE;
