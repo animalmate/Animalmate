@@ -212,7 +212,9 @@
     apply_route?, other_activities?, expected_frequency?, wish_team1?, wish_team2?, assigned_team?,
     **near_station?**(주소 대신 역명), ot_attend?(text), remote_interview_wish?(text), essay_intro?, essay_values?,
     **essay_values_topic?**(가치관 문항에서 고른 주제), **english_name?**(최종 합격자 로타랙트 가입 안내용),
-    status, slot_id?, interview_link?, uploaded_by?(set null), created_at) — CSV 업로드 또는 온라인 접수.
+    status, slot_id?, interview_link?, uploaded_by?(set null), created_at) — **사이트 지원 폼 접수**.
+    `uploaded_by` 는 33기까지 쓰던 CSV 업로드가 남긴 칸이다(화면은 2026-08-21 폐기, 결정 123).
+    옛 행이 가리키고 있어 컬럼은 지우지 않는다. 폼으로 들어온 행은 null 이다.
     status = received→doc_fail|doc_pass→interview_done|interview_noshow
     →final_pass|final_fail. **phone·자기소개서 = PII, RAG 반입 금지(규칙 #5)·커밋/시드 금지(규칙 #4).**
   - `recruit_scores` (id, applicant_id, scorer_user_id, stage[document|interview], score numeric(3,1) 0~10 0.5단위,
