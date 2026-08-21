@@ -140,37 +140,71 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     }
   };
 
-  const handleConfirmFinalStatus = async (status: 'final_pass' | 'final_fail') => {
+  /** 한 통에 담아 보낸다. 응답의 제외 사유를 사람이 읽을 문장으로 접어 준다. */
+  const bulkStatus = async (ids: string[], status: 'final_pass' | 'final_fail') => {
+    if (ids.length === 0) return { ok: true, updated: 0, note: '' };
+    const res = await fetch('/api/recruit/applicants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // 서버가 이 기수 소속만 바꾸도록 범위를 함께 보낸다.
+      body: JSON.stringify({ action: 'bulk_status', ids, status, cohortId: selectedCohortId }),
+    });
+    // 실패를 삼키지 않는다 — 예전에는 res.ok 가 아니면 아무 표시도 없어서,
+    // 서버가 거절해도 화면상 "눌러도 아무 일도 안 일어나는" 상태였다.
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, updated: 0, note: data.message || data.error || `${res.status}` };
+    // 제외 사유를 뭉뚱그리면 다른 기수를 고른 실수를 단계 문제로 오해한다.
+    const reasons = [
+      data.skippedCount ? `${data.skippedCount}명은 면접 단계가 아님` : '',
+      data.outOfScopeCount ? `${data.outOfScopeCount}명은 이 기수 소속이 아님` : '',
+    ].filter(Boolean);
+    return { ok: true, updated: data.updatedCount ?? 0, note: reasons.join(', ') };
+  };
+
+  /**
+   * 최종 합격 확정 — **고른 사람은 합격, 매트릭스에 남은 나머지는 불합격**이다.
+   *
+   * 불합격을 따로 처리하지 않는 이유(2026-08-21 사용자 결정): 최종 합격자를 제외한 사람은 그냥
+   * 불합격이다. 두 번 나눠 누르게 하면 두 번째를 빠뜨릴 수 있는데, 그러면 떨어진 사람이
+   * 지원자 조회에서 영영 '결과 대기'로 보인다(`lookup-visibility.ts` — 최종 상태가 아니면
+   * 당락을 내보내지 않는다). 한 번의 확정으로 기수 전체가 끝나야 그 구멍이 생기지 않는다.
+   */
+  const handleConfirmFinal = async () => {
     if (selectedIds.size === 0) return;
+    const passIds = Array.from(selectedIds);
+    if (
+      !confirm(
+        `최종 합격 ${passIds.length}명을 확정합니다.\n\n` +
+          `면접을 본 나머지 ${autoFailIds.length}명은 같은 순간에 최종 불합격으로 처리됩니다.\n` +
+          `면접 불참 ${excluded.noshow.length}명은 '면접 불참'으로 그대로 둡니다.\n\n` +
+          `확정한 결과는 '최종 합격 결과 지원자 공개'를 켜는 순간 지원자에게 그대로 나갑니다.\n\n진행할까요?`
+      )
+    )
+      return;
+
     setLoading(true);
     try {
-      const res = await fetch('/api/recruit/applicants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'bulk_status',
-          ids: Array.from(selectedIds),
-          status,
-          // 서버가 이 기수 소속만 바꾸도록 범위를 함께 보낸다.
-          cohortId: selectedCohortId,
-        }),
-      });
-      // 실패를 삼키지 않는다 — 예전에는 res.ok 가 아니면 아무 표시도 없어서,
-      // 서버가 거절해도 화면상 "눌러도 아무 일도 안 일어나는" 상태였다.
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        // 제외 사유를 뭉뚱그리면 다른 기수를 고른 실수를 단계 문제로 오해한다.
-        const reasons = [
-          data.skippedCount ? `${data.skippedCount}명은 면접 단계가 아님` : '',
-          data.outOfScopeCount ? `${data.outOfScopeCount}명은 이 기수 소속이 아님` : '',
-        ].filter(Boolean);
-        const skipped = reasons.length > 0 ? ` (제외: ${reasons.join(', ')})` : '';
-        setMessage(`✅ ${data.updatedCount}명을 [${status === 'final_pass' ? '최종 합격' : '최종 불합격'}]으로 확정했습니다.${skipped}`);
-        setSelectedIds(new Set());
-        await fetchCohortAndApplicants();
-      } else {
-        setMessage(`❌ ${data.message || data.error || '확정에 실패했습니다.'}`);
+      const pass = await bulkStatus(passIds, 'final_pass');
+      if (!pass.ok) {
+        setMessage(`❌ ${pass.note || '확정에 실패했습니다.'}`);
+        return;
       }
+      const fail = await bulkStatus(autoFailIds, 'final_fail');
+      if (!fail.ok) {
+        // 합격은 들어갔는데 불합격이 실패한 상태를 조용히 두면 절반만 확정된 채 발표된다.
+        setMessage(
+          `⚠️ 합격 ${pass.updated}명은 확정했지만 나머지 불합격 처리에 실패했습니다(${fail.note}). 다시 눌러 주세요.`
+        );
+        await fetchCohortAndApplicants();
+        return;
+      }
+      const note = [pass.note, fail.note].filter(Boolean).join(', ');
+      setMessage(
+        `✅ 최종 합격 ${pass.updated}명 · 최종 불합격 ${fail.updated}명을 확정했습니다.` +
+          (note ? ` (제외: ${note})` : '')
+      );
+      setSelectedIds(new Set());
+      await fetchCohortAndApplicants();
     } finally {
       setLoading(false);
     }
@@ -238,10 +272,30 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
 
   // 이 화면은 팀으로만 걸러져서, 실제로 결정할 수 있는 사람이 탈락자·미심사자 사이에 섞여 있었다.
   // 서버가 단계를 검증하므로 안전하긴 하지만, 고를 때 눈으로 찾아야 하는 건 그대로였다.
-  const DECIDABLE = ['interview_done', 'interview_noshow'];
+  const DECIDABLE = ['interview_done'];
   const DECIDED = ['final_pass', 'final_fail'];
 
-  const teamApplicants = sortedApplicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  /**
+   * 매트릭스에 서는 사람 = **면접을 실제로 보는 사람**(2026-08-21 사용자 결정).
+   *
+   * 면접에 배정됐고, 불참이 아니어야 한다. 최종 합격은 면접을 보고 나서 정하는 것이라
+   * 그 자리에 서지 않는 사람(서류 탈락·미배정·불참)을 함께 세워 두면 고를 때마다 눈으로 걸러야 한다.
+   *
+   * **불참자는 여기서 뺀다.** 뺀다고 사라지는 것이 아니라 `interview_noshow` 로 끝난다 —
+   * 지원자 조회에도 '면접 불참'으로 그대로 나간다(`lookup-visibility.ts`). 굳이 불합격으로
+   * 한 번 더 찍을 이유가 없다.
+   */
+  const inMatrix = (app: any) => app.slotId != null && app.status !== 'interview_noshow';
+
+  // 매트릭스 밖으로 빠진 사람은 **숫자로라도 보여 준다.** 그냥 감추면 33기처럼 배정에서 잊힌
+  // 서류 합격자가 아무 화면에도 안 나온 채 발표까지 간다(2026-08-21 실제로 3명 있었다).
+  const excluded = {
+    unassigned: sortedApplicants.filter((a) => a.status === 'doc_pass' && !a.slotId),
+    noshow: sortedApplicants.filter((a) => a.status === 'interview_noshow'),
+  };
+
+  const matrixPool = sortedApplicants.filter(inMatrix);
+  const teamApplicants = matrixPool.filter((app) => matchesTeamFilter(app, selectedTeam));
   const filteredApplicants = teamApplicants.filter((app) => {
     if (stageFilter === 'DECIDABLE') return DECIDABLE.includes(app.status);
     if (stageFilter === 'DECIDED') return DECIDED.includes(app.status);
@@ -250,20 +304,22 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
   });
   const decidableCount = teamApplicants.filter((a) => DECIDABLE.includes(a.status)).length;
 
+  // 합격을 확정하면 **나머지는 자동으로 불합격**이다(사용자 결정 2026-08-21). 그 '나머지'는
+  // 팀 필터와 무관하게 기수 전체에서 센다 — 팀별로 나눠 확정하면 다른 팀 사람이 결정되지 않은 채
+  // 남고, 지원자 조회에서 영영 '결과 대기'로 보인다.
+  const autoFailIds = matrixPool
+    .filter((a) => DECIDABLE.includes(a.status) && !selectedIds.has(a.id))
+    .map((a) => a.id);
+
   // 한 줄에서 뽑아 쓰는 값을 한 번만 계산한다 — 표(PC)와 카드(모바일)가 각자 계산하면
   // 한쪽만 고쳐 놓고 못 알아채는 일이 생긴다.
   const rows = filteredApplicants.map((app) => {
     const agg = aggregations[app.id];
 
-    // 경고가 `app.slotId &&` 로 시작해서, **슬롯을 아예 못 받은 사람은 아무 경고도 못 받았다.**
-    // 배정 단계에서 잊힌 사람이 정확히 그 경우인데 화면이 조용했다. 두 경우를 나눠 각각 말해 준다.
+    // 미배정·불참은 이제 매트릭스에 오지 않는다(위 `inMatrix`). 대신 표 위에서 숫자로 알린다.
+    // 여기 남는 경고는 하나뿐이다 — **면접을 보기로 해 놓고 점수가 한 개도 없는 사람**.
     const warns: string[] = [];
-    if (app.status === 'interview_noshow') {
-      // 불참이면 점수가 없는 게 당연하다. '채점 미기록'까지 같이 붙이면 문제가 두 개인 것처럼 보인다.
-      warns.push('면접 불참');
-    } else if (app.status === 'doc_pass' && !app.slotId) {
-      warns.push('면접 미배정');
-    } else if (app.slotId && (agg?.interviewScorerCount ?? 0) === 0) {
+    if ((agg?.interviewScorerCount ?? 0) === 0) {
       warns.push('면접 채점 미기록');
     }
 
@@ -295,7 +351,7 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
 
           <ToolbarSelect label="단계" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
             <option value="ALL">전체</option>
-            <option value="DECIDABLE">결정 대상 (면접 완료·불참)</option>
+            <option value="DECIDABLE">결정 대상 (면접 완료)</option>
             <option value="DECIDED">결정 완료</option>
             <option value="PENDING">아직 결정 단계 아님</option>
           </ToolbarSelect>
@@ -370,25 +426,43 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
             </span>
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-ink-500 font-semibold mr-1">
-              선택: <strong className="text-blue-600">{selectedIds.size}명</strong>
-            </span>
+            {/* 확정은 기수 전체를 한 번에 끝내는 일이라, 팀만 보고 있을 때는 누르지 못하게 한다.
+                팀별로 나눠 확정하면 다른 팀 사람이 결정되지 않은 채 남는다. */}
+            {selectedTeam !== 'ALL' && (
+              <span className="text-[12px] font-semibold text-amber-700">팀 필터를 전체로 두어야 확정할 수 있습니다</span>
+            )}
             <Button
               type="button"
-              disabled={loading || selectedIds.size === 0}
-              onClick={() => handleConfirmFinalStatus('final_pass')}
+              disabled={loading || selectedIds.size === 0 || selectedTeam !== 'ALL'}
+              onClick={handleConfirmFinal}
             >
-              선택 {selectedIds.size}명 최종 합격 확정
+              {/* 아무도 안 골랐을 때 '0명 확정 · 나머지 185명 불합격'이라고 적혀 있으면
+                  누르면 전원이 떨어지는 버튼처럼 읽힌다. 그때는 할 일을 적는다. */}
+              {selectedIds.size === 0
+                ? '합격자를 먼저 고르세요'
+                : `최종 합격 ${selectedIds.size}명 확정 · 나머지 ${autoFailIds.length}명 불합격`}
             </Button>
-            <DangerButton
-              type="button"
-              disabled={loading || selectedIds.size === 0}
-              onClick={() => handleConfirmFinalStatus('final_fail')}
-            >
-              선택 {selectedIds.size}명 최종 불합격 처리
-            </DangerButton>
           </div>
         </div>
+
+        {/* 매트릭스에 서지 않는 사람들. 숫자만 적는다 — 감춰 놓으면 배정에서 잊힌 사람이
+            아무 화면에도 안 나온 채 발표까지 간다. */}
+        {(excluded.unassigned.length > 0 || excluded.noshow.length > 0) && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-cream-50 px-3.5 py-2.5 text-[12px] text-ink-600">
+            <span className="font-bold text-ink-700">이 표에 없는 사람</span>
+            {excluded.unassigned.length > 0 && (
+              <span className="font-semibold text-amber-700">
+                <Icon name="alert" size={12} className="mr-1 inline" />
+                면접 미배정 {excluded.unassigned.length}명 — {excluded.unassigned.map((a) => a.name).join(', ')}
+              </span>
+            )}
+            {excluded.noshow.length > 0 && (
+              <span>
+                면접 불참 {excluded.noshow.length}명 (그대로 &lsquo;면접 불참&rsquo;으로 남습니다)
+              </span>
+            )}
+          </div>
+        )}
 
         {/* 종합 점수 목록 — 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
         <TableCards
