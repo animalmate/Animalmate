@@ -3,8 +3,6 @@
 import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useTeams } from '@/components/use-teams';
-import { matchesTeamFilter } from '@/recruit/team-filter';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { StaffTimetableButton } from '@/components/staff-timetable-button';
@@ -18,7 +16,7 @@ import { formatTimeKo, formatTimeRange } from '@/recruit/timetable';
 import { panelOrder } from '@/recruit/staff-timetable';
 import { groupApplicantsBySlot } from '@/recruit/interview-groups';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
-import { Button, Card, Field, Input, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+import { Button, Card, Field, Input, StatusMessage, ToolbarSelect } from '@/components/ui';
 
 // 점수칸은 비워 둔 채 시작한다. 예전에는 '8.0' 이 미리 채워져 있어서, 면접관이 점수칸을 건드리지
 // 않고 저장만 눌러도 8.0 이 '면접관이 매긴 점수'로 기록되고 상태까지 면접 완료로 전이됐다.
@@ -98,7 +96,6 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
-  const { teams, loading: teamsLoading } = useTeams(selectedCohortId);
   const [applicants, setApplicants] = useState<any[]>([]);
   const [slots, setSlots] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
@@ -194,11 +191,9 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
         ['doc_pass', 'interview_done', 'interview_noshow', 'final_pass'].includes(a.status)
       );
       setApplicants(interviewees);
-      // 보고 있던 지원자가 있으면 그대로 둔다. 갱신 함수로 넘겨야 selectedApplicantId 가
-      // 이 함수의 의존성에서 빠지고, 지원자를 바꿀 때마다 전체를 다시 받는 일이 없다.
-      if (interviewees.length > 0) {
-        setSelectedApplicantId((prev) => prev || interviewees[0].id);
-      }
+      // **처음 들어왔을 때 아무도 고르지 않는다.** 예전에는 기수의 첫 사람을 자동으로 골라
+      // 오른쪽에 펴 놨는데, 이제 왼쪽 목록은 시간대를 고르기 전까지 비어 있으므로 목록에 없는
+      // 사람이 오른쪽에 떠 있는 꼴이 된다. 시간대를 누르면 `pickSlot` 이 그 조의 첫 사람을 고른다.
     }
 
     if (scoreData.scores) setScores(scoreData.scores);
@@ -370,12 +365,21 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     }
   }
 
-  const [selectedSlotFilter, setSelectedSlotFilter] = useState('ALL');
-  const [selectedTeam, setSelectedTeam] = useState('ALL');
+  /**
+   * `NONE` = 아직 아무 칸도 고르지 않은 처음 상태. 이때는 **아무도 뜨지 않는다**.
+   *
+   * 예전 기본값은 `ALL` 이라 화면을 열자마자 기수 전원(33기 기준 182명)이 조별로 쭉 이어졌다.
+   * 면접 당일에 필요한 것은 "지금 이 칸에 들어온 사람"인데, 그러려면 긴 목록에서 자기 조를 찾아
+   * 내려가야 했다 — 고르는 표를 위에 두고도 목록이 이미 전부를 펴고 있으니 표가 할 일이 없었다.
+   * `ALL` 은 위 `전체 보기` 버튼으로 **일부러 고를 때만** 들어온다.
+   */
+  const [selectedSlotFilter, setSelectedSlotFilter] = useState('NONE');
+  const slotPicked = selectedSlotFilter !== 'NONE';
 
   const filteredApplicants = applicants.filter((app) => {
+    if (!slotPicked) return false;
     if (selectedSlotFilter !== 'ALL' && app.slotId !== selectedSlotFilter) return false;
-    return matchesTeamFilter(app, selectedTeam);
+    return true;
   });
 
   // 서류 심사와 같은 기준 — 목록만 보고 '내가 이 사람을 채점했는지' 알 수 있어야 한다.
@@ -401,7 +405,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   //
   // 슬롯 필터를 **걸기 전** 상태로 한 번 묶는다. 위쪽 시간대 그리드는 이 값을 쓰는데,
   // 그리드가 곧 슬롯을 고르는 UI 라서 필터가 걸린 목록만 보면 다른 시간대로 옮겨갈 수가 없다.
-  const teamApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  const teamApplicants = applicants;
   const allScoredCount = teamApplicants.filter((a) => myInterviewScores[a.id] !== undefined).length;
   const slotOverview = groupApplicantsBySlot({
     slots,
@@ -414,9 +418,12 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
     nowMs,
   });
 
-  // 아래 목록은 고른 시간대만 편다(전체면 그대로).
-  const groups =
-    selectedSlotFilter === 'ALL' ? slotOverview : slotOverview.filter((g) => g.slotId === selectedSlotFilter);
+  // 아래 목록은 고른 시간대만 편다. 고르기 전(`NONE`)에는 아무것도 펴지 않는다.
+  const groups = !slotPicked
+    ? []
+    : selectedSlotFilter === 'ALL'
+      ? slotOverview
+      : slotOverview.filter((g) => g.slotId === selectedSlotFilter);
 
   /**
    * 시간대를 고르면 **그 조의 첫 사람까지** 골라 준다.
@@ -481,16 +488,6 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
           <StaffTimetableButton cohortId={selectedCohortId} />
 
           <ToolbarSelect
-            label="팀"
-            loading={teamsLoading}
-            value={selectedTeam}
-            onChange={(e) => setSelectedTeam(e.target.value)}
-          >
-            <option value="ALL">전체</option>
-            <TeamOptions teams={teams} loading={teamsLoading} />
-          </ToolbarSelect>
-
-          <ToolbarSelect
             label="기수"
             loading={cohortsLoading}
             value={selectedCohortId}
@@ -510,7 +507,6 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
       <ScreenNotes
         screen="interview-console"
         cohortId={selectedCohortId}
-        team={selectedTeam}
         title="면접 당일 운영진 공용 실시간 메모지"
       />
 
@@ -533,13 +529,15 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
             "목록만 스크롤한다"는 아래 의도가 깨진다. 대신 카드를 뷰포트 높이로 묶고
             목록이 `flex-1 min-h-0` 으로 남은 자리를 쓴다(결정 111 과 같은 방식). */}
         <Card className="lg:col-span-4 p-4 space-y-3 lg:sticky lg:top-6 lg:flex lg:flex-col lg:max-h-[calc(100vh-3rem)] lg:overflow-hidden">
+          {/* 머리 숫자는 **기수 전체**다. 예전에는 고른 칸의 숫자였는데, 칸을 고르기 전에는 0/0 이
+              되어 "면접 대상자 0명"으로 읽힌다. 칸별 진척은 아래 표의 칸마다 이미 적혀 있다. */}
           <div className="flex items-center justify-between border-b border-cream-200 pb-2.5">
             {/* 한글에 uppercase·tracking-wider 를 걸면 자간만 벌어져 오히려 읽기 나쁘다. */}
             <span className="text-[13px] font-bold text-ink-500">
-              면접 대상자 {filteredApplicants.length}명
+              면접 대상자 {teamApplicants.length}명
             </span>
             <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[12px] font-bold text-blue-700">
-              내 채점 {myScoredCount}/{filteredApplicants.length}
+              내 채점 {allScoredCount}/{teamApplicants.length}
             </span>
           </div>
 
@@ -549,9 +547,11 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
               면접 당일에 필요한 동작은 "다음 칸으로 넘어가기" 하나인데 그게 가장 비쌌다.
               **스크롤 밖에 고정**해 둔다 — 목록을 내려도 표는 계속 보여야 고를 수 있다. */}
           {rowTimes.length > 0 && panelNames.length > 0 && (
-            <div className="space-y-1.5">
+            /* **고르는 곳**이라는 것이 보이게 상자로 묶는다. 예전에는 표와 아래 목록이 같은
+               흰 바탕에 이어 붙어 있어서, 표가 '고르는 컨트롤'인지 '위쪽 요약'인지 알 수 없었다. */
+            <div className="space-y-1.5 rounded-xl border border-ink-200 bg-cream-25 p-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[12px] font-bold text-ink-500">조 · 시간</span>
+                <span className="flex items-center text-[12px] font-bold text-ink-700"><span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-ink-900 text-[10px] font-bold text-white">1</span>볼 시간대를 고르세요</span>
                 <button
                   type="button"
                   onClick={() => setSelectedSlotFilter('ALL')}
@@ -562,7 +562,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                       : 'border-ink-200 bg-white text-ink-500 hover:bg-cream-50'
                   }`}
                 >
-                  전체 {allScoredCount}/{teamApplicants.length}
+                  전체 보기
                 </button>
               </div>
               {/* 조가 많으면 가로로, 시간대가 많으면 세로로 넘친다 — **둘 다 표 안에서만** 스크롤시킨다.
@@ -629,8 +629,8 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
 
           {/* 조가 아직 없는 옛 기수(0026 이전 슬롯)는 표를 만들 수 없다 — 시간대 칩으로 내려간다. */}
           {panelNames.length === 0 && slotOverview.some((g) => g.slotId !== null) && (
-            <div className="space-y-1.5">
-              <span className="block text-[11px] font-bold text-ink-400">시간대</span>
+            <div className="space-y-1.5 rounded-xl border border-ink-200 bg-cream-25 p-2.5">
+              <span className="flex items-center text-[12px] font-bold text-ink-700"><span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-ink-900 text-[10px] font-bold text-white">1</span>볼 시간대를 고르세요</span>
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                 <SlotChip
                   label="전체"
@@ -660,7 +660,23 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
               `lg:min-h-[220px]` 가 **바닥**이다 — 위 표가 길어도 목록이 두어 줄로 찌부러지지 않는다.
               옛 `min-h-0` 은 "얼마든지 줄어도 된다"는 뜻이라, 화면이 짧은 노트북에서 정확히 그렇게 됐다.
               카드가 뷰포트를 넘기면 표 쪽이 먼저 스크롤을 맡는다(위 max-h). */}
+          <div className="flex items-baseline justify-between pt-0.5">
+            <span className="flex items-center text-[12px] font-bold text-ink-700"><span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-ink-900 text-[10px] font-bold text-white">2</span>지원자를 고르세요</span>
+            {slotPicked && (
+              <span className="text-[11px] font-semibold text-ink-400">
+                {filteredApplicants.length}명 · 내 채점 {myScoredCount}
+              </span>
+            )}
+          </div>
+
           <div className="max-h-[560px] space-y-4 overflow-y-auto lg:max-h-none lg:flex-1 lg:min-h-[220px]">
+            {/* 고르기 전에는 비워 둔다 — 전원을 미리 펴 두면 위 표가 할 일이 없어진다. */}
+            {!slotPicked && (
+              <p className="rounded-xl border border-dashed border-ink-200 px-3 py-8 text-center text-[12px] leading-relaxed text-ink-400">
+                위 표에서 시간대를 누르면
+                <br />그 조의 지원자가 여기 나옵니다.
+              </p>
+            )}
             {groups.map((group) => (
               <div key={group.slotId ?? 'unassigned'} className="space-y-2">
                 {/* 슬롯 머리 — 이 시간에 어느 방에서 누가 보는 조인지. 같이 들어가는 사람이 아래에 모여 있다. */}
@@ -897,6 +913,23 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                 <EssayBlock label="가치관 및 계기" text={selectedApp.essayValues} collapsible collapsedHeight={180} />
               </div>
 
+              {/* 대외활동 / 알바 경험 — 서류 채점 기록 **바로 위**(2026-08-21 사용자 지정).
+                  자기소개·가치관과 달리 대개 한두 줄이라 위 2열 격자에 넣으면 옆 칸과 높이가 어긋난다.
+                  여기서는 한 줄짜리 사실 카드로 두고, 비어 있어도 칸은 남긴다 — '안 적었다'와
+                  '화면에 없다'는 다른 사실이고, 면접에서 물어볼지 말지가 거기서 갈린다. */}
+              <div className="rounded-xl border border-cream-200 bg-cream-25 px-3.5 py-2.5 space-y-1">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
+                  대외활동 / 알바 경험
+                </h3>
+                {selectedApp.otherActivities?.trim() ? (
+                  <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-900">
+                    {selectedApp.otherActivities}
+                  </p>
+                ) : (
+                  <p className="text-[13px] text-ink-400">적지 않았습니다.</p>
+                )}
+              </div>
+
               {/* 서류 채점 기록 — 내 메모 **위**에 둔다. 면접 중에 쓰는 칸(메모)이 아니라
                   들어가기 전에 훑는 것이라 순서가 위이고, 글씨는 메모 카드보다 한 단계 작다
                   (메모가 주인공 자리를 뺏기면 안 된다). 접지 않고 항상 펼쳐 둔다. */}
@@ -1065,7 +1098,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
             </Card>
           ) : (
             <Card className="p-12 text-center text-ink-400">
-              좌측 목록에서 면접을 진행할 대상을 선택하세요.
+              왼쪽에서 시간대를 고르면 그 조의 첫 사람이 여기 열립니다.
             </Card>
           )}
         </div>
