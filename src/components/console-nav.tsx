@@ -9,6 +9,13 @@ interface NavItem {
   href: string;
   label: string;
   icon: string;
+  /**
+   * 활성 표시를 판정할 키(기본값 = href).
+   *
+   * 신입 모집은 역할마다 **첫 화면이 다르다**(운영진은 서류 심사, 회장단은 공고 설정). href 로만
+   * 판정하면 운영진이 모집 화면에 들어가 있어도 메뉴에 불이 안 들어온다 — 실제로 그랬다.
+   */
+  match?: string;
 }
 
 // 챗봇은 로그인 사용자 전원(부원 포함).
@@ -25,7 +32,7 @@ const STAFF_MENU: NavItem[] = [
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/calendar', label: '캘린더', icon: 'calendar' },
-  { href: '/admin/recruit/screening', label: '신입모집', icon: 'userPlus' },
+  { href: '/admin/recruit/screening', label: '신입모집', icon: 'userPlus', match: '/admin/recruit' },
 ];
 // 문서(챗봇 지식베이스)는 회장단·시스템관리자만. 팀 배정은 회원 관리 화면으로 통합(별도 팀 메뉴 없음).
 const BOARD_MENU: NavItem[] = [
@@ -36,7 +43,7 @@ const BOARD_MENU: NavItem[] = [
   { href: '/calendar', label: '캘린더', icon: 'calendar' },
   { href: '/documents', label: '문서', icon: 'layers' },
   { href: '/admin/members', label: '회원', icon: 'users' },
-  { href: '/admin/recruit/upload', label: '신입모집', icon: 'userPlus' },
+  { href: '/admin/recruit/notice-edit', label: '신입모집', icon: 'userPlus', match: '/admin/recruit' },
   { href: '/admin/join-codes', label: '가입코드', icon: 'key' },
   { href: '/admin/boards', label: '게시판', icon: 'board' },
   { href: '/admin/chatbot', label: '챗봇설정', icon: 'info' },
@@ -57,7 +64,7 @@ function activeKey(pathname: string): string {
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';
   if (pathname.startsWith('/profile')) return '/profile';
-  if (pathname.startsWith('/admin/recruit')) return '/admin/recruit/upload';
+  if (pathname.startsWith('/admin/recruit')) return '/admin/recruit';
   if (pathname.startsWith('/admin/chatbot')) return '/admin/chatbot';
   if (pathname.startsWith('/admin/members')) return '/admin/members';
   if (pathname.startsWith('/admin/join-codes')) return '/admin/join-codes';
@@ -79,7 +86,7 @@ export function ConsoleNav({ role }: { role: string }) {
   }
 
   const link = (m: NavItem, big = false) => {
-    const isActive = m.href === active;
+    const isActive = (m.match ?? m.href) === active;
     return (
       <a
         key={m.href}

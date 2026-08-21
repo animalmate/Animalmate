@@ -2,7 +2,6 @@
 import { db } from '../db/client';
 import { recruitApplicants } from '../db/schema';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
-import { ApplicantImportInput } from './csv';
 import { RecruitStatus } from './status';
 import { shortTeamName } from './team-name';
 
@@ -20,41 +19,6 @@ const shortTeamsOf = (r: {
   wishTeam1: shortTeamName(r.wishTeam1),
   wishTeam2: shortTeamName(r.wishTeam2),
 });
-
-export async function bulkCreateApplicants(
-  cohortId: string,
-  uploadedBy: string,
-  applicants: ApplicantImportInput[]
-) {
-  if (applicants.length === 0) return [];
-
-  const values = applicants.map((app) => ({
-    cohortId,
-    uploadedBy,
-    name: app.name.trim(),
-    phone: app.phone.replace(/[^0-9]/g, ''),
-    gender: app.gender,
-    birthDate: app.birthDate,
-    school: app.school,
-    department: app.department,
-    email: app.email,
-    applyRoute: app.applyRoute,
-    otherActivities: app.otherActivities,
-    expectedFrequency: app.expectedFrequency,
-    wishTeam1: app.wishTeam1,
-    wishTeam2: app.wishTeam2,
-    nearStation: app.nearStation,
-    otAttend: app.otAttend,
-    remoteInterviewWish: app.remoteInterviewWish,
-    essayIntro: app.essayIntro,
-    essayValues: app.essayValues,
-    essayValuesTopic: app.essayValuesTopic,
-    englishName: app.englishName,
-    status: 'received' as const,
-  }));
-
-  return db.insert(recruitApplicants).values(values).returning();
-}
 
 export async function listApplicantsByCohort(cohortId: string) {
   const rows = await db
@@ -105,16 +69,6 @@ export async function listApplicantIdsByCohort(cohortId: string): Promise<string
     .from(recruitApplicants)
     .where(eq(recruitApplicants.cohortId, cohortId));
   return rows.map((r) => r.id);
-}
-
-/** 중복 판정(이름+전화)에 쓰는 두 칸만 읽는다. 업로드 미리보기가 기수 전체와 맞춰 볼 때 쓴다. */
-export async function listApplicantDupKeysByCohort(
-  cohortId: string
-): Promise<{ name: string; phone: string }[]> {
-  return db
-    .select({ name: recruitApplicants.name, phone: recruitApplicants.phone })
-    .from(recruitApplicants)
-    .where(eq(recruitApplicants.cohortId, cohortId));
 }
 
 export async function getApplicantById(id: string) {

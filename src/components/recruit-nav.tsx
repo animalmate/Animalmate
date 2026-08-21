@@ -13,7 +13,6 @@ import { Icon } from './icon';
 // 그냥 링크로 두면 눌렀을 때 requireBoard 가 아무 설명 없이 홈으로 돌려보내 "고장난 것"처럼 보인다.
 const LINKS = [
   { href: '/admin/recruit/notice-edit', step: '0', label: '공고·마감 설정', manage: true },
-  { href: '/admin/recruit/upload', step: '+', label: '지원자 등록', manage: true },
   { href: '/admin/recruit/screening', step: '1', label: '서류 심사', manage: false },
   { href: '/admin/recruit/tally', step: '2', label: '서류 집계·확정', manage: true },
   { href: '/admin/recruit/interview/assign', step: '3', label: '면접 배정', manage: true },

@@ -6,7 +6,6 @@ import {
   canTransition,
   canMarkAttendance,
 } from './status';
-import { parseCsv, mapRowToApplicant, detectDuplicates } from './csv';
 // scores.ts 가 아니라 score-rules.ts 에서 가져온다 — scores.ts 는 db/client 를 import 하므로
 // DB 연결 없는 순수 단위 테스트에서 로드하면 DATABASE_URL 에러가 난다.
 import { validateScore } from './score-rules';
@@ -39,52 +38,6 @@ describe('Recruit Status Transitions', () => {
     expect(canConfirmFinal('interview_done')).toBe(true);
     expect(canConfirmFinal('interview_noshow')).toBe(true);
     expect(canConfirmFinal('received')).toBe(false);
-  });
-});
-
-describe('CSV Parser & Mapper', () => {
-  it('parses CSV with multiline quotes and escaped quotes safely', () => {
-    const csv = `이름,전화번호,자기소개
-홍길동,010-1234-5678,"안녕하세요.
-저는 ""동물""을 사랑합니다."
-김철수,010-9876-5432,반갑습니다.`;
-
-    const { headers, rows } = parseCsv(csv);
-    expect(headers).toEqual(['이름', '전화번호', '자기소개']);
-    expect(rows).toHaveLength(2);
-    expect(rows[0]![0]).toBe('홍길동');
-    expect(rows[0]![2]).toBe('안녕하세요.\n저는 "동물"을 사랑합니다.');
-    expect(rows[1]![0]).toBe('김철수');
-  });
-
-  it('maps header row to applicant object', () => {
-    const headers = ['이름', '연락처', '지원동기'];
-    const row = ['홍길동', '010-1234-5678', '열심히하겠습니다'];
-    const mapping = {
-      name: '이름',
-      phone: '연락처',
-      essayIntro: '지원동기',
-    };
-
-    const mapped = mapRowToApplicant(headers, row, mapping);
-    expect(mapped).not.toBeNull();
-    expect(mapped?.name).toBe('홍길동');
-    expect(mapped?.phone).toBe('01012345678');
-    expect(mapped?.essayIntro).toBe('열심히하겠습니다');
-  });
-
-  it('detects duplicate applicants by name and clean phone', () => {
-    const newApps = [
-      { name: '홍길동', phone: '010-1234-5678' },
-      { name: '김철수', phone: '010-9876-5432' },
-      { name: '홍길동', phone: '01012345678' },
-    ];
-    const existing = [{ name: '김철수', phone: '01098765432' }];
-
-    const { duplicateIndexes, uniqueApplicants } = detectDuplicates(newApps, existing);
-    expect(duplicateIndexes).toEqual([1, 2]); // 김철수 (기존과 중복), 3번째 홍길동 (새 목록 내 중복)
-    expect(uniqueApplicants).toHaveLength(1);
-    expect(uniqueApplicants[0]!.name).toBe('홍길동');
   });
 });
 
