@@ -418,6 +418,22 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
   const groups =
     selectedSlotFilter === 'ALL' ? slotOverview : slotOverview.filter((g) => g.slotId === selectedSlotFilter);
 
+  /**
+   * 시간대를 고르면 **그 조의 첫 사람까지** 골라 준다.
+   *
+   * 필터만 바꾸면 오른쪽 채점 시트는 아까 보던 다른 조의 사람에 그대로 머문다 — 슬롯을 눌러도
+   * 아무 일도 일어나지 않은 것처럼 보인다. 조가 하나뿐이던 때는 필터와 선택이 늘 같은 사람을
+   * 가리켜 드러나지 않았고, 조를 나눈 기수에서 처음 보였다.
+   */
+  const pickSlot = (slotId: string) => {
+    setSelectedSlotFilter(slotId);
+    const g = slotOverview.find((x) => x.slotId === slotId);
+    // 이미 그 조의 사람을 보고 있으면 그대로 둔다 — 채점하다 화면이 첫 사람으로 튀면 안 된다.
+    if (!g || g.applicants.some((a: any) => a.id === selectedApplicantId)) return;
+    const first = g.applicants[0] as { id: string } | undefined;
+    if (first) setSelectedApplicantId(first.id);
+  };
+
   // ── 조 × 시간 표 ────────────────────────────────────────────────────────
   // 지난 기수 시간표가 이 모양이다: 조가 열(방 하나를 하루 종일 쓴다), 시각이 행.
   // 평면 목록이면 "지금 A조는 어디까지 했고 B조는 어디쯤인지"를 스크롤로 맞춰 봐야 한다.
@@ -580,7 +596,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                             <td key={p} className="p-0">
                               <button
                                 type="button"
-                                onClick={() => setSelectedSlotFilter(g.slotId!)}
+                                onClick={() => pickSlot(g.slotId!)}
                                 aria-pressed={active}
                                 aria-label={`${p} ${formatTimeKo(t)} 지원자 ${total}명 중 내 채점 ${scored}명`}
                                 className={`w-full rounded border px-1 py-1.5 font-bold transition-colors ${
@@ -628,7 +644,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
                       done={g.applicants.length > 0 && scoredIn(g) === g.applicants.length}
                       now={g.isNow}
                       active={selectedSlotFilter === g.slotId}
-                      onClick={() => setSelectedSlotFilter(g.slotId!)}
+                      onClick={() => pickSlot(g.slotId!)}
                     />
                   ))}
               </div>
