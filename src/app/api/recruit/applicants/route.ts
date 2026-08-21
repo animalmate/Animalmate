@@ -12,8 +12,9 @@ import {
   updateApplicantNearStation,
   updateApplicantTeam,
   bulkUpdateApplicantTeam,
+  bulkAssignSlots,
 } from '@/recruit/applicants';
-import { getSlotById } from '@/recruit/slots';
+import { getSlotById, listSlotsByCohort } from '@/recruit/slots';
 import { canTransition, canMarkAttendance, type RecruitStatus } from '@/recruit/status';
 import { internalError } from '@/http/errors';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
@@ -53,13 +54,13 @@ export async function PATCH(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { action, id, ids, status, cohortId, slotId, interviewLink, nearStation, assignedTeam } = body;
+    const { action, id, ids, status, cohortId, slotId, interviewLink, nearStation, assignedTeam, assignments } = body;
 
     // 지원자 상태·배정을 바꾸는 행위는 전부 "결정" → 회장단 전용(09-RECRUIT-DESIGN §0·§4).
     // change_team/bulk_team 도 여기 포함된다: 예전엔 isPRTeamOrPrivileged 를 썼지만 그 함수는
     // teamId(UUID)에 'pr'/'홍보' 가 들어있는지 보는 검사라 실제로는 절대 참이 되지 않았다
     // (= 사실상 회장단 전용). 착시를 없애고 실제 동작과 일치시킨다.
-    if (['bulk_status', 'assign_slot', 'update_station', 'change_team', 'bulk_team'].includes(action)) {
+    if (['bulk_status', 'assign_slot', 'assign_slot_bulk', 'update_station', 'change_team', 'bulk_team'].includes(action)) {
       if (!isPrivileged(actor.role)) {
         return NextResponse.json({ error: 'forbidden', message: '이 작업은 회장단만 할 수 있습니다.' }, { status: 403 });
       }
@@ -210,6 +211,73 @@ export async function PATCH(req: Request): Promise<Response> {
         })
       );
       return NextResponse.json({ applicant: updated });
+    }
+
+    if (action === 'assign_slot_bulk') {
+      if (!cohortId) return NextResponse.json({ error: 'missing_cohort' }, { status: 400 });
+      if (!Array.isArray(assignments) || assignments.length === 0) {
+        return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
+      }
+      // 한 번에 밀어 넣을 수 있는 양을 제한한다 — 기수 하나가 200명대라 그 두 배면 충분하고,
+      // CASE 문이 무한정 길어지는 것도 막는다.
+      if (assignments.length > 500) {
+        return NextResponse.json({ error: 'too_many', message: '한 번에 500명까지 배정할 수 있습니다.' }, { status: 400 });
+      }
+
+      const clean: { applicantId: string; slotId: string | null }[] = [];
+      for (const a of assignments) {
+        if (!a || typeof a.applicantId !== 'string') {
+          return NextResponse.json({ error: 'invalid_assignment' }, { status: 400 });
+        }
+        clean.push({ applicantId: a.applicantId, slotId: typeof a.slotId === 'string' ? a.slotId : null });
+      }
+
+      // 슬롯이 전부 이 기수 것인지 한 번에 확인한다. assign_slot 이 한 건마다 확인하는 것과 같은
+      // 이유인데(다른 기수 슬롯에 사람이 들어앉는다), 여기서는 슬롯 목록을 한 번만 읽으면 된다.
+      const cohortSlotIds = new Set((await listSlotsByCohort(String(cohortId))).map((s) => s.id));
+      const strayed = clean.filter((a) => a.slotId && !cohortSlotIds.has(a.slotId));
+      if (strayed.length > 0) {
+        return NextResponse.json(
+          { error: 'cohort_mismatch', message: '다른 기수의 면접 시간에는 배정할 수 없습니다.' },
+          { status: 409 }
+        );
+      }
+
+      // 지원자도 이 기수 소속인지 본다. bulkAssignSlots 의 where 가 남의 기수를 걸러 내지만,
+      // 그것만으로는 **조용히 빠진다** — 몇 명이 왜 안 들어갔는지 화면에 말해 줘야 한다.
+      const known = await listApplicantsByIds(
+        clean.map((a) => a.applicantId),
+        String(cohortId)
+      );
+      const knownIds = new Set(known.map((a) => a.id));
+      const targets = clean.filter((a) => knownIds.has(a.applicantId));
+      const outOfScopeCount = clean.length - targets.length;
+      if (targets.length === 0) {
+        return NextResponse.json(
+          { error: 'not_found', message: '이 기수에 없는 지원자입니다.', updatedCount: 0, outOfScopeCount },
+          { status: 404 }
+        );
+      }
+
+      // 되돌리려면 어디에 있었는지가 있어야 한다 — 바꾸기 전 슬롯을 audit 에 남긴다(규칙 #4).
+      const beforeById = new Map(
+        (await listApplicantsByCohortSlim(String(cohortId))).map((a) => [a.id, a.slotId ?? null])
+      );
+      const updated = await bulkAssignSlots(String(cohortId), targets);
+
+      await recordAudit(
+        db,
+        buildAuditEntry({
+          actorUserId: actor.userId,
+          action: 'recruit.applicant.assignSlotBulk',
+          targetTable: 'recruit_applicants',
+          targetId: String(cohortId),
+          before: { slots: targets.map((t) => ({ id: t.applicantId, slotId: beforeById.get(t.applicantId) ?? null })) },
+          after: { slots: targets, count: updated.length },
+        })
+      );
+
+      return NextResponse.json({ updatedCount: updated.length, outOfScopeCount, applicants: updated });
     }
 
     if (action === 'update_station') {

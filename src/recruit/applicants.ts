@@ -1,7 +1,7 @@
 // F9 신입 모집 지원자 CRUD 및 관리 서비스
 import { db } from '../db/client';
 import { recruitApplicants } from '../db/schema';
-import { eq, and, inArray, asc } from 'drizzle-orm';
+import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 import { ApplicantImportInput } from './csv';
 import { RecruitStatus } from './status';
 import { shortTeamName } from './team-name';
@@ -182,6 +182,46 @@ export async function assignSlotToApplicant(
     .where(eq(recruitApplicants.id, applicantId))
     .returning();
   return updated;
+}
+
+/**
+ * 여러 지원자를 **서로 다른 슬롯**에 한 번에 배정한다.
+ *
+ * 왜 일괄인가: 표 한 장을 붙여넣으면 70명이 15개 슬롯으로 흩어진다. 한 명씩 보내면 요청이
+ * 70번이고, 중간에 하나가 실패하면 절반만 배정된 채로 끝난다 — 어디까지 들어갔는지 아무도 모른다.
+ *
+ * `CASE` 한 방으로 쓰는 이유는 슬롯마다 UPDATE 를 나누면 슬롯 수만큼 왕복이 생기기 때문이다.
+ * 한 문장이라 전부 반영되거나 전부 안 되거나 둘 중 하나다.
+ *
+ * 호출부는 **미리 기수를 확인해야 한다** — 여기서는 넘어온 id 를 그대로 믿는다(규칙 #6).
+ */
+export async function bulkAssignSlots(
+  cohortId: string,
+  assignments: { applicantId: string; slotId: string | null }[]
+) {
+  if (assignments.length === 0) return [];
+
+  // 같은 지원자가 두 번 오면 CASE 의 뒤엣것이 이기는데, 그건 SQL 이 정하는 순서라 예측이 안 된다.
+  // 마지막 지정을 남기고 접는다(파서도 같은 규칙이다).
+  const byApplicant = new Map<string, string | null>();
+  for (const a of assignments) byApplicant.set(a.applicantId, a.slotId);
+
+  const ids = [...byApplicant.keys()];
+  const cases = sql.join(
+    [...byApplicant.entries()].map(
+      ([applicantId, slotId]) =>
+        sql`when ${recruitApplicants.id} = ${applicantId}::uuid then ${slotId}::uuid`
+    ),
+    sql` `
+  );
+
+  return db
+    .update(recruitApplicants)
+    .set({ slotId: sql`case ${cases} else ${recruitApplicants.slotId} end` })
+    // 기수로 한 번 더 좁힌다. 호출부가 확인하지만, 이 한 줄이 있으면 검사가 빠진 새 호출부가
+    // 생겨도 남의 기수 지원자를 옮기지는 못한다.
+    .where(and(eq(recruitApplicants.cohortId, cohortId), inArray(recruitApplicants.id, ids)))
+    .returning({ id: recruitApplicants.id, name: recruitApplicants.name, slotId: recruitApplicants.slotId });
 }
 
 export async function updateApplicantNearStation(id: string, nearStation: string) {
