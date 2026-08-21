@@ -7,13 +7,18 @@ const SRC = 'src/guides/content.ts';
 const OUT = 'docs/08-USER-GUIDES.md';
 
 // content.ts 는 TS 라 그대로 import 할 수 없다. 필요한 문자열만 뽑아낸다.
+//
+// 줄바꿈은 CR 을 선택적으로 받는다 — 윈도우 작업 트리의 content.ts 는 CRLF 라, LF 만
+// 가정하면 어느 화면도 매칭되지 않아 **문서가 조용히 낡는다**(실제로 그 상태였다).
+// git show 로 꺼내 보면 LF 로 정규화돼 나오므로 그때는 멀쩡해 보인다 — 확인은 반드시
+// 작업 트리 파일로 할 것.
 const src = readFileSync(SRC, 'utf8');
 
 const screens = [];
-for (const m of src.matchAll(/^  '?([a-z-]+)'?: \{\n\s*title: '([^']+)',\n\s*body: `([\s\S]*?)`,\n  \},/gm)) {
+for (const m of src.matchAll(/^  '?([a-z-]+)'?: \{\r?\n\s*title: '([^']+)',\r?\n\s*body: `([\s\S]*?)`,\r?\n  \},/gm)) {
   screens.push({ key: m[1], title: m[2], body: m[3] });
 }
-const checklist = /export const BOARD_CHECKLIST = \{\n\s*title: '([^']+)',\n\s*summary: '([^']+)',\n\s*body: `([\s\S]*?)`,\n\};/.exec(src);
+const checklist = /export const BOARD_CHECKLIST = \{\r?\n\s*title: '([^']+)',\r?\n\s*summary: '([^']+)',\r?\n\s*body: `([\s\S]*?)`,\r?\n\};/.exec(src);
 
 if (screens.length === 0 || !checklist) {
   console.error(`원문을 찾지 못했습니다(화면 ${screens.length}개, 체크리스트 ${checklist ? 'O' : 'X'}). ${SRC} 형식을 확인하세요.`);
