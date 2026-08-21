@@ -458,6 +458,10 @@ export const recruitSlots = pgTable('recruit_slots', {
   link: text('link'),
   venue: text('venue'), // 대면 면접 장소 명칭 또는 온라인 접속 안내(조 단위로 같은 값이 들어간다)
   isRemote: boolean('is_remote').notNull().default(false), // 비대면 여부
+  // 그 줄에 적어 두는 자유 메모('예비석 2자리', '면접실 정비', '지원자 요청으로 15분 지연').
+  // 지난 기수 엑셀에 이런 칸이 늘 있었다(예비석 열, '전원 면접실 B 정비' 줄) — 적을 자리가
+  // 없으면 배정은 화면에서 하고 메모만 엑셀에 남겨, 결국 원본이 둘로 갈라진다.
+  note: text('note'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => users.id),
@@ -474,12 +478,23 @@ export const recruitSlotInterviewers = pgTable(
     slotId: uuid('slot_id')
       .notNull()
       .references(() => recruitSlots.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * 홈페이지 계정. **없어도 된다**(0028) — 계정이 실제로 필요한 것은 면접 콘솔에서 점수를
+     * 넣을 때뿐이고(`recruit_scores.scorer_user_id`), 시간표에 이름이 뜨는 것과는 무관하다.
+     * 계정을 강제하면 알럼나이·계정을 안 만든 사람이 표에서 통째로 빠져 **공지에 나갈 표에
+     * 구멍이 뚫린다**(33기에 실제로 두 명이 그랬다).
+     */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** 계정이 없을 때 표에 적을 이름. `user_id` 가 있으면 null 이고 이름은 users 에서 읽는다. */
+    name: text('name'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique('recruit_slot_interviewers_uq').on(t.slotId, t.userId)]
+  // 계정 배정은 예전대로 슬롯당 한 번씩만. 이름만 적은 칸은 NULL 이라 이 제약에 걸리지 않으므로
+  // (Postgres 는 NULL 을 서로 다르게 본다) 중복은 아래 이름 UNIQUE 가 막는다.
+  (t) => [
+    unique('recruit_slot_interviewers_uq').on(t.slotId, t.userId),
+    unique('recruit_slot_interviewers_name_uq').on(t.slotId, t.name),
+  ]
 );
 
 // 면접 당일 지원 업무(대기실) 배정. 면접관이 아니라 명단 체크·대기실 안내·인솔을 맡는 사람들.
@@ -500,6 +515,12 @@ export const recruitDutyAssignments = pgTable(
     duty: text('duty').notNull(),
     /** 배정된 운영진. 전원 공지 줄에서는 null. */
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * 계정이 없는 사람의 이름(0028). 대기실 업무는 명단 체크·인솔이라 홈페이지에 로그인할 일이
+     * 전혀 없다 — 계정을 강제하면 그 사람이 표에서 빠져 당일 안내가 비어 버린다.
+     * `user_id` 가 있으면 null 이고 이름은 users 에서 읽는다.
+     */
+    name: text('name'),
     /** 전원 공지 문구('전원 면접실 B 정비'). 역할 배정 줄에서는 null. */
     note: text('note'),
     createdBy: uuid('created_by')

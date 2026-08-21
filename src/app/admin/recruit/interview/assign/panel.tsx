@@ -4,28 +4,20 @@ import { HelpButton } from '@/components/help-button';
 import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
-import { matchesTeamFilter } from '@/recruit/team-filter';
-import { slotPlaceLabel, slotPanelNumbers, slotPanelSuffix, slotPanelLabel, suggestNextPanelName } from '@/recruit/display';
+import { slotPlaceLabel, slotPanelNumbers, slotPanelLabel, suggestNextPanelName } from '@/recruit/display';
 import { timeAxisOf } from '@/recruit/timetable';
 import type { DutyRow } from '@/recruit/duty-rules';
 import { isPrivileged } from '@/auth/permissions';
 import { TimetableModal } from './timetable-modal';
+import { PasteImportModal } from './paste-import';
+import { AssignBoard } from './assign-board';
+import type { InterviewerRef } from '@/recruit/slot-interviewers';
 import { DutyRoster } from './duty-roster';
 import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { StaffTimetableButton } from '@/components/staff-timetable-button';
 import { useTeams } from '@/components/use-teams';
-import { Button, Card, CardBlock, CardField, Field, Input, RowCard, SecondaryButton, Select, StatusMessage, TableCards, TeamOptions, ToolbarSelect } from '@/components/ui';
-
-// 표(PC)와 카드(모바일)가 같은 조각을 쓰도록 뽑아 둔다 — 한쪽만 고치는 사고를 막는다.
-function RemoteWishChip({ wish }: { wish?: string | null }) {
-  if (!wish) return <span className="text-[11px] font-semibold text-ink-400">대면</span>;
-  return (
-    <span className="shrink-0 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-      {wish}
-    </span>
-  );
-}
+import { Button, Card, Field, Input, SecondaryButton, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
@@ -57,6 +49,12 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  // 되돌리기 더미. 엑셀에는 Ctrl+Z 가 있는데 화면에는 없어서, 수십 명을 잘못 옮기면
+  // 한 명씩 되짚어야 했다. 앞자리만 들고 있으면 되돌리기는 같은 일괄 배정 한 번이다.
+  const [undoStack, setUndoStack] = useState<
+    { label: string; before: { applicantId: string; slotId: string | null }[] }[]
+  >([]);
   // 대기실 표는 별도 컴포넌트가 불러온다. 시간표 팝업이 같은 값을 쓰도록 위로 올려 받는다.
   const [dutyRoles, setDutyRoles] = useState<string[]>([]);
   const [dutyRows, setDutyRows] = useState<DutyRow[]>([]);
@@ -244,71 +242,142 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     );
   };
 
-  const handleAssignSlot = async (applicantId: string, slotId: string | null) => {
-    // 드롭다운을 즉시 반영하고 저장은 뒤에서 한다(전체 새로고침을 기다리지 않는다).
+  /**
+   * 여러 명을 한 번에 배정한다(보드에서 고른 사람들 / 붙여넣은 표 한 장).
+   *
+   * 한 명씩 `handleAssignSlot` 을 돌리지 않는 이유: 70명이면 요청이 70번이고, 중간에 끊기면
+   * 절반만 들어간 채로 끝나 어디까지 됐는지 아무도 모른다. 서버에서 한 문장으로 쓴다.
+   *
+   * `remember=false` 는 되돌리기 자신이 부를 때다 — 안 그러면 되돌린 것이 다시 되돌릴 거리로
+   * 쌓여 Ctrl+Z 가 같은 자리를 오간다.
+   */
+  const handleBulkAssign = async (
+    assignments: { applicantId: string; slotId: string | null }[],
+    remember = true
+  ) => {
+    if (assignments.length === 0) return;
+    const bySlot = new Map(assignments.map((a) => [a.applicantId, a.slotId]));
+
+    // 되돌릴 수 있으려면 **바꾸기 전 자리**를 남겨야 한다. 한 번에 수십 명을 옮기는 화면이라
+    // 잘못 눌렀을 때 한 명씩 되돌리게 하면 실수 하나가 수십 번의 클릭이 된다(엑셀에는 Ctrl+Z 가 있다).
+    if (remember) {
+      const before = assignments.map(({ applicantId }) => ({
+        applicantId,
+        slotId: (applicants.find((a) => a.id === applicantId)?.slotId ?? null) as string | null,
+      }));
+      setUndoStack((prev) => [...prev.slice(-19), { label: `${assignments.length}명 배정`, before }]);
+    }
+    // 먼저 화면을 바꾼다 — 200명을 옮기는 요청을 기다리는 동안 표가 그대로면 두 번 누른다.
     setApplicants((prev) =>
-      prev.map((a) => (a.id === applicantId ? { ...a, slotId: slotId || null } : a))
+      prev.map((a) => (bySlot.has(a.id) ? { ...a, slotId: bySlot.get(a.id) ?? null } : a))
     );
 
     try {
       const res = await fetch('/api/recruit/applicants', {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'assign_slot',
-          id: applicantId,
-          slotId: slotId || null,
-        }),
+        body: JSON.stringify({ action: 'assign_slot_bulk', cohortId: selectedCohortId, assignments }),
       });
-      // 실패를 삼키면 드롭다운만 바뀌고 저장은 안 된 상태로 넘어간다.
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setMessage(`❌ 면접 시간 배정 실패: ${data.message || data.error || res.status}`);
+        setMessage(`❌ 배정 실패: ${data.message || data.error || res.status}`);
+        // 낙관적 반영이 남아 있으면 저장되지 않은 배정을 저장된 것처럼 본다 — 서버 값으로 되돌린다.
         await fetchSlotsAndApplicants();
+        return;
       }
+      const skipped = data.outOfScopeCount ?? 0;
+      setMessage(
+        `✅ ${data.updatedCount ?? assignments.length}명을 배정했습니다.` +
+          (skipped > 0 ? ` (이 기수에 없는 ${skipped}명은 제외)` : '')
+      );
     } catch {
-      setMessage('❌ 면접 시간을 저장하지 못했습니다. 연결을 확인해 주세요.');
+      setMessage('❌ 배정을 저장하지 못했습니다. 연결을 확인해 주세요.');
       await fetchSlotsAndApplicants();
     }
   };
 
-  const handleToggleInterviewer = async (slotId: string, userId: string, isAssigned: boolean) => {
-    // 화면을 먼저 바꾸고 요청을 보낸다. 예전엔 요청 4번(추가 1 + 전체 새로고침 3)을 다 기다려서
-    // 체크 한 번에 2초씩 걸렸다.
-    // 실패하면 스냅샷을 되돌리는 대신 서버에서 다시 읽는다 — 빠르게 두 번 누르면 스냅샷이
-    // 낡아서, 먼저 성공한 변경까지 함께 지워 버린다.
-    const staff = staffMembers.find((s) => s.id === userId);
+  /** 방금 한 배정을 통째로 되돌린다(Ctrl+Z). 앞자리를 그대로 다시 쓰면 되므로 역연산이 따로 없다. */
+  const handleUndo = useCallback(async () => {
+    const last = undoStack[undoStack.length - 1];
+    if (!last) return;
+    setUndoStack((prev) => prev.slice(0, -1));
+    await handleBulkAssign(last.before, false);
+    setMessage(`↩ 되돌렸습니다 (${last.label}).`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoStack]);
+
+  // Ctrl+Z / Cmd+Z. 글자를 치는 중(비고 칸·이름 칸)에는 그 칸의 되돌리기가 먼저다.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.key === 'z' && (e.ctrlKey || e.metaKey)) || e.shiftKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return;
+      e.preventDefault();
+      handleUndo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleUndo]);
+
+  /**
+   * 면접관 칸을 한 벌로 덮어쓴다 — 한 칸이면 그 칸만, 여러 칸이면 엑셀의 채우기 핸들이다.
+   * 더하기·빼기를 따로 두지 않는 이유는 서버가 '이 칸을 이렇게 만든다' 하나만 알면 되기 때문이다.
+   */
+  const handleFillInterviewers = async (slotIds: string[], people: InterviewerRef[]) => {
+    if (slotIds.length === 0) return;
+    // 계정이 있으면 이름을 운영진 목록에서 찾고, 이름만 적은 사람은 그대로 쓴다(0028).
+    const picked = people
+      .map((p) => {
+        if (!p.userId) return { userId: null, name: p.name, role: undefined };
+        const st = staffMembers.find((s) => s.id === p.userId);
+        return { userId: p.userId, name: st?.name ?? '', role: st?.role };
+      })
+      .filter((p) => p.name !== '');
+    // 화면을 먼저 바꾼다 — 드래그로 열 칸을 채우면서 응답을 기다리면 손이 멈춘 것처럼 보인다.
     setSlotInterviewersMap((prev) => {
-      const current = prev[slotId] ?? [];
-      return {
-        ...prev,
-        [slotId]: isAssigned
-          ? current.filter((i: any) => i.userId !== userId)
-          : [...current, { slotId, userId, name: staff?.name ?? '', role: staff?.role }],
-      };
+      const next = { ...prev };
+      for (const id of slotIds) next[id] = picked.map((p) => ({ slotId: id, ...p }));
+      return next;
     });
 
     try {
-      const res = isAssigned
-        ? await fetch(`/api/recruit/slot-interviewers?slotId=${slotId}&userId=${userId}`, { method: 'DELETE' })
-        : await fetch('/api/recruit/slot-interviewers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slotId, userId }),
-          });
-      // 실패해도 표시가 없으면 면접관이 배정된 줄 알고 당일에야 빈 것을 안다.
+      const res = await fetch('/api/recruit/slot-interviewers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cohortId: selectedCohortId, slotIds, people }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setMessage(`❌ 면접관 ${isAssigned ? '해제' : '배정'} 실패: ${data.message || data.error || res.status}`);
+        setMessage(`❌ 면접관 배정 실패: ${data.message || data.error || res.status}`);
         await fetchSlotsAndApplicants();
+        return;
       }
+      if (slotIds.length > 1) setMessage(`✅ ${slotIds.length}칸에 면접관을 채웠습니다.`);
     } catch {
       setMessage('❌ 면접관 배정을 저장하지 못했습니다. 연결을 확인해 주세요.');
       await fetchSlotsAndApplicants();
     }
   };
 
-  const filteredApplicants = applicants.filter((app) => matchesTeamFilter(app, selectedTeam));
+  /** 그 줄의 비고(예비석·정비 안내). 칸을 떠날 때 한 번만 저장한다. */
+  const handleNoteChange = async (slotId: string, note: string) => {
+    setSlots((prev) => prev.map((s) => (s.id === slotId ? { ...s, note } : s)));
+    try {
+      const res = await fetch('/api/recruit/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: slotId, note }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setMessage(`❌ 비고 저장 실패: ${data.message || data.error || res.status}`);
+        await fetchSlotsAndApplicants();
+      }
+    } catch {
+      setMessage('❌ 비고를 저장하지 못했습니다. 연결을 확인해 주세요.');
+      await fetchSlotsAndApplicants();
+    }
+  };
 
   // 만들기 전에 몇 칸이 생기는지 버튼에 적어 준다 — 10:00~18:00 을 20분으로 자르면 24칸이고,
   // 그걸 모른 채 누르면 지우는 데 24번을 눌러야 한다.
@@ -358,30 +427,6 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
     setDutyRoles(roles);
     setDutyRows(rows);
   }, []);
-
-  // 슬롯 드롭다운 내용은 표(PC)와 카드(모바일)가 함께 쓴다 — 한 번만 만든다.
-  const slotOptions = (
-    <>
-      <option value="">-- 면접 슬롯 미배정 --</option>
-      {slots.map((s) => (
-        <option key={s.id} value={s.id}>
-          {new Date(s.startsAt).toLocaleString('ko-KR', {
-            month: 'numeric',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}{' '}
-          | {slotPlaceLabel(s)} ({s.durationMin}분)
-          {/* 같은 시각을 나눠 쓰는 조는 이 꼬리표가 없으면 드롭다운에 완전히 같은 줄로 뜬다
-              — 어느 쪽을 고르는지 알 수 없다. 면접관까지 붙여 "누가 보는 조인지"를 함께 알린다. */}
-          {slotPanelSuffix(
-            slotPanelLabel(s, panelNumbers),
-            (slotInterviewersMap[s.id] ?? []).map((i: any) => i.name)
-          )}
-        </option>
-      ))}
-    </>
-  );
 
   return (
     <div className="space-y-6">
@@ -649,35 +694,21 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
                         <Icon name="alert" size={12} className="inline" /> 면접관 없음 — 지원자 {assignedApps.length}명 배정됨
                       </span>
                     )}
+                    {/* 여기서는 보기만 한다 — 면접관을 고치는 곳은 아래 배정 보드 한 군데다.
+                        두 군데서 고칠 수 있으면 어느 쪽이 먹었는지 헷갈리고, 이 칸은 계정 없는
+                        면접관(0028)을 다루지도 못한다. */}
                     <div className="flex flex-wrap gap-1.5">
-                      {interviewers.map((int: any) => (
+                      {interviewers.map((int: any, i: number) => (
                         <span
-                          key={int.userId}
-                          onClick={() => handleToggleInterviewer(slot.id, int.userId, true)}
-                          className="inline-flex items-center gap-1 text-xs font-semibold bg-blue-100 text-blue-900 px-2 py-0.5 rounded-md cursor-pointer hover:bg-coral-100 hover:text-coral-700 transition-colors"
-                          title="클릭 시 면접관 배정 해제"
+                          key={int.userId ?? `name-${int.name}-${i}`}
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${
+                            int.userId ? 'bg-blue-100 text-blue-900' : 'bg-cream-100 text-ink-700'
+                          }`}
+                          title={int.userId ? undefined : '계정 없이 이름만 — 면접 콘솔 채점은 못 합니다'}
                         >
-                          {int.name} ✕
+                          {int.name}
                         </span>
                       ))}
-
-                      {/* 운영진 추가 드롭다운 */}
-                      <Select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleToggleInterviewer(slot.id, e.target.value, false);
-                            e.target.value = '';
-                          }
-                        }}
-                        className="h-6 text-[11px] px-1 bg-cream-50 border-dashed border-ink-300 w-28"
-                      >
-                        <option value="">+ 면접관 추가…</option>
-                        {staffMembers.map((st) => (
-                          <option key={st.id} value={st.id}>
-                            {st.name} ({st.role})
-                          </option>
-                        ))}
-                      </Select>
                     </div>
                   </div>
 
@@ -705,68 +736,43 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
         )}
       </Card>
 
-      {/* 3. 서류 합격 지원자 슬롯 배정 표 */}
+      {/* 3. 지원자 배정 보드 — 미배정 명단에서 골라 시간표에 앉힌다.
+          예전에는 지원자 한 줄에 슬롯 드롭다운 하나였다(200명 = 드롭다운 200번). */}
       <Card className="space-y-4">
-        <div className="flex items-center justify-between border-b border-cream-200 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 pb-3">
           <span className="text-sm font-bold text-ink-900">
-            서류 합격 지원자 개별 면접 시간 배정 ({filteredApplicants.length}명
-            {selectedTeam !== 'ALL' && <span className="text-ink-500"> / 전체 {applicants.length}명</span>})
+            지원자 배정 ({applicants.filter((a) => !a.slotId).length}명 미배정 / 전체 {applicants.length}명)
           </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 단축키만 두면 아무도 있는 줄 모른다 — 버튼으로도 보여 주고 단축키를 옆에 적는다. */}
+            {undoStack.length > 0 && (
+              <SecondaryButton type="button" onClick={handleUndo} title="Ctrl+Z">
+                <Icon name="refresh" size={14} className="mr-1 inline" />
+                되돌리기 ({undoStack[undoStack.length - 1]!.label})
+              </SecondaryButton>
+            )}
+            {/* 회장단은 대개 엑셀에서 표를 이미 완성해 온다 — 그걸 다시 손으로 옮기게 하지 않는다. */}
+            <SecondaryButton type="button" onClick={() => setShowPaste(true)} disabled={existingPanels.length === 0}>
+              <Icon name="layers" size={14} className="mr-1 inline" />
+              엑셀 시간표 붙여넣기
+            </SecondaryButton>
+          </div>
         </div>
 
-        {/* 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
-        <TableCards
-          table={
-            <table className="w-full text-left text-xs">
-              <thead className="bg-cream-100 font-semibold text-ink-700">
-                <tr>
-                  <th className="p-3.5">지원자 이름</th>
-                  <th className="p-3.5">소속 배정팀</th>
-                  <th className="p-3.5">비대면 면접 희망 여부</th>
-                  <th className="p-3.5">배정할 면접 슬롯</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-cream-100">
-                {filteredApplicants.map((app) => (
-                  <tr key={app.id} className="transition-colors hover:bg-cream-25">
-                    <td className="p-3.5 text-sm font-bold text-ink-900">{app.name}</td>
-                    <td className="p-3.5 font-medium text-ink-700">{app.assignedTeam || app.wishTeam1 || '-'}</td>
-                    <td className="p-3.5">
-                      <RemoteWishChip wish={app.remoteInterviewWish} />
-                    </td>
-                    <td className="p-3.5">
-                      <Select
-                        value={app.slotId || ''}
-                        onChange={(e) => handleAssignSlot(app.id, e.target.value || null)}
-                        aria-label={`${app.name} 면접 슬롯`}
-                        uiSize="sm"
-                        className="max-w-[360px]"
-                      >
-                        {slotOptions}
-                      </Select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          }
-          cards={filteredApplicants.map((app) => (
-            <RowCard key={app.id} title={app.name} badge={<RemoteWishChip wish={app.remoteInterviewWish} />}>
-              <CardField label="소속 배정팀">{app.assignedTeam || app.wishTeam1 || '-'}</CardField>
-              {/* 슬롯 이름이 "10/2 14:00 | 학생회관 (20분) · 2조" 처럼 길다 — CardBlock 으로 폭을 다 준다. */}
-              <CardBlock label="배정할 면접 슬롯">
-                <Select
-                  value={app.slotId || ''}
-                  onChange={(e) => handleAssignSlot(app.id, e.target.value || null)}
-                  aria-label={`${app.name} 면접 슬롯`}
-                >
-                  {slotOptions}
-                </Select>
-              </CardBlock>
-            </RowCard>
-          ))}
+        <AssignBoard
+          applicants={applicants}
+          slots={slots}
+          interviewersBySlot={slotInterviewersMap}
+          staffMembers={staffMembers}
+          teamFilter={selectedTeam}
+          canManage={isPrivileged(role)}
+          onAssign={(ids, slotId) => handleBulkAssign(ids.map((applicantId) => ({ applicantId, slotId })))}
+          onUnassign={(applicantId) => handleBulkAssign([{ applicantId, slotId: null }])}
+          onFillInterviewers={handleFillInterviewers}
+          onNoteChange={handleNoteChange}
         />
       </Card>
+
 
       <DutyRoster
         cohortId={selectedCohortId}
@@ -776,6 +782,16 @@ export function RecruitInterviewAssignPanel({ role }: { role: Role }) {
         canManage={isPrivileged(role)}
         onLoaded={handleDutiesLoaded}
       />
+
+      {showPaste && (
+        <PasteImportModal
+          slots={slots}
+          applicants={applicants}
+          panelNames={existingPanels}
+          onClose={() => setShowPaste(false)}
+          onApply={(assignments) => handleBulkAssign(assignments)}
+        />
+      )}
 
       {showTimetable && (
         <TimetableModal

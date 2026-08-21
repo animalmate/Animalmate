@@ -182,20 +182,30 @@
     (2026-08-07). 이미 접수된 지원자 행의 긴 값은 `src/recruit/applicants.ts` 가 읽을 때 줄인다.
     옛 키(`essayIntroLabel`·`wishTeam2ExtraOptions` 등)는 무시한다. 미설정이면
     `src/recruit/apply-form.ts` 의 기본값을 쓴다. 폐기 시 익명 집계만 archived_stats 로 잔존.
-  - `recruit_slots` (id, cohort_id, **panel?**, starts_at, duration_min=20, link?, venue?, is_remote, created_by, created_at)
+  - `recruit_slots` (id, cohort_id, **panel?**, starts_at, duration_min=20, link?, venue?, is_remote, **note?**, created_by, created_at)
     — 면접 슬롯(조×시간 한 칸). cohort_id 인덱스(0014).
+    `note` = 그 줄의 자유 메모('예비석 2자리'·'면접실 정비', 0027). 지난 기수 엑셀에 늘 있던 칸이라,
+    적을 자리가 없으면 배정은 화면에서 하고 메모만 엑셀에 남겨 **원본이 둘로 갈라진다**.
     **`panel` = 소속 조 이름**('A조'·'B조'·'비대면 파견', 0026). 조는 **방 하나를 잡고 하루 종일 유지되는
     트랙**이고, 그 안에서 시간대마다 면접관·면접자가 바뀐다(지난 기수 시간표가 이 모양이다).
     ⚠ 조를 "같은 시각 슬롯들의 순번"으로 **계산하지 말 것** — A조가 한 시간대를 비우면(첫 30분 면접실
     정비 등) 그 아래부터 B조가 1조로 밀려 이름이 하루 중에 바뀐다. 0026 이전 슬롯만 `slotPanelNumbers`
     fallback 을 쓰고, 새 코드는 `slotPanelLabel(slot, fallback)` 을 부른다.
     조 생성은 `createPanelSlots`(시작~종료를 duration 으로 잘라 일괄 insert, 한 조당 200칸 상한).
-  - `recruit_slot_interviewers` (id, slot_id, user_id, created_at) UNIQUE(slot_id, user_id) — 슬롯별 면접관 배정(0014).
-  - `recruit_duty_assignments` (id, cohort_id, starts_at, duty, user_id?(set null), note?, created_by, created_at)
+  - `recruit_slot_interviewers` (id, slot_id, **user_id?**, **name?**, created_at)
+    UNIQUE(slot_id, user_id) + UNIQUE(slot_id, name) — 슬롯별 면접관 배정(0014).
+    ⚠ **계정(`user_id`)은 선택이다**(0028). 계정이 실제로 필요한 것은 면접 콘솔에서 점수를 넣을
+    때뿐이고(`recruit_scores.scorer_user_id`), 시간표에 이름이 뜨는 것과는 무관하다. 계정을
+    강제하면 알럼나이·미가입 운영진이 표에서 통째로 빠져 **공지에 나갈 시간표에 구멍이 뚫린다**
+    (33기에 실제로 2명이 그랬다). 계정이 있으면 이름은 `users.name` 이 원본이고 `name` 은 null 이다
+    — 베껴 두면 이름을 고쳤을 때 두 곳이 어긋난다. 읽을 때는 `coalesce(users.name, name)`.
+  - `recruit_duty_assignments` (id, cohort_id, starts_at, duty, user_id?(set null), **name?**, note?, created_by, created_at)
     UNIQUE(cohort_id, starts_at, duty) — **면접 당일 대기실 업무 배정**(0019). 면접관이 아니라
     명단 체크·대기실 안내·인솔을 맡는 사람들. 업무 이름 목록은 `recruit_cohorts.duty_roles`(jsonb,
     미설정 시 `src/recruit/duty-rules.ts` 기본값). `duty = '__ALL__'` 은 그 시간대 전원 공지 줄로,
     `user_id` 대신 `note`('전원 면접실 정비')를 쓴다.
+    `name` = 계정이 없는 담당자 이름(0028) — 대기실 업무(명단 체크·인솔)는 로그인할 일이 전혀
+    없으므로 계정을 강제하지 않는다. slot_interviewers 와 같은 규칙(계정이 있으면 name 은 null).
     ⚠ `starts_at` 은 `recruit_slots` 를 FK 로 걸지 **않는다** — 대기실 업무는 면접이 없는 시간대에도
     있고, 슬롯 하나를 지웠다고 그 시간의 대기실 배정까지 사라지면 안 된다. 시간축만 공유한다.
   - `recruit_applicants` (id, cohort_id, name, gender?, birth_date?(text), phone, school?, department?, email?,
