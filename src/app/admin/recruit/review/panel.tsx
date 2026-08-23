@@ -13,9 +13,6 @@ import { formatScore } from '@/recruit/display';
 import { RecruitNav } from '@/components/recruit-nav';
 import {
   Card,
-  CardBlock,
-  CardField,
-  RowCard,
   SecondaryButton,
   StatusMessage,
   TableCards,
@@ -55,6 +52,77 @@ function ScoreCell({ avg, scorerCount }: { avg: string | null; scorerCount: numb
       <span className="text-sm font-bold text-blue-700">{avg}점</span>
       <span className="text-[11px] font-semibold text-ink-400">{scorerCount}명</span>
     </span>
+  );
+}
+
+/**
+ * 폰 카드의 면접 점수 줄.
+ *
+ * 폰에서는 **학교·학과와 서류 점수를 싣지 않는다**(2026-08-23 사용자 지정). 작은 화면에서
+ * 검토 회의가 보는 것은 "누가 면접에서 몇 점인가"와 총평이고, 나머지는 표(PC)에 있다.
+ * 넣을수록 한 화면에 담기는 사람이 줄어 스크롤만 길어진다.
+ *
+ * 그래서 남는 숫자 하나를 크게 세운다 — 라벨-값 줄로 쌓으면 13px 글자 사이에 묻힌다.
+ */
+function InterviewScoreRow({ avg, scorerCount }: { avg: string | null; scorerCount: number }) {
+  if (avg === null) {
+    return (
+      <p className="mt-2.5 flex items-baseline gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-800">
+        면접 미채점
+      </p>
+    );
+  }
+  return (
+    <p className="mt-2.5 flex items-baseline gap-2 rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2">
+      <span className="text-[11px] font-semibold text-ink-400">면접 점수</span>
+      <span className="text-[22px] font-bold leading-tight text-blue-700">{avg}</span>
+      <span className="text-[11px] font-semibold text-ink-400">{scorerCount}명</span>
+    </p>
+  );
+}
+
+/**
+ * 펼치기 버튼.
+ *
+ * 예전에는 파란 글씨 '펼치기'였는데 **버튼으로 안 보였다**(2026-08-23 사용자 보고 —
+ * "여기 눌러서 여는 줄 사람들이 모른다"). 이 화면은 그 안에 든 총평을 보려고 여는 화면인데
+ * 여는 손잡이가 링크처럼 생겨서, 표만 보고 "점수만 있는 화면"으로 읽고 지나쳤다.
+ *
+ * 세 가지를 준다: **테두리**(눌리는 것이라는 신호) · **화살표**(아래로 열린다는 방향) ·
+ * **펼친 상태의 색**(지금 열려 있다는 표시 + 화살표 뒤집기). 글자도 '펼치기' 대신
+ * **무엇이 나오는지**를 말한다 — 손잡이 이름이 내용이면 눌러 볼 이유가 생긴다.
+ */
+function ExpandButton({
+  open,
+  onClick,
+  srLabel,
+  className = '',
+}: {
+  open: boolean;
+  onClick: () => void;
+  /** 스크린리더용 — 표 안에 같은 이름의 버튼이 여러 개라 누구의 것인지 붙인다. */
+  srLabel: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-label={srLabel}
+      className={`inline-flex min-h-tap items-center justify-center gap-1 whitespace-nowrap rounded-xl border px-3 text-[12px] font-bold transition-colors ${
+        open
+          ? 'border-blue-300 bg-blue-50 text-blue-700'
+          : 'border-ink-300 bg-white text-ink-900 hover:bg-cream-50'
+      } ${className}`}
+    >
+      {open ? '접기' : '총평 보기'}
+      <Icon
+        name="chevronDown"
+        size={14}
+        className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+      />
+    </button>
   );
 }
 
@@ -417,15 +485,12 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                                 <td className="p-3.5">
                                   <StatusChip status={app.status} />
                                 </td>
-                                <td className="p-0 text-center">
-                                  <button
-                                    type="button"
+                                <td className="p-2 text-center">
+                                  <ExpandButton
+                                    open={open}
                                     onClick={() => toggleExpand(app.id)}
-                                    aria-expanded={open}
-                                    className="min-h-tap w-full px-3.5 text-[12px] font-bold text-blue-700 hover:underline"
-                                  >
-                                    {open ? '접기' : '펼치기'}
-                                  </button>
+                                    srLabel={`${app.name} 총평·지망 ${open ? '접기' : '보기'}`}
+                                  />
                                 </td>
                               </tr>
                               {open ? (
@@ -450,49 +515,51 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                     const agg = aggregations[app.id];
                     const open = expandedIds.has(app.id);
                     return (
-                      <RowCard
+                      /*
+                       * 공용 `RowCard` 를 쓰지 않는다: 그쪽은 "라벨 — 값"을 세로로 쌓는 `<dl>` 이라
+                       * 점수 두 개가 학교·학과와 같은 무게로 줄줄이 서고, 폰에서 정작 봐야 할
+                       * 숫자가 묻힌다(2026-08-23 사용자 지적 "모바일에서 더 잘 보이게"). 고를 체크박스도
+                       * 없는 읽기 전용 카드라 그 구조를 빌릴 이유도 없다.
+                       */
+                      <li
                         key={app.id}
-                        badge={<StatusChip status={app.status} />}
-                        title={
-                          <span className="flex items-baseline gap-2">
-                            <span className="font-mono text-[13px] font-bold text-ink-400">{i + 1}</span>
-                            {app.name}
-                          </span>
-                        }
+                        className={`rounded-xl border p-3.5 shadow-card transition-colors ${
+                          open ? 'border-blue-200 bg-blue-50/20' : 'border-cream-200 bg-white'
+                        }`}
                       >
-                        <CardField label="학교 / 학과">
-                          {app.school} {app.department}
-                        </CardField>
-                        <CardField label="서류 점수">
-                          <ScoreCell avg={formatScore(agg?.docScoreAvg)} scorerCount={agg?.docScorerCount ?? 0} />
-                        </CardField>
-                        <CardField label="면접 점수">
-                          <ScoreCell
-                            avg={formatScore(agg?.interviewScoreAvg)}
-                            scorerCount={agg?.interviewScorerCount ?? 0}
-                          />
-                        </CardField>
-                        <CardBlock label="총평·지망">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(app.id)}
-                            aria-expanded={open}
-                            className="min-h-tap text-[13px] font-bold text-blue-700 hover:underline"
-                          >
-                            {open ? '접기' : '펼쳐 보기'}
-                          </button>
-                          {open ? (
-                            <div className="mt-2">
-                              <ScoreDetail
-                                interviewScores={interviewScoresOf(app.id)}
-                                staffNames={staffNames}
-                                wishTeam1={app.wishTeam1}
-                                wishTeam2={app.wishTeam2}
-                              />
-                            </div>
-                          ) : null}
-                        </CardBlock>
-                      </RowCard>
+                        <div className="flex items-start justify-between gap-2.5">
+                          <span className="flex min-w-0 items-baseline gap-2">
+                            <span className="font-mono text-[13px] font-bold text-ink-400">{i + 1}</span>
+                            <span className="min-w-0 break-words text-[16px] font-bold text-ink-900">{app.name}</span>
+                          </span>
+                          <StatusChip status={app.status} />
+                        </div>
+
+                        {/* 학교·학과와 서류 점수는 폰에서 싣지 않는다(사용자 지정) — 표에 있다. */}
+                        <InterviewScoreRow
+                          avg={formatScore(agg?.interviewScoreAvg)}
+                          scorerCount={agg?.interviewScorerCount ?? 0}
+                        />
+
+                        {/* 손가락으로 누르는 자리라 폭을 꽉 채운다. 항목 이름은 빼고 버튼만 둔다 —
+                            버튼 글자가 이미 무엇이 열리는지 말한다. */}
+                        <ExpandButton
+                          open={open}
+                          onClick={() => toggleExpand(app.id)}
+                          srLabel={`${app.name} 총평·지망 ${open ? '접기' : '보기'}`}
+                          className="mt-2.5 w-full"
+                        />
+                        {open ? (
+                          <div className="mt-2.5 rounded-xl bg-cream-50 p-3">
+                            <ScoreDetail
+                              interviewScores={interviewScoresOf(app.id)}
+                              staffNames={staffNames}
+                              wishTeam1={app.wishTeam1}
+                              wishTeam2={app.wishTeam2}
+                            />
+                          </div>
+                        ) : null}
+                      </li>
                     );
                   })}
                 />
