@@ -89,8 +89,10 @@ function InterviewScoreRow({ avg, scorerCount }: { avg: string | null; scorerCou
  * 여는 손잡이가 링크처럼 생겨서, 표만 보고 "점수만 있는 화면"으로 읽고 지나쳤다.
  *
  * 세 가지를 준다: **테두리**(눌리는 것이라는 신호) · **화살표**(아래로 열린다는 방향) ·
- * **펼친 상태의 색**(지금 열려 있다는 표시 + 화살표 뒤집기). 글자도 '펼치기' 대신
- * **무엇이 나오는지**를 말한다 — 손잡이 이름이 내용이면 눌러 볼 이유가 생긴다.
+ * **펼친 상태의 색**(지금 열려 있다는 표시 + 화살표 뒤집기).
+ *
+ * 높이는 `min-h-tap`(44px)이었다가 여백을 줄였다 — 표 한 줄에 비해 뭉툭했다(2026-08-23 사용자 지적).
+ * 줄인 것은 여백뿐이고 위 세 가지는 그대로다. 폰에서는 폭을 꽉 채워 쓰므로(`w-full`) 낮아도 누를 자리는 넉넉하다.
  */
 function ExpandButton({
   open,
@@ -110,13 +112,13 @@ function ExpandButton({
       onClick={onClick}
       aria-expanded={open}
       aria-label={srLabel}
-      className={`inline-flex min-h-tap items-center justify-center gap-1 whitespace-nowrap rounded-xl border px-3 text-[12px] font-bold transition-colors ${
+      className={`inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors ${
         open
           ? 'border-blue-300 bg-blue-50 text-blue-700'
-          : 'border-ink-300 bg-white text-ink-900 hover:bg-cream-50'
+          : 'border-ink-200 bg-white text-ink-700 hover:border-ink-300 hover:bg-cream-50'
       } ${className}`}
     >
-      {open ? '접기' : '총평 보기'}
+      {open ? '접기' : '펼치기'}
       <Icon
         name="chevronDown"
         size={14}
@@ -489,7 +491,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                                   <ExpandButton
                                     open={open}
                                     onClick={() => toggleExpand(app.id)}
-                                    srLabel={`${app.name} 총평·지망 ${open ? '접기' : '보기'}`}
+                                    srLabel={`${app.name} 총평·지망 ${open ? '접기' : '펼치기'}`}
                                   />
                                 </td>
                               </tr>
@@ -546,7 +548,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                         <ExpandButton
                           open={open}
                           onClick={() => toggleExpand(app.id)}
-                          srLabel={`${app.name} 총평·지망 ${open ? '접기' : '보기'}`}
+                          srLabel={`${app.name} 총평·지망 ${open ? '접기' : '펼치기'}`}
                           className="mt-2.5 w-full"
                         />
                         {open ? (
