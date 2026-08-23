@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   nextStatusOnScoreChange,
+  attendanceRevertTarget,
   canConfirmDoc,
   canConfirmFinal,
   canTransition,
@@ -250,5 +251,28 @@ describe('canMarkAttendance (운영진 출결 경로의 경계)', () => {
   it('서류 불합격자를 출결로 되살릴 수 없다', () => {
     expect(canMarkAttendance('doc_fail', false)).toBe(false);
     expect(canMarkAttendance('doc_fail', true)).toBe(false);
+  });
+});
+
+// 되돌리기의 도착지. 2026-08-23 에 여기가 `doc_pass` 고정이라 실제로 사고가 났다 —
+// 점수 2건을 가진 33기 지원자 한 명이 '서류 합격'으로 남아 최종 확정에서 말없이 빠질 뻔했다.
+describe('attendanceRevertTarget (불참을 되돌렸을 때 착지할 상태)', () => {
+  it('면접 점수가 남아 있으면 면접 완료로 돌아온다', () => {
+    expect(attendanceRevertTarget(1)).toBe('interview_done');
+    expect(attendanceRevertTarget(2)).toBe('interview_done');
+    expect(attendanceRevertTarget(5)).toBe('interview_done');
+  });
+
+  it('면접 점수가 없으면 면접 전(서류 합격)으로 간다', () => {
+    expect(attendanceRevertTarget(0)).toBe('doc_pass');
+  });
+
+  it('점수 저장이 만드는 상태와 어긋나지 않는다', () => {
+    // 같은 사실(점수 개수)에서 두 경로가 다른 답을 내면 화면마다 상태가 달라진다.
+    for (const count of [0, 1, 2, 3]) {
+      const viaScore = nextStatusOnScoreChange('doc_pass', count);
+      const viaRevert = attendanceRevertTarget(count);
+      expect(viaRevert).toBe(viaScore);
+    }
   });
 });

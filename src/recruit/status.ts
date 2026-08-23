@@ -60,6 +60,22 @@ export function canMarkAttendance(from: RecruitStatus, noshow: boolean): boolean
 }
 
 /**
+ * 불참을 **되돌렸을 때 착지할 상태**. 점수가 남아 있으면 면접 완료, 없으면 면접 전(서류 합격)이다.
+ *
+ * 왜 고정값이면 안 되나(2026-08-23 실제 사고): 되돌리기의 도착지가 `doc_pass` 로 못 박혀 있었다.
+ * 그래서 **면접 완료(점수 2건) → 불참 표시 → 되돌리기** 를 거친 33기 지원자 한 명이 점수를 2건
+ * 가진 채 '서류 합격'으로 남았다. 상태와 사실이 어긋나면 조용히 사라진다 —
+ * `canConfirmFinal` 은 `doc_pass` 를 받지 않으므로 **최종 확정에서 말없이 건너뛰어지고**,
+ * 그 사람은 지원자 조회에서 영영 '결과 대기'로 보인다.
+ *
+ * 상태는 사실의 반영이라는 원칙(09-RECRUIT-DESIGN §3)을 여기서도 그대로 쓴다:
+ * 되돌리기는 "불참이 아니었다"는 말이지 "면접을 안 봤다"는 말이 아니다.
+ */
+export function attendanceRevertTarget(interviewScoreCount: number): RecruitStatus {
+  return interviewScoreCount > 0 ? 'interview_done' : 'doc_pass';
+}
+
+/**
  * 회장단이 수동으로 지정할 수 있는 상태 전이인지 판정한다(09-RECRUIT-DESIGN §3).
  *
  * 왜 필요한가: 위 가드 두 개는 정의만 있고 아무 데서도 호출되지 않아서, 서버가 상태 전이를

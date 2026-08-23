@@ -1,8 +1,8 @@
 // F9 신입 모집 지원자 CRUD 및 관리 서비스
 import { db } from '../db/client';
-import { recruitApplicants } from '../db/schema';
+import { recruitApplicants, recruitScores } from '../db/schema';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
-import { RecruitStatus } from './status';
+import { attendanceRevertTarget, RecruitStatus } from './status';
 import { shortTeamName } from './team-name';
 
 /**
@@ -279,3 +279,39 @@ export async function createSingleApplicant(input: {
   return created;
 }
 
+/**
+ * 면접 출결(불참/되돌리기)을 기록하고 **그 결과 상태**를 돌려준다.
+ *
+ * 되돌리기의 도착지는 고정값이 아니라 **면접 점수 개수에서 다시 계산**한다
+ * (`attendanceRevertTarget` — 왜 그래야 하는지는 그 함수 주석에 있다).
+ *
+ * 세는 것과 쓰는 것을 **같은 트랜잭션**에 둔다: 면접 콘솔은 여러 면접관이 동시에 여는 화면이라,
+ * 세고 나서 쓰는 사이에 옆 면접관이 점수를 저장하면 방금 들어온 점수를 못 본 채 '서류 합격'으로
+ * 덮어쓴다(`recordScore` 가 상태 전이를 같은 트랜잭션에서 하는 것과 같은 이유).
+ */
+export async function setAttendance(
+  applicantId: string,
+  noshow: boolean
+): Promise<{ before: RecruitStatus; after: RecruitStatus } | null> {
+  return db.transaction(async (tx) => {
+    const [app] = await tx
+      .select({ status: recruitApplicants.status })
+      .from(recruitApplicants)
+      .where(eq(recruitApplicants.id, applicantId));
+    if (!app) return null;
+
+    let next: RecruitStatus;
+    if (noshow) {
+      next = 'interview_noshow';
+    } else {
+      const scores = await tx
+        .select({ id: recruitScores.id })
+        .from(recruitScores)
+        .where(and(eq(recruitScores.applicantId, applicantId), eq(recruitScores.stage, 'interview')));
+      next = attendanceRevertTarget(scores.length);
+    }
+
+    await tx.update(recruitApplicants).set({ status: next }).where(eq(recruitApplicants.id, applicantId));
+    return { before: app.status as RecruitStatus, after: next };
+  });
+}

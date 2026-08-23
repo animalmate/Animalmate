@@ -13,6 +13,7 @@ import {
   updateApplicantTeam,
   bulkUpdateApplicantTeam,
   bulkAssignSlots,
+  setAttendance,
 } from '@/recruit/applicants';
 import { getSlotById, listSlotsByCohort } from '@/recruit/slots';
 import { canTransition, canMarkAttendance, type RecruitStatus } from '@/recruit/status';
@@ -135,8 +136,7 @@ export async function PATCH(req: Request): Promise<Response> {
       const [target] = await listApplicantsByIds([id], cohortId);
       if (!target) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-      const next: RecruitStatus = body.noshow ? 'interview_noshow' : 'doc_pass';
-      // ⚠ 여기서 canTransition 만 믿으면 안 된다. 불참 취소의 도착지가 doc_pass 라
+      // ⚠ 여기서 canTransition 만 믿으면 안 된다. 불참 취소의 도착지가 doc_pass 일 수 있어
       // `received → doc_pass`(= 서류 합격 확정, 회장단 권한)가 이 운영진 경로로 열린다.
       // canMarkAttendance 가 출결에 허용된 출발 상태를 따로 못 박는다(2026-07-31 QA).
       if (!canMarkAttendance(target.status as RecruitStatus, body.noshow)) {
@@ -150,20 +150,18 @@ export async function PATCH(req: Request): Promise<Response> {
           { status: 409 }
         );
       }
-      if (!canTransition(target.status as RecruitStatus, next)) {
+      // 불참 표시는 회장단 수동 전이 규칙으로 한 번 더 거른다. 되돌리기는 여기서 검사하지 않는다 —
+      // 도착지를 사람이 고르는 것이 아니라 **면접 점수라는 사실에서 계산**하고(setAttendance),
+      // canTransition 은 `interview_done` 을 수동 목적지로 인정하지 않는다(자동 전이 전용).
+      if (body.noshow && !canTransition(target.status as RecruitStatus, 'interview_noshow')) {
         return NextResponse.json(
-          {
-            error: 'invalid_transition',
-            // 점수가 이미 있으면 interview_done 이라 불참으로 바꿀 수 없다. 이유를 말해 준다.
-            message: body.noshow
-              ? '이미 면접 점수가 있는 지원자입니다. 점수를 지우면 불참으로 표시할 수 있어요.'
-              : '지금 단계에서는 불참을 되돌릴 수 없습니다.',
-          },
+          { error: 'invalid_transition', message: '지금 단계에서는 불참으로 표시할 수 없습니다.' },
           { status: 409 }
         );
       }
 
-      await bulkUpdateApplicantStatus([target.id], next);
+      const moved = await setAttendance(target.id, body.noshow);
+      if (!moved) return NextResponse.json({ error: 'not_found' }, { status: 404 });
       await recordAudit(
         db,
         buildAuditEntry({
@@ -171,11 +169,11 @@ export async function PATCH(req: Request): Promise<Response> {
           action: 'recruit.applicant.attendance',
           targetTable: 'recruit_applicants',
           targetId: target.id,
-          before: { status: target.status },
-          after: { status: next },
+          before: { status: moved.before },
+          after: { status: moved.after },
         })
       );
-      return NextResponse.json({ status: next });
+      return NextResponse.json({ status: moved.after });
     }
 
     if (action === 'assign_slot') {

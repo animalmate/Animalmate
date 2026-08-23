@@ -8,7 +8,7 @@ import { users, recruitCohorts, recruitApplicants, recruitScores, screenNotes, a
 import { recordScore, deleteScore, getScoresForCohort } from '@/recruit/scores';
 import { aggregateScoresByApplicant } from '@/recruit/aggregate';
 import { purgeCohortApplicants, PurgeNotAllowedError } from '@/recruit/purge';
-import { listApplicantsByIds, listApplicantIdsByCohort } from '@/recruit/applicants';
+import { listApplicantsByIds, listApplicantIdsByCohort, setAttendance } from '@/recruit/applicants';
 import { buildNoteKey } from '@/recruit/note-keys';
 import { TEST_DATABASE_URL } from './db-url';
 
@@ -219,6 +219,31 @@ suite('모집 채점 — 자동 상태 전이·집계·폐기 (실 DB)', () => {
     await expect(recordScore(id, scorers[0]!, 'document', 7.3)).rejects.toThrow();
     const rows = await db.select().from(recruitScores).where(eq(recruitScores.applicantId, id));
     expect(rows).toHaveLength(0);
+  });
+
+  // 면접 출결 — 되돌리기의 도착지가 사실(점수)에서 계산되는지. 2026-08-23 실제 사고 재현.
+  it('불참을 되돌리면 점수가 남은 사람은 면접 완료로 돌아온다 — 서류 합격으로 떨어지지 않는다', async () => {
+    const id = await makeApplicant('QA출결되돌리기', 'doc_pass');
+    await recordScore(id, scorers[0]!, 'interview', 8, null);
+    await recordScore(id, scorers[1]!, 'interview', 9, null);
+    expect(await statusOf(id)).toBe('interview_done');
+
+    // 면접관이 실수로 '면접에 안 왔어요'를 눌렀다(점수가 있어도 눌린다 — 사실 기록이라 막지 않는다).
+    await setAttendance(id, true);
+    expect(await statusOf(id)).toBe('interview_noshow');
+
+    // 되돌리면 점수 2건이 그대로 있으므로 면접 완료다. 예전에는 여기서 doc_pass 로 떨어졌고,
+    // 그 상태로는 canConfirmFinal 이 거부해 최종 확정에서 조용히 빠졌다.
+    await setAttendance(id, false);
+    expect(await statusOf(id)).toBe('interview_done');
+  });
+
+  it('점수가 없는 사람을 되돌리면 면접 전(서류 합격)으로 간다', async () => {
+    const id = await makeApplicant('QA출결점수없음', 'doc_pass');
+    await setAttendance(id, true);
+    expect(await statusOf(id)).toBe('interview_noshow');
+    await setAttendance(id, false);
+    expect(await statusOf(id)).toBe('doc_pass');
   });
 
   // 폐기는 지원자를 전부 지우므로 반드시 마지막에 돈다.
