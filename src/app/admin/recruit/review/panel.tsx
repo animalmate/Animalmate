@@ -58,11 +58,21 @@ function ScoreCell({ avg, scorerCount }: { avg: string | null; scorerCount: numb
   );
 }
 
+/** 지망 한 칸(라벨 위, 값 아래). 안 고른 사람은 빈칸이 아니라 그렇게 적는다. */
+function WishTeam({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-cream-200 bg-white px-3 py-2">
+      <dt className="text-[11px] font-semibold text-ink-400">{label}</dt>
+      <dd className="break-words text-[13px] font-bold text-ink-900">
+        {value?.trim() ? value : <span className="font-medium text-ink-300">미기재</span>}
+      </dd>
+    </div>
+  );
+}
+
 /**
- * 채점 기록 한 줄(점수 · 채점자 · 총평).
- *
- * 면접과 서류가 같은 모양을 쓴다 — 검토 회의에서 두 단계를 나란히 읽는 자리라
- * 형태가 다르면 눈이 매번 다시 적응해야 한다. 총평이 주인공이므로 줄바꿈을 그대로 살린다.
+ * 면접 채점 기록 한 줄(점수 · 채점자 · 총평).
+ * 총평이 주인공이므로 줄바꿈을 그대로 살린다.
  */
 function ScoreRecord({
   score,
@@ -94,38 +104,35 @@ function ScoreRecord({
 }
 
 /**
- * 펼친 줄의 속살 — **서류 코멘트가 왼쪽, 면접 총평이 오른쪽**(2026-08-23 사용자 지정).
- * 표의 열 순서(서류 점수 → 면접 점수)와 같은 방향이라 눈이 왼쪽에서 오른쪽으로 그대로 이어진다.
- * 좁은 화면에서는 한 줄씩 쌓이므로 서류가 위, 면접이 아래가 된다. 표와 카드가 같은 것을 쓴다.
+ * 펼친 줄의 속살 — **지망 팀이 왼쪽, 면접 평가 총평이 오른쪽**(2026-08-23 사용자 지정).
+ *
+ * 서류 채점 코멘트는 여기서 뺐다. 이 자리에서 정하는 것은 면접을 보고 난 뒤의 판단이고,
+ * 서류 이야기는 이미 2번(서류 집계·확정)에서 끝났다 — 서류 **점수**는 표에 그대로 남는다.
+ * 대신 지망 팀을 보여준다: 목록은 배정팀(없으면 1지망)으로 묶여 있어서, 사람을 다른 팀으로
+ * 옮길지 이야기할 때 1·2순위를 알아야 한다.
+ *
+ * 좁은 화면에서는 한 줄씩 쌓여 지망이 위, 총평이 아래가 된다. 표와 카드가 같은 것을 쓴다.
  */
 function ScoreDetail({
   interviewScores,
-  documentScores,
   staffNames,
+  wishTeam1,
+  wishTeam2,
 }: {
   interviewScores: ScoreRow[];
-  documentScores: ScoreRow[];
   staffNames: Record<string, string>;
+  wishTeam1?: string | null;
+  wishTeam2?: string | null;
 }) {
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
       <section className="space-y-2">
-        <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-          서류 채점 코멘트 {documentScores.length}건
-        </h4>
-        {documentScores.length > 0 ? (
-          documentScores.map((s) => (
-            <ScoreRecord
-              key={s.id}
-              score={s.score}
-              scorerName={staffNames[s.scorerUserId] || '이름 미상'}
-              comment={s.comment}
-              emptyComment="코멘트를 적지 않았습니다."
-            />
-          ))
-        ) : (
-          <p className="text-[13px] text-ink-400">서류 채점 기록이 없습니다.</p>
-        )}
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink-400">지망 팀</h4>
+        {/* 두 칸을 나란히 둔다 — 1순위만 보고 2순위를 못 본 채 옮길 팀을 정하는 일이 없게. */}
+        <dl className="grid grid-cols-2 gap-2">
+          <WishTeam label="1순위" value={wishTeam1} />
+          <WishTeam label="2순위" value={wishTeam2} />
+        </dl>
       </section>
 
       <section className="space-y-2">
@@ -275,9 +282,10 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
     setExpandedIds(allExpanded ? new Set() : new Set(visible.map((a) => a.id)));
   };
 
-  const scoresOf = (applicantId: string, stage: 'document' | 'interview') =>
+  // 펼친 칸에 쓰는 것은 면접 기록뿐이다(서류는 표의 평균 점수로 끝난다). 높은 점수부터.
+  const interviewScoresOf = (applicantId: string) =>
     scores
-      .filter((s) => s.applicantId === applicantId && s.stage === stage)
+      .filter((s) => s.applicantId === applicantId && s.stage === 'interview')
       .sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
 
   return (
@@ -379,7 +387,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                           <th className="p-3.5">서류 점수</th>
                           <th className="p-3.5">면접 점수</th>
                           <th className="p-3.5">상태</th>
-                          <th className="w-28 p-3.5 text-center">면접 총평</th>
+                          <th className="w-28 p-3.5 text-center">총평·지망</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-cream-100">
@@ -424,9 +432,10 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                                 <tr className="bg-cream-25">
                                   <td colSpan={7} className="px-3.5 pb-4 pt-1">
                                     <ScoreDetail
-                                      interviewScores={scoresOf(app.id, 'interview')}
-                                      documentScores={scoresOf(app.id, 'document')}
+                                      interviewScores={interviewScoresOf(app.id)}
                                       staffNames={staffNames}
+                                      wishTeam1={app.wishTeam1}
+                                      wishTeam2={app.wishTeam2}
                                     />
                                   </td>
                                 </tr>
@@ -463,7 +472,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                             scorerCount={agg?.interviewScorerCount ?? 0}
                           />
                         </CardField>
-                        <CardBlock label="면접 총평">
+                        <CardBlock label="총평·지망">
                           <button
                             type="button"
                             onClick={() => toggleExpand(app.id)}
@@ -475,9 +484,10 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                           {open ? (
                             <div className="mt-2">
                               <ScoreDetail
-                                interviewScores={scoresOf(app.id, 'interview')}
-                                documentScores={scoresOf(app.id, 'document')}
+                                interviewScores={interviewScoresOf(app.id)}
                                 staffNames={staffNames}
+                                wishTeam1={app.wishTeam1}
+                                wishTeam2={app.wishTeam2}
                               />
                             </div>
                           ) : null}
