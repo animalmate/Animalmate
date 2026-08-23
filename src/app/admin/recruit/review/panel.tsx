@@ -93,7 +93,11 @@ function ScoreRecord({
   );
 }
 
-/** 펼친 줄의 속살 — 면접 총평이 위, 서류 코멘트가 아래. 표와 카드가 같은 것을 쓴다. */
+/**
+ * 펼친 줄의 속살 — **서류 코멘트가 왼쪽, 면접 총평이 오른쪽**(2026-08-23 사용자 지정).
+ * 표의 열 순서(서류 점수 → 면접 점수)와 같은 방향이라 눈이 왼쪽에서 오른쪽으로 그대로 이어진다.
+ * 좁은 화면에서는 한 줄씩 쌓이므로 서류가 위, 면접이 아래가 된다. 표와 카드가 같은 것을 쓴다.
+ */
 function ScoreDetail({
   interviewScores,
   documentScores,
@@ -105,6 +109,25 @@ function ScoreDetail({
 }) {
   return (
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <section className="space-y-2">
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+          서류 채점 코멘트 {documentScores.length}건
+        </h4>
+        {documentScores.length > 0 ? (
+          documentScores.map((s) => (
+            <ScoreRecord
+              key={s.id}
+              score={s.score}
+              scorerName={staffNames[s.scorerUserId] || '이름 미상'}
+              comment={s.comment}
+              emptyComment="코멘트를 적지 않았습니다."
+            />
+          ))
+        ) : (
+          <p className="text-[13px] text-ink-400">서류 채점 기록이 없습니다.</p>
+        )}
+      </section>
+
       <section className="space-y-2">
         <h4 className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
           면접 평가 총평 {interviewScores.length}건
@@ -123,25 +146,6 @@ function ScoreDetail({
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">
             면접 점수가 한 건도 없습니다. 면접을 보기로 한 사람인데 아무도 채점하지 않았습니다.
           </p>
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-          서류 채점 코멘트 {documentScores.length}건
-        </h4>
-        {documentScores.length > 0 ? (
-          documentScores.map((s) => (
-            <ScoreRecord
-              key={s.id}
-              score={s.score}
-              scorerName={staffNames[s.scorerUserId] || '이름 미상'}
-              comment={s.comment}
-              emptyComment="코멘트를 적지 않았습니다."
-            />
-          ))
-        ) : (
-          <p className="text-[13px] text-ink-400">서류 채점 기록이 없습니다.</p>
         )}
       </section>
     </div>
