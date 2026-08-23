@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation';
 import { isPrivileged, type Role } from '@/auth/permissions';
 import { Icon } from './icon';
 
-// 신입 모집은 0→5 순서가 있는 절차라 내비를 단계 흐름으로 보여준다.
-// 역할 표기는 각 화면 제목에 이미 있어 내비에서는 뺐다 — 1000px 폭에서 7단계가 한 줄에 들어가야 한다.
+// 신입 모집은 0→6 순서가 있는 절차라 내비를 단계 흐름으로 보여준다.
+// 역할 표기는 각 화면 제목에 이미 있어 내비에서는 뺐다 — 폭이 좁으면 줄바꿈으로 흘린다
+// (8단계가 되면서 1000px 한 줄에는 더 이상 들어가지 않는다).
 //
 // manage=true 인 단계는 회장단 전용(recruit.manage, 09-RECRUIT-DESIGN §4)이다.
 // 운영진에게도 **보여주되 누를 수 없게** 한다 — 숨기면 전체 절차가 몇 단계인지 알 수 없고,
@@ -17,7 +18,8 @@ const LINKS = [
   { href: '/admin/recruit/tally', step: '2', label: '서류 집계·확정', manage: true },
   { href: '/admin/recruit/interview/assign', step: '3', label: '면접 배정', manage: true },
   { href: '/admin/recruit/interview/console', step: '4', label: '면접 콘솔', manage: false },
-  { href: '/admin/recruit/final', step: '5', label: '최종 결정·공개', manage: true },
+  { href: '/admin/recruit/review', step: '5', label: '최종 검토', manage: false },
+  { href: '/admin/recruit/final', step: '6', label: '최종 결정·공개', manage: true },
 ];
 
 export function RecruitNav({ role }: { role: Role }) {
@@ -77,7 +79,7 @@ export function RecruitNav({ role }: { role: Role }) {
       </ol>
       {!canManage ? (
         <p className="mt-1.5 px-1 text-[12px] text-ink-400">
-          자물쇠 표시된 단계는 회장단이 진행합니다. 운영진은 서류 심사와 면접 콘솔에서 채점을 맡습니다.
+          자물쇠 표시된 단계는 회장단이 진행합니다. 운영진은 서류 심사·면접 콘솔에서 채점하고, 최종 검토를 함께 봅니다.
         </p>
       ) : null}
     </nav>

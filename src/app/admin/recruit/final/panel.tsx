@@ -336,7 +336,7 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[24px] font-bold text-ink-900">5. 최종 결정 및 데이터 관리 (회장단)</h1>
+            <h1 className="text-[24px] font-bold text-ink-900">6. 최종 결정 및 데이터 관리 (회장단)</h1>
             <HelpButton screen="recruit-final" />
           </div>
           <p className="mt-1 text-sm text-ink-500">최종 합격자 결정, 최종 팀 배정, 지원자 결과 공개 및 개인정보 안전 일괄 파기.</p>
