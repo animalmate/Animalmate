@@ -3,6 +3,7 @@ import { db } from '../db/client';
 import { recruitApplicants, recruitScores } from '../db/schema';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 import { attendanceRevertTarget, RecruitStatus } from './status';
+import { normalizeMoveTeam, type ReviewMark } from './review-marks';
 import { shortTeamName } from './team-name';
 
 /**
@@ -45,6 +46,8 @@ export async function listApplicantsByCohortSlim(cohortId: string) {
       wishTeam1: recruitApplicants.wishTeam1,
       wishTeam2: recruitApplicants.wishTeam2,
       status: recruitApplicants.status,
+      reviewMark: recruitApplicants.reviewMark,
+      reviewMoveTeam: recruitApplicants.reviewMoveTeam,
       slotId: recruitApplicants.slotId,
       interviewLink: recruitApplicants.interviewLink,
       nearStation: recruitApplicants.nearStation,
@@ -185,6 +188,55 @@ export async function updateApplicantNearStation(id: string, nearStation: string
     .where(eq(recruitApplicants.id, id))
     .returning();
   return updated;
+}
+
+export interface ReviewMarkState {
+  reviewMark: ReviewMark | null;
+  /** '다른 팀' 표시에만 붙는 갈 팀. 안 고를 수 있다(null = 팀 미정). */
+  reviewMoveTeam: string | null;
+}
+
+/**
+ * 최종 검토(5번)에서 팀장단이 붙이는 의견 표시. `mark` 가 `null` 이면 표시를 지운다.
+ *
+ * 상태(status)를 건드리지 않는다 — 이것은 결정이 아니라 회장단에게 넘길 의견이다
+ * (review-marks.ts 머리말). 그래서 상태 전이 가드도 태우지 않는다.
+ *
+ * 갈 팀은 **여기서 정리한다**(`normalizeMoveTeam`): 표시가 'move' 가 아니면 무엇이 넘어왔든
+ * null 이다. 호출부가 지워 주기를 기대하면 새 호출부 하나가 빠뜨리는 순간 유령 목적지가 남는다.
+ *
+ * 기수로 한 번 더 좁힌다: 호출부가 기수를 확인하지만, 이 한 줄이 있으면 검사가 빠진 새 호출부가
+ * 생겨도 남의 기수 지원자에 표시를 남기지는 못한다(bulkAssignSlots 와 같은 이유).
+ */
+export async function setReviewMark(
+  cohortId: string,
+  id: string,
+  mark: ReviewMark | null,
+  moveTeam?: string | null
+): Promise<{ before: ReviewMarkState; after: ReviewMarkState } | null> {
+  // 바꾸기 **전** 값도 남긴다 — 검토 회의에서 "누가 이걸 지웠지"를 되짚을 때 새 값만
+  // 있으면 아무 말도 못 한다(규칙 #4). 읽기와 쓰기를 같은 트랜잭션에 두는 이유는
+  // setAttendance 와 같다: 팀장단이 다 같이 열어 놓고 누르는 화면이라 사이가 벌어지면
+  // 옆 사람이 방금 바꾼 값을 못 본 채 이전 값으로 기록한다.
+  const after: ReviewMarkState = {
+    reviewMark: mark,
+    reviewMoveTeam: normalizeMoveTeam(mark, moveTeam),
+  };
+  return db.transaction(async (tx) => {
+    const scope = and(eq(recruitApplicants.id, id), eq(recruitApplicants.cohortId, cohortId));
+    const [found] = await tx
+      .select({
+        reviewMark: recruitApplicants.reviewMark,
+        reviewMoveTeam: recruitApplicants.reviewMoveTeam,
+      })
+      .from(recruitApplicants)
+      .where(scope)
+      .for('update');
+    if (!found) return null;
+
+    await tx.update(recruitApplicants).set(after).where(scope);
+    return { before: found, after };
+  });
 }
 
 export async function updateApplicantTeam(id: string, assignedTeam: string | null) {

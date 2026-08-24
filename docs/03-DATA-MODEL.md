@@ -212,11 +212,20 @@
     apply_route?, other_activities?, expected_frequency?, wish_team1?, wish_team2?, assigned_team?,
     **near_station?**(주소 대신 역명), ot_attend?(text), remote_interview_wish?(text), essay_intro?, essay_values?,
     **essay_values_topic?**(가치관 문항에서 고른 주제), **english_name?**(최종 합격자 로타랙트 가입 안내용),
-    status, slot_id?, interview_link?, uploaded_by?(set null), created_at) — **사이트 지원 폼 접수**.
+    status, **review_mark?**(drop|move), **review_move_team?**, slot_id?, interview_link?,
+    uploaded_by?(set null), created_at) — **사이트 지원 폼 접수**.
     `uploaded_by` 는 33기까지 쓰던 CSV 업로드가 남긴 칸이다(화면은 2026-08-21 폐기, 결정 123).
     옛 행이 가리키고 있어 컬럼은 지우지 않는다. 폼으로 들어온 행은 null 이다.
     status = received→doc_fail|doc_pass→interview_done|interview_noshow
     →final_pass|final_fail. **phone·자기소개서 = PII, RAG 반입 금지(규칙 #5)·커밋/시드 금지(규칙 #4).**
+    `review_mark`(0030) = 5번 최종 검토 화면에서 **팀장단이 붙이는 의견 표시**로 결정이 아니다 —
+    `status` 도 `assigned_team` 도 건드리지 않고, 6번(회장단)이 보고 판단할 근거로만 남는다.
+    boolean 두 개가 아니라 **enum 한 칸**인 이유: 탈락과 이동은 동시에 참일 수 없는데 칸을 나누면
+    둘 다 켜진 행이 만들어지고, 그 행을 어떻게 읽을지는 아무 데도 안 적혀 있다.
+    `review_move_team` 은 'move' 일 때만 채워지는 **갈 팀**이고 **비워 둘 수 있다**(= 팀 미정) —
+    "우리 팀은 아니다"까지만 정하고 갈 곳은 나중에 맞추는 회의가 실제로 흔하다. 표시가 'move' 가
+    아니게 되면 서비스(`setReviewMark`)가 이 값을 같이 지운다(순수 규칙 `normalizeMoveTeam`).
+    팀 이름은 문자열이다(`assigned_team`·`wish_team1` 과 같은 꼴 — 참조할 팀 테이블이 없다).
   - `recruit_scores` (id, applicant_id, scorer_user_id, stage[document|interview], score numeric(3,1) 0~10 0.5단위,
     comment?, created_at, updated_at) UNIQUE(applicant_id, scorer_user_id, stage). 본인 점수만 수정. DB CHECK 로 범위 강제.
   - `recruit_memos` (id, applicant_id, author_user_id, content, updated_at) UNIQUE(applicant_id, author_user_id)

@@ -14,9 +14,11 @@ import {
   bulkUpdateApplicantTeam,
   bulkAssignSlots,
   setAttendance,
+  setReviewMark,
 } from '@/recruit/applicants';
 import { getSlotById, listSlotsByCohort } from '@/recruit/slots';
 import { canTransition, canMarkAttendance, type RecruitStatus } from '@/recruit/status';
+import { parseReviewMark } from '@/recruit/review-marks';
 import { internalError } from '@/http/errors';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { db } from '@/db/client';
@@ -174,6 +176,43 @@ export async function PATCH(req: Request): Promise<Response> {
         })
       );
       return NextResponse.json({ status: moved.after });
+    }
+
+    // 최종 검토(5번)의 의견 표시 — **팀장단이 회의 중에 누르는 값**이라 운영진 이상에게 연다.
+    // 상태를 바꾸지 않으므로 회장단 전용(recruit.manage)이 아니라 채점과 같은 층(recruit.score,
+    // staff+)이다: 여기서 붙는 것은 "이렇게 하자"는 의견이고, 합격/불합격은 6번에서 회장단이 정한다.
+    if (action === 'review_mark') {
+      if (!isStaffPlus(actor.role)) {
+        return NextResponse.json(
+          { error: 'forbidden', message: '검토 표시는 운영진만 할 수 있습니다.' },
+          { status: 403 }
+        );
+      }
+      if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
+      // 기수를 받아 범위를 좁힌다 — id 만으로 전 기수를 뒤지면 다른 기수 지원자에 표시가 붙는다.
+      if (!cohortId) return NextResponse.json({ error: 'missing_cohort' }, { status: 400 });
+
+      // `null`(표시 지우기)과 오타를 반드시 갈라야 한다. 합쳐 두면 'drpo' 같은 값이 지우기로
+      // 읽혀 표시가 조용히 사라진다(parseReviewMark 주석).
+      const mark = parseReviewMark(body.reviewMark);
+      if (mark === undefined) return NextResponse.json({ error: 'invalid_mark' }, { status: 400 });
+
+      // 갈 팀은 그대로 넘긴다 — 'move' 가 아닐 때 지우는 일은 서비스가 한다(setReviewMark).
+      // 안 고를 수 있는 값이라 없다고 400 을 내지 않는다.
+      const moved = await setReviewMark(String(cohortId), id, mark, body.reviewMoveTeam);
+      if (!moved) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+      await recordAudit(
+        db,
+        buildAuditEntry({
+          actorUserId: actor.userId,
+          action: 'recruit.applicant.reviewMark',
+          targetTable: 'recruit_applicants',
+          targetId: id,
+          before: moved.before,
+          after: moved.after,
+        })
+      );
+      return NextResponse.json(moved.after);
     }
 
     if (action === 'assign_slot') {

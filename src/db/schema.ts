@@ -74,6 +74,14 @@ export const recruitStatusEnum = pgEnum('recruit_status', [
 ]);
 export const recruitScoreStageEnum = pgEnum('recruit_score_stage', ['document', 'interview']);
 
+// 5. 최종 검토 화면에서 팀장단이 붙이는 **의견 표시**(2026-08-24). 결정이 아니다 —
+// 상태(recruit_status)를 건드리지 않고, 6번 화면에서 회장단이 보고 판단할 근거로만 남는다.
+//   drop = 탈락시킬 사람 / move = 다른 팀으로 보낼 사람.
+// 두 값을 boolean 두 개가 아니라 **한 칸의 enum** 으로 두는 이유: 둘은 동시에 참일 수 없는데
+// (내보낼 사람을 동시에 탈락시킬 수는 없다) 칸을 나누면 둘 다 켜진 행이 만들어지고,
+// 그 행을 어떻게 읽을지는 아무 데도 안 적혀 있어 결국 회장단이 매번 되물어야 한다.
+export const recruitReviewMarkEnum = pgEnum('recruit_review_mark', ['drop', 'move']);
+
 // ── 조직/계정 ──────────────────────────────────────────────────────────
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -562,6 +570,16 @@ export const recruitApplicants = pgTable(
     // 합격 시 외부 단체(로타랙트) 가입용. 불합격 시 폐기 — PII 이므로 다른 지원자 정보와 함께 폐기된다.
     englishName: text('english_name'),
     status: recruitStatusEnum('status').notNull().default('received'),
+    // 최종 검토(5번)에서 팀장단이 붙인 의견 표시. null = 아직 아무 표시도 안 함.
+    // 상태와 달리 **되돌리기 자유로운 메모성 값**이라 전이 규칙(status.ts)을 태우지 않는다.
+    reviewMark: recruitReviewMarkEnum('review_mark'),
+    // '다른 팀으로 보낼 사람'에 **어느 팀인지**까지 적을 수 있다. 비워 둘 수 있다(= 팀 미정):
+    // 회의에서 "얘는 여기 아니다"까지만 정하고 갈 곳은 나중에 맞추는 일이 실제로 흔하다.
+    // 표시가 'move' 가 아니게 되면 이 값도 같이 지운다(review-marks.ts `normalizeMoveTeam`) —
+    // 탈락으로 바꿨는데 옛 목적지가 남아 있으면 6번 화면에서 무엇을 믿을지 알 수 없다.
+    // 팀 이름을 **문자열로** 둔다: 기수 설정의 팀 목록(assigned_team·wish_team1 과 같은 꼴)이라
+    // 참조할 팀 테이블이 따로 없다.
+    reviewMoveTeam: text('review_move_team'),
     slotId: uuid('slot_id').references(() => recruitSlots.id, { onDelete: 'set null' }),
     interviewLink: text('interview_link'), // 개인 단위 링크(슬롯 링크보다 우선)
     uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
