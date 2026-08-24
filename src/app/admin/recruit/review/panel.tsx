@@ -707,7 +707,13 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
               <section key={group.team} className="space-y-2.5">
                 <h2 className="flex items-baseline gap-2 border-b border-cream-200 pb-1.5">
                   <span className="text-[15px] font-bold text-ink-900">{group.team}</span>
-                  <span className="text-[13px] font-semibold text-ink-400">{group.applicants.length}명</span>
+                  {/* 다른 팀에서 온 사람도 이 박스에서 보이는 사람이니 머릿수에 넣는다 —
+                      8명 + 다른 팀 3명이면 '11명(8+3)'으로, 정작 이 팀 화면을 보는 팀장이
+                      실제로 챙겨야 할 인원수를 한눈에 알 수 있게 한다(2026-08-24 사용자 지정). */}
+                  <span className="text-[13px] font-semibold text-ink-400">
+                    {group.applicants.length + incoming.length}명
+                    {incoming.length > 0 ? ` (${group.applicants.length} + ${incoming.length})` : ''}
+                  </span>
                   {incoming.length > 0 ? (
                     <span
                       className={`rounded-full border px-2 py-0.5 text-[12px] font-semibold ${MOVE_IN_STYLE.badge}`}
