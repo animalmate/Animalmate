@@ -5,36 +5,52 @@ import type { Role } from '@/auth/permissions';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
-import { matchesTeamFilter } from '@/recruit/team-filter';
+import { ALL_TEAMS_FILTER, matchesTeamFilter } from '@/recruit/team-filter';
+import { isUnderReview } from '@/recruit/review-list';
+import {
+  decideFinalOutcomes,
+  summarizeFinalDecisions,
+  groupPassByFinalTeam,
+  type FinalDecision,
+} from '@/recruit/final-decision';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
-import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { formatScore } from '@/recruit/display';
 import { RecruitNav } from '@/components/recruit-nav';
-import { Button, Card, CardBlock, CardField, DangerButton, Field, Input, RowCard, SecondaryButton, Select, StatusMessage, TableCards, TeamOptions, ToolbarSelect } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardField,
+  DangerButton,
+  Field,
+  Input,
+  RowCard,
+  SecondaryButton,
+  StatusMessage,
+  TableCards,
+  TeamOptions,
+  ToolbarSelect,
+} from '@/components/ui';
 
-// 표(PC)와 카드(모바일)가 같은 조각을 쓰도록 뽑아 둔다 — 한쪽만 고치는 사고를 막는다.
-function WarnChip({ warn }: { warn: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold ${
-        warn === '면접 불참' ? 'bg-coral-100 text-coral-700' : 'bg-amber-100 text-amber-700'
-      }`}
-    >
-      <Icon name="alert" size={12} className="inline" /> {warn}
+/** 합격/불합격 미리보기 배지. 실제 상태 배지(`StatusChip`)와 다른 자리다 — 이건 "이대로 확정하면
+ * 될 값"이고, 상태 배지는 지금 DB 에 있는 값이라 확정 전까지는 여전히 `interview_done` 이다. */
+function OutcomeChip({ outcome }: { outcome: 'pass' | 'fail' }) {
+  return outcome === 'pass' ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-success-100 px-2.5 py-0.5 text-[11px] font-semibold text-success-700">
+      합격
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full bg-coral-100 px-2.5 py-0.5 text-[11px] font-semibold text-coral-700">
+      불합격
     </span>
   );
 }
 
-function StatusChip({ status }: { status: string }) {
-  const b = recruitStatusBadge(status);
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${BADGE_TONE_CLASS[b.tone]}`}
-    >
-      <i className="h-1.5 w-1.5 rounded-full bg-current" />
-      {b.label}
-    </span>
-  );
+/** 왜 이 결과가 나왔는지 한 마디. 회장단이 "이 사람이 왜 여기 있지"를 5번으로 돌아가지 않고
+ * 바로 알 수 있게 한다. */
+function reasonLabel(mark: 'drop' | 'move' | null | undefined): string {
+  if (mark === 'drop') return '탈락 표시';
+  if (mark === 'move') return '다른 팀 표시';
+  return '표시 없음(자동 합격)';
 }
 
 export function RecruitFinalPanel({ role }: { role: Role }) {
@@ -46,13 +62,11 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
 
   const [applicants, setApplicants] = useState<any[]>([]);
   const [aggregations, setAggregations] = useState<Record<string, ApplicantAggregate>>({});
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectedTeam, setSelectedTeam] = useState('ALL');
+  const [selectedTeam, setSelectedTeam] = useState(ALL_TEAMS_FILTER);
 
   // 스위치 및 모달 상태
   const [schedulePublic, setSchedulePublic] = useState(false);
   const [resultPublic, setResultPublic] = useState(false);
-  const [stageFilter, setStageFilter] = useState('ALL');
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeConfirmInput, setPurgeConfirmInput] = useState('');
 
@@ -99,25 +113,6 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     }
   }, [selectedCohortId, fetchCohortAndApplicants]);
 
-  // 팀·기수를 바꾸면 선택을 푼다. 최종 합격 확정은 되돌릴 수 없는데, 앞 팀에서 고른 사람이
-  // 화면에 보이지 않는 채로 남아 함께 확정될 수 있다.
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [selectedTeam, selectedCohortId]);
-
-  const sortedApplicants = [...applicants].sort((a, b) => {
-    const avgA = aggregations[a.id]?.interviewScoreAvg ?? -1;
-    const avgB = aggregations[b.id]?.interviewScoreAvg ?? -1;
-    return avgB - avgA;
-  });
-
-  const handleToggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
-  };
-
   const handleUpdateSwitches = async (newSchedule: boolean, newResult: boolean) => {
     setLoading(true);
     try {
@@ -161,55 +156,6 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     return { ok: true, updated: data.updatedCount ?? 0, note: reasons.join(', ') };
   };
 
-  /**
-   * 최종 합격 확정 — **고른 사람은 합격, 매트릭스에 남은 나머지는 불합격**이다.
-   *
-   * 불합격을 따로 처리하지 않는 이유(2026-08-21 사용자 결정): 최종 합격자를 제외한 사람은 그냥
-   * 불합격이다. 두 번 나눠 누르게 하면 두 번째를 빠뜨릴 수 있는데, 그러면 떨어진 사람이
-   * 지원자 조회에서 영영 '결과 대기'로 보인다(`lookup-visibility.ts` — 최종 상태가 아니면
-   * 당락을 내보내지 않는다). 한 번의 확정으로 기수 전체가 끝나야 그 구멍이 생기지 않는다.
-   */
-  const handleConfirmFinal = async () => {
-    if (selectedIds.size === 0) return;
-    const passIds = Array.from(selectedIds);
-    if (
-      !confirm(
-        `최종 합격 ${passIds.length}명을 확정합니다.\n\n` +
-          `면접을 본 나머지 ${autoFailIds.length}명은 같은 순간에 최종 불합격으로 처리됩니다.\n` +
-          `면접 불참 ${excluded.noshow.length}명은 '면접 불참'으로 그대로 둡니다.\n\n` +
-          `확정한 결과는 '최종 합격 결과 지원자 공개'를 켜는 순간 지원자에게 그대로 나갑니다.\n\n진행할까요?`
-      )
-    )
-      return;
-
-    setLoading(true);
-    try {
-      const pass = await bulkStatus(passIds, 'final_pass');
-      if (!pass.ok) {
-        setMessage(`❌ ${pass.note || '확정에 실패했습니다.'}`);
-        return;
-      }
-      const fail = await bulkStatus(autoFailIds, 'final_fail');
-      if (!fail.ok) {
-        // 합격은 들어갔는데 불합격이 실패한 상태를 조용히 두면 절반만 확정된 채 발표된다.
-        setMessage(
-          `⚠️ 합격 ${pass.updated}명은 확정했지만 나머지 불합격 처리에 실패했습니다(${fail.note}). 다시 눌러 주세요.`
-        );
-        await fetchCohortAndApplicants();
-        return;
-      }
-      const note = [pass.note, fail.note].filter(Boolean).join(', ');
-      setMessage(
-        `✅ 최종 합격 ${pass.updated}명 · 최종 불합격 ${fail.updated}명을 확정했습니다.` +
-          (note ? ` (제외: ${note})` : '')
-      );
-      setSelectedIds(new Set());
-      await fetchCohortAndApplicants();
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // 확인 문구가 남아 있으면 모달을 다시 열자마자 파기 버튼이 활성 상태다 — 매번 다시 입력하게 비운다.
   const closePurgeModal = () => {
     setShowPurgeModal(false);
@@ -241,95 +187,126 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     }
   };
 
-  const handleReassignTeam = async (id: string, newTeam: string) => {
-    // 행마다 드롭다운이 있는 표다. 매번 전체를 다시 불러오면 한 명 바꿀 때마다 화면이 멈춘다.
-    // 실패하면 서버에서 다시 읽는다 — 여러 행을 연달아 바꾸는 화면이라 스냅샷을 되돌리면
-    // 그 사이 성공한 다른 행까지 함께 지워진다.
-    setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, assignedTeam: newTeam } : a)));
-    try {
-      const res = await fetch('/api/recruit/applicants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'change_team',
-          id,
-          assignedTeam: newTeam,
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setMessage(`✅ 최종 배정 팀이 [${newTeam}](으)로 변경되었습니다.`);
-      } else {
-        setMessage(`❌ ${data.message || data.error || '팀 변경에 실패했습니다.'}`);
-        await fetchCohortAndApplicants();
-      }
-    } catch {
-      setMessage('❌ 팀을 변경하지 못했습니다. 연결을 확인해 주세요.');
-      await fetchCohortAndApplicants();
-    }
-  };
-
-  // 이 화면은 팀으로만 걸러져서, 실제로 결정할 수 있는 사람이 탈락자·미심사자 사이에 섞여 있었다.
-  // 서버가 단계를 검증하므로 안전하긴 하지만, 고를 때 눈으로 찾아야 하는 건 그대로였다.
-  const DECIDABLE = ['interview_done'];
-  const DECIDED = ['final_pass', 'final_fail'];
-
-  /**
-   * 매트릭스에 서는 사람 = **면접을 실제로 보는 사람**(2026-08-21 사용자 결정).
-   *
-   * 면접에 배정됐고, 불참이 아니어야 한다. 최종 합격은 면접을 보고 나서 정하는 것이라
-   * 그 자리에 서지 않는 사람(서류 탈락·미배정·불참)을 함께 세워 두면 고를 때마다 눈으로 걸러야 한다.
-   *
-   * **불참자는 여기서 뺀다.** 뺀다고 사라지는 것이 아니라 `interview_noshow` 로 끝난다 —
-   * 지원자 조회에도 '면접 불참'으로 그대로 나간다(`lookup-visibility.ts`). 굳이 불합격으로
-   * 한 번 더 찍을 이유가 없다.
-   */
-  const inMatrix = (app: any) => app.slotId != null && app.status !== 'interview_noshow';
+  // 매트릭스에 서던 사람 = 5번 최종 검토와 같은 기준(`isUnderReview`, review-list.ts) —
+  // 면접에 배정됐고 불참이 아니어야 한다. 두 화면이 각자 기준을 적으면 5번에서 본 사람과
+  // 6번이 처리하는 사람이 어긋난다.
+  const pool = applicants.filter(isUnderReview);
+  const teamApplicants = pool.filter((app) => matchesTeamFilter(app, selectedTeam));
 
   // 매트릭스 밖으로 빠진 사람은 **숫자로라도 보여 준다.** 그냥 감추면 33기처럼 배정에서 잊힌
   // 서류 합격자가 아무 화면에도 안 나온 채 발표까지 간다(2026-08-21 실제로 3명 있었다).
   const excluded = {
-    unassigned: sortedApplicants.filter((a) => a.status === 'doc_pass' && !a.slotId),
-    noshow: sortedApplicants.filter((a) => a.status === 'interview_noshow'),
+    unassigned: applicants.filter((a) => a.status === 'doc_pass' && !a.slotId),
+    noshow: applicants.filter((a) => a.status === 'interview_noshow'),
   };
 
-  const matrixPool = sortedApplicants.filter(inMatrix);
-  const teamApplicants = matrixPool.filter((app) => matchesTeamFilter(app, selectedTeam));
-  const filteredApplicants = teamApplicants.filter((app) => {
-    if (stageFilter === 'DECIDABLE') return DECIDABLE.includes(app.status);
-    if (stageFilter === 'DECIDED') return DECIDED.includes(app.status);
-    if (stageFilter === 'PENDING') return !DECIDABLE.includes(app.status) && !DECIDED.includes(app.status);
-    return true;
-  });
-  const decidableCount = teamApplicants.filter((a) => DECIDABLE.includes(a.status)).length;
+  /**
+   * **확정 대상 = 면접을 마친(`interview_done`) 사람**. 아직 면접 전이거나 이미 확정된 사람은
+   * 결과를 다시 계산할 이유가 없다 — 확정된 사람을 다시 계산에 넣으면 상태가 이미 최종인데
+   * 또 최종 처리를 시도하는 요청이 나간다(서버가 막긴 하지만 화면이 굳이 보여줄 이유가 없다).
+   */
+  const decidablePool = teamApplicants.filter((a) => a.status === 'interview_done');
+  const alreadyDecidedCount = teamApplicants.filter(
+    (a) => a.status === 'final_pass' || a.status === 'final_fail'
+  ).length;
+  const notYetInterviewedCount = teamApplicants.length - decidablePool.length - alreadyDecidedCount;
 
-  // 합격을 확정하면 **나머지는 자동으로 불합격**이다(사용자 결정 2026-08-21). 그 '나머지'는
-  // 팀 필터와 무관하게 기수 전체에서 센다 — 팀별로 나눠 확정하면 다른 팀 사람이 결정되지 않은 채
-  // 남고, 지원자 조회에서 영영 '결과 대기'로 보인다.
-  const autoFailIds = matrixPool
-    .filter((a) => DECIDABLE.includes(a.status) && !selectedIds.has(a.id))
-    .map((a) => a.id);
+  /**
+   * 5번 최종 검토의 표시를 합격/불합격/최종 팀으로 바꾼다(`final-decision.ts`).
+   *
+   * **팀 필터와 무관하게 기수 전체로 계산한다** — 확정 버튼은 항상 전체를 대상으로 하므로
+   * (아래 disabled 조건), 미리보기도 같은 범위로 계산해야 "지금 이 버튼을 누르면 무슨 일이
+   * 일어나는지"가 화면에 보이는 숫자와 실제로 같다. 팀 필터는 아래 표를 좁혀 보는 용도일 뿐이다.
+   */
+  const allDecidablePool = pool.filter((a) => a.status === 'interview_done');
+  const decisions = decideFinalOutcomes(allDecidablePool, (id) => aggregations[id]?.interviewScorerCount ?? 0);
+  const summary = summarizeFinalDecisions(decisions);
+  const decidableTotal = summary.pass.length + summary.fail.length;
+  // 합격자 중 원래 팀이 아니라 다른 팀으로 가는 사람 — 확인 문구에 알려 준다.
+  const moveCount = summary.pass.filter((d) => d.applicant.reviewMark === 'move').length;
 
-  // 한 줄에서 뽑아 쓰는 값을 한 번만 계산한다 — 표(PC)와 카드(모바일)가 각자 계산하면
-  // 한쪽만 고쳐 놓고 못 알아채는 일이 생긴다.
-  const rows = filteredApplicants.map((app) => {
-    const agg = aggregations[app.id];
+  // 표는 팀 필터를 따른다(훑어보는 용도). 정렬은 5번과 같이 면접 평균 내림차순.
+  const previewDecisions: FinalDecision<any>[] = [...summary.pass, ...summary.fail]
+    .filter((d) => matchesTeamFilter(d.applicant, selectedTeam))
+    .sort(
+      (a, b) =>
+        (aggregations[b.applicant.id]?.interviewScoreAvg ?? -1) -
+        (aggregations[a.applicant.id]?.interviewScoreAvg ?? -1)
+    );
 
-    // 미배정·불참은 이제 매트릭스에 오지 않는다(위 `inMatrix`). 대신 표 위에서 숫자로 알린다.
-    // 여기 남는 경고는 하나뿐이다 — **면접을 보기로 해 놓고 점수가 한 개도 없는 사람**.
-    const warns: string[] = [];
-    if ((agg?.interviewScorerCount ?? 0) === 0) {
-      warns.push('면접 채점 미기록');
+  /**
+   * 최종 합격 확정 — **5번 최종 검토의 표시를 그대로 확정한다**(2026-08-24 사용자 지정).
+   *
+   * 팀부터 맞추고 상태를 바꾼다 — 순서를 반대로 하면 "합격은 확정됐는데 팀은 아직 옛값"인
+   * 순간이 생긴다. 팀 배정에 실패하면 상태는 하나도 안 바꾸고 멈춘다 — 절반만 확정된 채
+   * 발표되는 것보다, 다시 눌러서 처음부터 다시 시도하는 편이 안전하다.
+   */
+  const handleConfirmFinal = async () => {
+    if (decidableTotal === 0 || summary.moveTeamUnset.length > 0) return;
+    if (
+      !confirm(
+        `최종 합격 ${summary.pass.length}명 · 최종 불합격 ${summary.fail.length}명을 확정합니다.\n\n` +
+          (moveCount > 0 ? `이 중 ${moveCount}명은 팀도 함께 바뀝니다.\n\n` : '') +
+          `확정한 결과는 '최종 합격 결과 지원자 공개'를 켜는 순간 지원자에게 그대로 나갑니다.\n\n진행할까요?`
+      )
+    )
+      return;
+
+    setLoading(true);
+    try {
+      const teamGroups = groupPassByFinalTeam(summary.pass);
+      for (const [team, ids] of teamGroups) {
+        const res = await fetch('/api/recruit/applicants', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'bulk_team', ids, assignedTeam: team }),
+        });
+        if (!res.ok) {
+          setMessage(`❌ [${team}] 팀 배정에 실패해 확정을 멈췄습니다. 상태는 하나도 안 바뀌었습니다. 다시 눌러 주세요.`);
+          return;
+        }
+      }
+
+      const fail = await bulkStatus(
+        summary.fail.map((d) => d.applicant.id),
+        'final_fail'
+      );
+      if (!fail.ok) {
+        setMessage(`❌ 팀 배정은 끝났지만 불합격 확정에 실패했습니다(${fail.note || fail}). 다시 눌러 주세요.`);
+        await fetchCohortAndApplicants();
+        return;
+      }
+      const pass = await bulkStatus(
+        summary.pass.map((d) => d.applicant.id),
+        'final_pass'
+      );
+      if (!pass.ok) {
+        // 불합격은 들어갔는데 합격이 실패한 상태를 조용히 두면 절반만 확정된 채 발표된다.
+        setMessage(
+          `⚠️ 불합격 ${fail.updated}명은 확정했지만 합격 확정에 실패했습니다(${pass.note}). 다시 눌러 주세요.`
+        );
+        await fetchCohortAndApplicants();
+        return;
+      }
+
+      const note = [pass.note, fail.note].filter(Boolean).join(', ');
+      setMessage(
+        `✅ 최종 합격 ${pass.updated}명 · 최종 불합격 ${fail.updated}명을 확정했습니다.` +
+          (note ? ` (제외: ${note})` : '')
+      );
+      await fetchCohortAndApplicants();
+    } finally {
+      setLoading(false);
     }
+  };
 
-    return {
-      app,
-      warns,
-      docAvg: formatScore(agg?.docScoreAvg),
-      intAvg: formatScore(agg?.interviewScoreAvg),
-    };
-  });
+  const confirmDisabled = loading || decidableTotal === 0 || summary.moveTeamUnset.length > 0;
+  const confirmLabel =
+    decidableTotal === 0
+      ? '확정할 사람이 없습니다'
+      : summary.moveTeamUnset.length > 0
+        ? `팀 미정 ${summary.moveTeamUnset.length}명부터 정리하세요`
+        : `최종 합격 ${summary.pass.length}명 · 불합격 ${summary.fail.length}명 확정`;
 
   return (
     <div className="space-y-6">
@@ -339,37 +316,31 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
             <h1 className="text-[24px] font-bold text-ink-900">6. 최종 결정 및 데이터 관리 (회장단)</h1>
             <HelpButton screen="recruit-final" />
           </div>
-          <p className="mt-1 text-sm text-ink-500">최종 합격자 결정, 최종 팀 배정, 지원자 결과 공개 및 개인정보 안전 일괄 파기.</p>
+          <p className="mt-1 text-sm text-ink-500">
+            5번 최종 검토에서 낸 <strong className="text-ink-700">탈락</strong>·
+            <strong className="text-ink-700">다른 팀</strong> 표시를 그대로 확정합니다. 표시가 없으면
+            합격입니다. 확정 뒤 결과를 공개하고, 모집이 끝나면 자료를 파기합니다.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* 다른 모집 화면과 같은 툴바 형태로 통일. */}
           <ToolbarSelect label="팀" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
-            <option value="ALL">전체</option>
+            <option value={ALL_TEAMS_FILTER}>전체</option>
             <TeamOptions teams={teams} loading={teamsLoading} />
           </ToolbarSelect>
 
-          <ToolbarSelect label="단계" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
-            <option value="ALL">전체</option>
-            <option value="DECIDABLE">결정 대상 (면접 완료)</option>
-            <option value="DECIDED">결정 완료</option>
-            <option value="PENDING">아직 결정 단계 아님</option>
+          <ToolbarSelect
+            label="기수"
+            loading={cohortsLoading}
+            value={selectedCohortId}
+            onChange={(e) => setSelectedCohortId(e.target.value)}
+          >
+            {cohorts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
           </ToolbarSelect>
-
-          <div className="contents">
-            <ToolbarSelect
-              label="기수"
-              loading={cohortsLoading}
-              value={selectedCohortId}
-              onChange={(e) => setSelectedCohortId(e.target.value)}
-            >
-              {cohorts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </ToolbarSelect>
-          </div>
         </div>
       </div>
 
@@ -409,165 +380,123 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
               <span>최종 합격 결과 지원자 공개</span>
             </label>
           </div>
-
         </div>
 
         <StatusMessage text={message} />
       </Card>
 
-      {/* 최종 합격 결정 매트릭스 카드 */}
+      {/* 최종 결정 확정 카드 */}
       <Card className="space-y-4">
-        {/* 확정 버튼 문구가 "선택 12명 최종 불합격 처리"까지 길어진다 — 좁으면 접히게 둔다. */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 pb-3">
           <span className="text-sm font-bold text-ink-900">
-            최종 결정 매트릭스 ({filteredApplicants.length}명)
-            <span className="ml-2 inline-block rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-              지금 결정할 수 있는 사람 {decidableCount}명
+            최종 결정
+            <span className="ml-2 inline-block rounded-md bg-success-100 px-2 py-0.5 text-[11px] font-bold text-success-700">
+              합격 예정 {summary.pass.length}명
+            </span>
+            <span className="ml-1 inline-block rounded-md bg-coral-100 px-2 py-0.5 text-[11px] font-bold text-coral-700">
+              불합격 예정 {summary.fail.length}명
             </span>
           </span>
           <div className="flex flex-wrap items-center gap-2">
             {/* 확정은 기수 전체를 한 번에 끝내는 일이라, 팀만 보고 있을 때는 누르지 못하게 한다.
                 팀별로 나눠 확정하면 다른 팀 사람이 결정되지 않은 채 남는다. */}
-            {selectedTeam !== 'ALL' && (
+            {selectedTeam !== ALL_TEAMS_FILTER && (
               <span className="text-[12px] font-semibold text-amber-700">팀 필터를 전체로 두어야 확정할 수 있습니다</span>
             )}
-            <Button
-              type="button"
-              disabled={loading || selectedIds.size === 0 || selectedTeam !== 'ALL'}
-              onClick={handleConfirmFinal}
-            >
-              {/* 아무도 안 골랐을 때 '0명 확정 · 나머지 185명 불합격'이라고 적혀 있으면
-                  누르면 전원이 떨어지는 버튼처럼 읽힌다. 그때는 할 일을 적는다. */}
-              {selectedIds.size === 0
-                ? '합격자를 먼저 고르세요'
-                : `최종 합격 ${selectedIds.size}명 확정 · 나머지 ${autoFailIds.length}명 불합격`}
+            <Button type="button" disabled={confirmDisabled} onClick={handleConfirmFinal}>
+              {confirmLabel}
             </Button>
           </div>
         </div>
 
-        {/* 매트릭스에 서지 않는 사람들. 숫자만 적는다 — 감춰 놓으면 배정에서 잊힌 사람이
-            아무 화면에도 안 나온 채 발표까지 간다. */}
-        {(excluded.unassigned.length > 0 || excluded.noshow.length > 0) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-cream-50 px-3.5 py-2.5 text-[12px] text-ink-600">
-            <span className="font-bold text-ink-700">이 표에 없는 사람</span>
-            {excluded.unassigned.length > 0 && (
-              <span className="font-semibold text-amber-700">
+        {/* 확정에 끼지 못하는 사람들 — 감춰 놓으면 아무 화면에도 안 나온 채 발표까지 간다. */}
+        {(excluded.unassigned.length > 0 ||
+          excluded.noshow.length > 0 ||
+          summary.moveTeamUnset.length > 0 ||
+          summary.unscored.length > 0 ||
+          notYetInterviewedCount > 0 ||
+          alreadyDecidedCount > 0) && (
+          <div className="space-y-1.5 rounded-xl bg-cream-50 px-3.5 py-2.5 text-[12px] text-ink-600">
+            {summary.moveTeamUnset.length > 0 && (
+              <p className="font-semibold text-coral-700">
                 <Icon name="alert" size={12} className="mr-1 inline" />
-                면접 미배정 {excluded.unassigned.length}명 — {excluded.unassigned.map((a) => a.name).join(', ')}
-              </span>
+                팀 미정 {summary.moveTeamUnset.length}명 — 5번에서 보낼 팀을 마저 골라야 확정할 수 있습니다:{' '}
+                {summary.moveTeamUnset.map((d) => d.applicant.name).join(', ')}
+              </p>
+            )}
+            {summary.unscored.length > 0 && (
+              <p className="font-semibold text-amber-700">
+                <Icon name="alert" size={12} className="mr-1 inline" />
+                면접 채점 미기록 {summary.unscored.length}명 — 표시도 점수도 없어 자동 합격에서
+                뺐습니다. 확인 후 5번에서 표시하거나 따로 처리하세요:{' '}
+                {summary.unscored.map((d) => d.applicant.name).join(', ')}
+              </p>
+            )}
+            {excluded.unassigned.length > 0 && (
+              <p className="font-semibold text-amber-700">
+                <Icon name="alert" size={12} className="mr-1 inline" />
+                면접 미배정 {excluded.unassigned.length}명 — {excluded.unassigned.map((a: any) => a.name).join(', ')}
+              </p>
             )}
             {excluded.noshow.length > 0 && (
-              <span>
-                면접 불참 {excluded.noshow.length}명 (그대로 &lsquo;면접 불참&rsquo;으로 남습니다)
-              </span>
+              <p>면접 불참 {excluded.noshow.length}명 (그대로 &lsquo;면접 불참&rsquo;으로 남습니다)</p>
             )}
+            {notYetInterviewedCount > 0 && <p>아직 면접 전 {notYetInterviewedCount}명</p>}
+            {alreadyDecidedCount > 0 && <p>이미 확정됨 {alreadyDecidedCount}명</p>}
           </div>
         )}
 
-        {/* 종합 점수 목록 — 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고). */}
+        {/* 결과 미리보기 — 노트북은 표, 폰·태블릿은 카드(TableCards 주석 참고).
+            체크박스도 팀 셀렉트도 없다 — 여기 보이는 결과는 5번 표시로 이미 정해졌고,
+            바꾸려면 5번으로 가서 표시를 고친다(2026-08-24 사용자 지정). */}
         <TableCards
           table={
             <table className="w-full text-left text-xs">
               <thead className="bg-cream-100 font-semibold text-ink-700">
                 <tr>
-                  <th className="w-10 p-3.5 text-center">선택</th>
+                  <th className="w-12 p-3.5 text-center">순위</th>
                   <th className="p-3.5">이름</th>
-                  <th className="p-3.5">학교 / 학과</th>
-                  <th className="p-3.5">최종 배정 팀</th>
-                  <th className="p-3.5">서류 평균 점수</th>
                   <th className="p-3.5">면접 평균 점수</th>
-                  <th className="p-3.5">특이사항 경고</th>
-                  <th className="p-3.5">최종 상태</th>
+                  <th className="p-3.5">결과</th>
+                  <th className="p-3.5">최종 팀</th>
+                  <th className="p-3.5">사유</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cream-100">
-                {rows.map(({ app, warns, docAvg, intAvg }) => {
-                  const isSelected = selectedIds.has(app.id);
-                  return (
-                    <tr key={app.id} className={`transition-colors hover:bg-cream-25 ${isSelected ? 'bg-blue-50/50' : ''}`}>
-                      <td className="p-0 text-center">
-                        {/* 라벨로 감싸 셀 전체를 누를 수 있게 한다 — 16px 네모만 노리면 자꾸 빗나간다. */}
-                        <label className="flex min-h-tap cursor-pointer items-center justify-center px-3.5" aria-label={`${app.name} 선택`}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(app.id)}
-                            className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
-                          />
-                        </label>
-                      </td>
-                      <td className="p-3.5 text-sm font-bold text-ink-900">{app.name}</td>
-                      <td className="p-3.5 text-ink-700">
-                        {app.school} {app.department}
-                      </td>
-                      <td className="p-3.5">
-                        {/* 폭은 **감싼 div** 로 준다. `Select` 에 `w-32` 를 직접 붙이면 기본 `w-full` 과
-                            같은 특이도로 충돌해서 좁은 칸 기준 100%(81px)로 눌리고 "봉사 1팀"이 잘렸다.
-                            같은 이유로 화면·심사 화면도 래퍼로 폭을 준다(console:636, screening:394). */}
-                        <div className="w-36">
-                          <Select
-                            value={app.assignedTeam || app.wishTeam1 || '봉사 1팀'}
-                            onChange={(e) => handleReassignTeam(app.id, e.target.value)}
-                            aria-label={`${app.name} 최종 배정 팀`}
-                            uiSize="sm"
-                          >
-                            <TeamOptions teams={teams} loading={teamsLoading} />
-                          </Select>
-                        </div>
-                      </td>
-                      <td className="p-3.5 text-ink-700">{docAvg !== null ? `${docAvg}점` : '-'}</td>
-                      <td className="p-3.5">
-                        {intAvg !== null ? <span className="text-sm font-bold text-blue-700">{intAvg}점</span> : <span className="text-ink-400">-</span>}
-                      </td>
-                      <td className="p-3.5">
-                        <div className="flex flex-wrap gap-1">
-                          {warns.map((w) => (
-                            <WarnChip key={w} warn={w} />
-                          ))}
-                        </div>
-                      </td>
-                      <td className="p-3.5">
-                        <StatusChip status={app.status} />
-                      </td>
-                    </tr>
-                  );
-                })}
+                {previewDecisions.map((d, i) => (
+                  <tr key={d.applicant.id} className="transition-colors hover:bg-cream-25">
+                    <td className="p-3.5 text-center font-mono font-bold text-ink-500">{i + 1}</td>
+                    <td className="p-3.5 text-sm font-bold text-ink-900">{d.applicant.name}</td>
+                    <td className="p-3.5">
+                      {(() => {
+                        const avg = formatScore(aggregations[d.applicant.id]?.interviewScoreAvg);
+                        return avg !== null ? (
+                          <span className="text-sm font-bold text-blue-700">{avg}점</span>
+                        ) : (
+                          <span className="text-ink-400">-</span>
+                        );
+                      })()}
+                    </td>
+                    <td className="p-3.5">
+                      <OutcomeChip outcome={d.outcome as 'pass' | 'fail'} />
+                    </td>
+                    <td className="p-3.5 text-ink-700">{d.outcome === 'pass' ? d.finalTeam || '-' : '-'}</td>
+                    <td className="p-3.5 text-ink-500">{reasonLabel(d.applicant.reviewMark)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           }
-          cards={rows.map(({ app, warns, docAvg, intAvg }) => (
-            <RowCard
-              key={app.id}
-              title={app.name}
-              selected={selectedIds.has(app.id)}
-              onSelect={() => handleToggleSelect(app.id)}
-              selectLabel={`${app.name} 선택`}
-              badge={<StatusChip status={app.status} />}
-            >
-              {/* 경고는 값 줄에 묻으면 안 된다 — 결정 직전에 봐야 하는 정보라 맨 위에 폭 전체로 편다. */}
-              {warns.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {warns.map((w) => (
-                    <WarnChip key={w} warn={w} />
-                  ))}
-                </div>
-              ) : null}
-              <CardField label="학교 / 학과">
-                {app.school} {app.department}
-              </CardField>
-              <CardField label="서류 평균">{docAvg !== null ? `${docAvg}점` : '-'}</CardField>
+          cards={previewDecisions.map((d) => (
+            <RowCard key={d.applicant.id} title={d.applicant.name} badge={<OutcomeChip outcome={d.outcome as 'pass' | 'fail'} />}>
               <CardField label="면접 평균">
-                {intAvg !== null ? <span className="font-bold text-blue-700">{intAvg}점</span> : <span className="text-ink-400">-</span>}
+                {(() => {
+                  const avg = formatScore(aggregations[d.applicant.id]?.interviewScoreAvg);
+                  return avg !== null ? <span className="font-bold text-blue-700">{avg}점</span> : <span className="text-ink-400">-</span>;
+                })()}
               </CardField>
-              <CardBlock label="최종 배정 팀">
-                <Select
-                  value={app.assignedTeam || app.wishTeam1 || '봉사 1팀'}
-                  onChange={(e) => handleReassignTeam(app.id, e.target.value)}
-                  aria-label={`${app.name} 최종 배정 팀`}
-                >
-                  <TeamOptions teams={teams} loading={teamsLoading} />
-                </Select>
-              </CardBlock>
+              {d.outcome === 'pass' && <CardField label="최종 팀">{d.finalTeam || '-'}</CardField>}
+              <CardField label="사유">{reasonLabel(d.applicant.reviewMark)}</CardField>
             </RowCard>
           ))}
         />
