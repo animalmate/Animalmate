@@ -6,7 +6,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/icon';
 import { useTeams } from '@/components/use-teams';
 import { ALL_TEAMS_FILTER, matchesTeamFilter } from '@/recruit/team-filter';
-import { isUnderReview, sortForReview, groupApplicantsByTeam } from '@/recruit/review-list';
+import {
+  isUnderReview,
+  sortForReview,
+  groupApplicantsByTeam,
+  incomingMovesByTeam,
+} from '@/recruit/review-list';
 import {
   countReviewMarks,
   MOVE_TEAM_UNSET_LABEL,
@@ -18,6 +23,7 @@ import {
 import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { formatScore } from '@/recruit/display';
+import { formatPhone } from '@/lib/phone';
 import { RecruitNav } from '@/components/recruit-nav';
 import {
   Card,
@@ -62,6 +68,17 @@ const MARK_STYLE: Record<ReviewMark, { row: string; card: string; on: string; of
     on: 'border-amber-300 bg-amber-100 text-amber-800',
     off: 'border-ink-200 bg-white text-ink-500 hover:border-amber-300 hover:text-amber-700',
   },
+};
+
+/**
+ * '다른 팀에서 오는 사람' 알림 칸의 색. 탈락(코랄)·다른 팀(앰버) 어느 쪽과도 안 겹치는
+ * 세 번째 색(바이올렛)을 쓴다 — 이 칸은 표시를 **거는** 자리가 아니라 **받는** 자리라서,
+ * 같은 색을 쓰면 이 팀에서 새로 누른 표시로 오해한다.
+ */
+const MOVE_IN_STYLE = {
+  row: 'bg-violet-50/70',
+  card: 'border-violet-300 bg-violet-50/70',
+  badge: 'border-violet-300 bg-violet-100 text-violet-700',
 };
 
 function StatusChip({ status }: { status: string }) {
@@ -533,6 +550,21 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
       ? groupApplicantsByTeam(visible, teams)
       : [{ team: selectedTeam, applicants: visible }];
 
+  // '다른 팀' 표시를 갈 팀 기준으로 묶는다. **팀 필터를 걸지 않은 pool 전체**를 넣어야 한다 —
+  // `visible` 은 이미 selectedTeam 으로 걸러진 목록이라, 다른 팀에서 이 팀으로 넘어오는
+  // 사람은 애초에 걸러져 안 보인다.
+  const incomingMoves = incomingMovesByTeam(pool);
+  // 자기 소속 인원이 하나도 없는 팀도, 다른 팀에서 넘어오는 사람이 있으면 박스가 떠야
+  // 한다 — 그러지 않으면 그 팀 화면에는 '다른 팀' 표시가 영영 안 보인다('전체'일 때만
+  // 해당한다. 특정 팀을 골랐을 때는 이미 그 팀 박스가 항상 하나 서 있다).
+  const extraTeams =
+    selectedTeam === ALL_TEAMS_FILTER
+      ? teams.filter((t) => incomingMoves.has(t) && !groups.some((g) => g.team === t))
+      : [];
+  const displayGroups = [...groups, ...extraTeams.map((team) => ({ team, applicants: [] as typeof visible }))];
+  const hasIncoming =
+    selectedTeam === ALL_TEAMS_FILTER ? incomingMoves.size > 0 : incomingMoves.has(selectedTeam);
+
   // 이 목록에 서지 않는 사람도 **숫자로는 보여 준다.** 그냥 감추면 33기처럼 배정에서 잊힌
   // 서류 합격자가 아무 화면에도 안 나온 채 발표까지 간다(최종 결정 화면과 같은 이유).
   const missing = {
@@ -661,7 +693,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
 
         {loading ? (
           <p className="py-10 text-center text-sm text-ink-400">불러오는 중…</p>
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 && !hasIncoming ? (
           <p className="py-10 text-center text-sm text-ink-400">
             {pool.length === 0
               ? '아직 면접을 본 지원자가 없습니다. 면접 콘솔에서 점수가 들어오면 여기 나옵니다.'
@@ -669,11 +701,20 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
           </p>
         ) : (
           <div className="space-y-6">
-            {groups.map((group) => (
+            {displayGroups.map((group) => {
+              const incoming = incomingMoves.get(group.team) ?? [];
+              return (
               <section key={group.team} className="space-y-2.5">
                 <h2 className="flex items-baseline gap-2 border-b border-cream-200 pb-1.5">
                   <span className="text-[15px] font-bold text-ink-900">{group.team}</span>
                   <span className="text-[13px] font-semibold text-ink-400">{group.applicants.length}명</span>
+                  {incoming.length > 0 ? (
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[12px] font-semibold ${MOVE_IN_STYLE.badge}`}
+                    >
+                      다른 팀에서 {incoming.length}명
+                    </span>
+                  ) : null}
                 </h2>
 
                 <TableCards
@@ -683,6 +724,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                         <tr>
                           <th className="w-12 p-3.5 text-center">순위</th>
                           <th className="p-3.5">이름</th>
+                          <th className="p-3.5">전화번호</th>
                           <th className="p-3.5">면접 점수</th>
                           <th className="p-3.5">1지망 / 2지망</th>
                           <th className="p-3.5">상태</th>
@@ -694,6 +736,44 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-cream-100">
+                        {incoming.map(({ applicant, fromTeam }) => {
+                          const agg = aggregations[applicant.id];
+                          return (
+                            <tr key={`in-${applicant.id}`} className={`transition-colors ${MOVE_IN_STYLE.row}`}>
+                              <td className="p-3.5 text-center text-violet-400" aria-hidden>
+                                <Icon name="chevronRight" size={14} className="inline" />
+                              </td>
+                              <td className="p-3.5 text-sm font-bold text-ink-900">{applicant.name}</td>
+                              <td className="p-3.5 text-[13px] text-ink-500">
+                                {formatPhone(applicant.phone) || '미기재'}
+                              </td>
+                              <td className="p-3.5">
+                                <ScoreCell
+                                  avg={formatScore(agg?.interviewScoreAvg)}
+                                  scorerCount={agg?.interviewScorerCount ?? 0}
+                                />
+                              </td>
+                              <td className="p-3.5">
+                                <WishTeams first={applicant.wishTeam1} second={applicant.wishTeam2} />
+                              </td>
+                              <td className="p-3.5">
+                                <StatusChip status={applicant.status} />
+                              </td>
+                              {/* 탈락·다른 팀 두 칸을 합쳐 하나의 알림 배지로 쓴다 — 이 줄은
+                                  받는 팀의 화면이라 여기서 표시를 걸거나 지울 수 없다. */}
+                              <td colSpan={2} className="p-2 text-center">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-semibold ${MOVE_IN_STYLE.badge}`}
+                                >
+                                  {fromTeam} → {group.team}
+                                </span>
+                              </td>
+                              <td className="p-2 text-center text-ink-300" aria-hidden>
+                                —
+                              </td>
+                            </tr>
+                          );
+                        })}
                         {group.applicants.map((app, i) => {
                           const agg = aggregations[app.id];
                           const open = expandedIds.has(app.id);
@@ -707,6 +787,9 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                               <tr className={`transition-colors hover:bg-cream-25 ${rowTone}`}>
                                 <td className="p-3.5 text-center font-mono font-bold text-ink-500">{i + 1}</td>
                                 <td className="p-3.5 text-sm font-bold text-ink-900">{app.name}</td>
+                                <td className="p-3.5 text-[13px] text-ink-500">
+                                  {formatPhone(app.phone) || '미기재'}
+                                </td>
                                 <td className="p-3.5">
                                   <ScoreCell
                                     avg={formatScore(agg?.interviewScoreAvg)}
@@ -761,7 +844,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                               </tr>
                               {open ? (
                                 <tr className="bg-cream-25">
-                                  <td colSpan={8} className="px-3.5 pb-4 pt-1">
+                                  <td colSpan={9} className="px-3.5 pb-4 pt-1">
                                     <ScoreDetail
                                       interviewScores={interviewScoresOf(app.id)}
                                       staffNames={staffNames}
@@ -775,7 +858,39 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                       </tbody>
                     </table>
                   }
-                  cards={group.applicants.map((app, i) => {
+                  cards={[
+                    ...incoming.map(({ applicant, fromTeam }) => {
+                      const agg = aggregations[applicant.id];
+                      return (
+                        <li
+                          key={`in-${applicant.id}`}
+                          className={`rounded-xl border p-3.5 shadow-card ${MOVE_IN_STYLE.card}`}
+                        >
+                          <div className="flex items-start justify-between gap-2.5">
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${MOVE_IN_STYLE.badge}`}
+                            >
+                              {fromTeam} → {group.team}
+                            </span>
+                            <StatusChip status={applicant.status} />
+                          </div>
+                          <p className="mt-2 min-w-0 break-words text-[16px] font-bold text-ink-900">
+                            {applicant.name}
+                          </p>
+                          <p className="mt-0.5 text-[13px] text-ink-500">
+                            {formatPhone(applicant.phone) || '미기재'}
+                          </p>
+                          <InterviewScoreRow
+                            avg={formatScore(agg?.interviewScoreAvg)}
+                            scorerCount={agg?.interviewScorerCount ?? 0}
+                          />
+                          <div className="mt-2 rounded-xl border border-cream-200 bg-white px-3 py-2">
+                            <WishTeams first={applicant.wishTeam1} second={applicant.wishTeam2} />
+                          </div>
+                        </li>
+                      );
+                    }),
+                    ...group.applicants.map((app, i) => {
                     const agg = aggregations[app.id];
                     const open = expandedIds.has(app.id);
                     const mark: ReviewMark | null = app.reviewMark ?? null;
@@ -803,6 +918,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                           </span>
                           <StatusChip status={app.status} />
                         </div>
+                        <p className="mt-0.5 text-[13px] text-ink-500">{formatPhone(app.phone) || '미기재'}</p>
 
                         {/* 학교·학과와 서류 점수는 폰에서 싣지 않는다(사용자 지정). */}
                         <InterviewScoreRow
@@ -865,10 +981,12 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
                         ) : null}
                       </li>
                     );
-                  })}
+                    }),
+                  ]}
                 />
               </section>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

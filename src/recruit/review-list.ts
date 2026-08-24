@@ -5,6 +5,7 @@
 // 그 어긋남은 아무 오류도 내지 않은 채 발표까지 간다(같은 이유로 status-label.ts 를 뺐다).
 
 import { effectiveTeamOf, type TeamFilterable } from './team-filter';
+import type { ReviewMark } from './review-marks';
 
 /** 팀을 아직 모르는 사람을 담는 묶음 이름. 팀 이름과 겹칠 수 없게 화면 문구를 그대로 쓴다. */
 export const UNASSIGNED_TEAM_LABEL = '팀 미지정';
@@ -14,6 +15,9 @@ export interface ReviewApplicant extends TeamFilterable {
   name: string;
   status: string;
   slotId?: string | null;
+  /** 검토 표시(탈락/다른 팀) — `incomingMovesByTeam` 이 읽는다. 나머지 함수는 쓰지 않는다. */
+  reviewMark?: ReviewMark | null;
+  reviewMoveTeam?: string | null;
 }
 
 /**
@@ -100,5 +104,46 @@ export function groupApplicantsByTeam<T extends ReviewApplicant>(
   const unassigned = buckets.get(UNASSIGNED_TEAM_LABEL);
   if (unassigned) out.push({ team: UNASSIGNED_TEAM_LABEL, applicants: unassigned });
 
+  return out;
+}
+
+export interface IncomingMove<T> {
+  applicant: T;
+  /** 옮기기 전 원래 팀(`effectiveTeamOf`). 표시 문구 "5팀 → 4팀"의 앞쪽. */
+  fromTeam: string;
+}
+
+/**
+ * '다른 팀' 표시를 **갈 팀 기준**으로 다시 묶는다.
+ *
+ * 왜 필요한가: `review_mark='move'` 는 지원자의 **원래 팀** 박스에 있는 체크박스에서 켠다
+ * ("얘는 우리 팀이 아니라 4팀이 맞다"). 그런데 그 표시를 보려고 4팀장이 열어야 하는 화면은
+ * 5팀 박스다 — 자기 팀 화면만 보는 4팀장에게는 "밖에서 우리 팀으로 온다는 사람"이 아무 데도
+ * 안 보인다. 그래서 갈 팀(`reviewMoveTeam`)을 기준으로 다시 묶어, 그 팀 박스 맨 위에 얹을
+ * 목록을 만든다.
+ *
+ * **입력은 팀 필터를 걸지 않은 전체 목록이어야 한다** — 이미 자기 팀으로 걸러진 목록을 넣으면
+ * 다른 팀에서 넘어오는 사람이 애초에 걸러져 있어 아무것도 안 나온다(`groupApplicantsByTeam` 이
+ * 나누기 *전* 목록, 화면의 `pool`).
+ *
+ * 갈 팀을 아직 안 고른 표시(`reviewMoveTeam` 이 비어 있음 = 팀 미정)는 묶을 자리가 없어 뺀다 —
+ * 이미 목록 위 "팀 미정 N명" 숫자로 알린다. 원래 팀과 갈 팀이 같으면(팀을 옮기지 않는 표시)도
+ * 뺀다 — 자기 박스에 자기 카드를 또 얹을 이유가 없다.
+ */
+export function incomingMovesByTeam<T extends ReviewApplicant>(
+  applicants: T[]
+): Map<string, IncomingMove<T>[]> {
+  const out = new Map<string, IncomingMove<T>[]>();
+  for (const app of applicants) {
+    if (app.reviewMark !== 'move') continue;
+    const toTeam = app.reviewMoveTeam?.trim();
+    if (!toTeam) continue;
+    const fromTeam = effectiveTeamOf(app) || UNASSIGNED_TEAM_LABEL;
+    if (fromTeam === toTeam) continue;
+    const entry: IncomingMove<T> = { applicant: app, fromTeam };
+    const list = out.get(toTeam);
+    if (list) list.push(entry);
+    else out.set(toTeam, [entry]);
+  }
   return out;
 }

@@ -3,6 +3,7 @@ import {
   isUnderReview,
   sortForReview,
   groupApplicantsByTeam,
+  incomingMovesByTeam,
   UNASSIGNED_TEAM_LABEL,
 } from './review-list';
 
@@ -155,5 +156,55 @@ describe('groupApplicantsByTeam — 팀별 묶음', () => {
       app({ id: '2', wishTeam1: '1팀' }),
     ]);
     expect(groups.map((g) => g.team)).toEqual(['2팀', '1팀']);
+  });
+});
+
+describe('incomingMovesByTeam — 갈 팀 기준으로 다시 묶기', () => {
+  it('5팀의 홍길동을 4팀으로 표시하면 4팀 쪽에 걸린다', () => {
+    const moves = incomingMovesByTeam([
+      app({ id: '1', name: '홍길동', assignedTeam: '5팀', reviewMark: 'move', reviewMoveTeam: '4팀' }),
+    ]);
+    expect(moves.get('4팀')?.map((m) => [m.applicant.id, m.fromTeam])).toEqual([['1', '5팀']]);
+    expect(moves.has('5팀')).toBe(false);
+  });
+
+  it('탈락 표시는 담지 않는다 — 갈 팀이 없다', () => {
+    const moves = incomingMovesByTeam([app({ id: '1', assignedTeam: '5팀', reviewMark: 'drop' })]);
+    expect(moves.size).toBe(0);
+  });
+
+  it('갈 팀을 아직 안 고른 표시(팀 미정)는 담지 않는다', () => {
+    const moves = incomingMovesByTeam([
+      app({ id: '1', assignedTeam: '5팀', reviewMark: 'move', reviewMoveTeam: null }),
+    ]);
+    expect(moves.size).toBe(0);
+  });
+
+  it('원래 팀과 갈 팀이 같으면 담지 않는다', () => {
+    const moves = incomingMovesByTeam([
+      app({ id: '1', assignedTeam: '4팀', reviewMark: 'move', reviewMoveTeam: '4팀' }),
+    ]);
+    expect(moves.size).toBe(0);
+  });
+
+  it('원래 팀은 배정팀이 없으면 1지망, 그것도 없으면 팀 미지정이다', () => {
+    const moves = incomingMovesByTeam([
+      app({ id: '1', wishTeam1: '3팀', reviewMark: 'move', reviewMoveTeam: '4팀' }),
+      app({ id: '2', wishTeam1: null, reviewMark: 'move', reviewMoveTeam: '4팀' }),
+    ]);
+    expect(moves.get('4팀')?.map((m) => m.fromTeam)).toEqual(['3팀', UNASSIGNED_TEAM_LABEL]);
+  });
+
+  it('같은 팀으로 여러 명이 넘어오면 넘겨받은 순서를 지킨다', () => {
+    const moves = incomingMovesByTeam([
+      app({ id: 'a', assignedTeam: '1팀', reviewMark: 'move', reviewMoveTeam: '4팀' }),
+      app({ id: 'b', assignedTeam: '5팀', reviewMark: 'move', reviewMoveTeam: '4팀' }),
+    ]);
+    expect(moves.get('4팀')?.map((m) => m.applicant.id)).toEqual(['a', 'b']);
+  });
+
+  it('표시가 없는 사람은 어디에도 안 걸린다', () => {
+    const moves = incomingMovesByTeam([app({ id: '1', assignedTeam: '5팀' })]);
+    expect(moves.size).toBe(0);
   });
 });
