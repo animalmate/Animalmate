@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost } from '@/lib/api';
-import { Card, Button, Field, Input, ErrorText } from '@/components/ui';
+import { Card, Button, Field, Input, ErrorText, InfoText, Textarea } from '@/components/ui';
 
 interface Usage {
   enabled: boolean;
@@ -26,14 +26,16 @@ export function ChatbotAdminPanel() {
   const [gaps, setGaps] = useState<Gaps | null>(null);
   const [daily, setDaily] = useState('');
   const [quarter, setQuarter] = useState('');
+  const [fallback, setFallback] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const r = await apiGet<{ usage: Usage; gaps: Gaps }>('/api/admin/chatbot');
+    const r = await apiGet<{ usage: Usage; gaps: Gaps; volunteerFallback: string }>('/api/admin/chatbot');
     if (r.ok) {
       setU(r.data.usage);
       setGaps(r.data.gaps);
+      setFallback(r.data.volunteerFallback ?? '');
       setDaily(String(r.data.usage.dailyPerUser));
       setQuarter(String(r.data.usage.globalQuarter));
     }
@@ -45,10 +47,11 @@ export function ChatbotAdminPanel() {
   async function patch(body: Record<string, unknown>) {
     setError('');
     setBusy(true);
-    const r = await apiPost<{ usage: Usage }>('/api/admin/chatbot', body, 'PATCH');
+    const r = await apiPost<{ usage: Usage; volunteerFallback?: string }>('/api/admin/chatbot', body, 'PATCH');
     setBusy(false);
     if (!r.ok) return setError('변경에 실패했어요.');
     setU(r.data.usage);
+    if (typeof r.data.volunteerFallback === 'string') setFallback(r.data.volunteerFallback);
   }
 
   if (!u) return <p className="text-ink-500">불러오는 중…</p>;
@@ -136,6 +139,30 @@ export function ChatbotAdminPanel() {
           onClick={() => void patch({ dailyPerUser: Number(daily), globalQuarter: Number(quarter) })}
         >
           한도 저장
+        </Button>
+      </Card>
+
+      {/*
+        등록된 봉사 회차가 없을 때 챗봇이 하는 안내.
+        이 문구가 필요한 이유: 회차가 없다고 "봉사 없어요"로 끝내면 부원이 봉사를 놓친다.
+        팀 가이드북에도 운영 방식이 없을 때 마지막으로 나가는 말이라 **항상** 쓰인다.
+      */}
+      <Card className="space-y-3">
+        <div>
+          <h2 className="text-[15px] font-bold text-ink-900">봉사 일정이 없을 때 하는 안내</h2>
+          <InfoText>
+            등록된 봉사 회차가 없고 팀 가이드북에도 운영 방식이 없을 때, 챗봇이 이 내용을 바탕으로 답합니다.
+            비워 두면 기본 문구를 씁니다.
+          </InfoText>
+        </div>
+        <Textarea
+          rows={4}
+          value={fallback}
+          onChange={(e) => setFallback(e.target.value)}
+          placeholder="예: 봉사가 있는 주에는 팀장단이 단톡방에 공지를 올려요. 그 공지를 보고 카페 댓글로 신청하세요."
+        />
+        <Button disabled={busy} onClick={() => void patch({ volunteerFallback: fallback })}>
+          안내 문구 저장
         </Button>
       </Card>
     </div>

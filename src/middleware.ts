@@ -16,8 +16,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const FONT_CDN = 'https://cdn.jsdelivr.net'; // Pretendard 폰트(globals.css @import)
 
-// 공고 포스터가 올라가는 Supabase Storage 오리진. 프로젝트 URL 에서 오리진만 뽑아 쓴다
-// (경로까지는 CSP 가 보지 않는다). 값이 없으면 img-src 를 넓히지 않는다.
+// Supabase Storage 오리진. 프로젝트 URL 에서 오리진만 뽑아 쓴다(경로까지는 CSP 가 보지 않는다).
+// 세 군데에 쓰인다 — 공고 포스터(img-src), 가이드북 업로드(connect-src), 가이드북 보기(frame-src).
+// 값이 없으면 어느 것도 넓히지 않는다.
 const SUPABASE_ORIGIN = (() => {
   try {
     return process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).origin : '';
@@ -43,7 +44,14 @@ export function middleware(request: NextRequest): NextResponse {
     // 이미지 출처를 우리 프로젝트 도메인 하나로만 넓힌다 — 임의 외부 이미지는 계속 막는다.
     // data: 는 남겨 둔다(예전 base64 공고가 남아 있어도 깨지지 않게).
     `img-src 'self' data: blob:${SUPABASE_ORIGIN ? ` ${SUPABASE_ORIGIN}` : ''}`,
-    `connect-src 'self'`,
+    // 가이드북 PDF 는 브라우저가 Storage 로 **직접** 올린다(서명 URL). 그 요청이 나가려면
+    // connect-src 에 Storage 오리진이 있어야 한다 — Vercel 함수의 4.5MB 본문 상한 때문에
+    // 파일을 우리 서버로 받지 않기로 한 설계의 대가다(src/storage/guidebooks.ts).
+    `connect-src 'self'${SUPABASE_ORIGIN ? ` ${SUPABASE_ORIGIN}` : ''}`,
+    // 가이드북을 화면 안에서 그대로 보여 주려면 <iframe> 에 Storage 주소를 걸어야 한다.
+    // frame-src 를 안 적으면 default-src 'self' 로 떨어져 PDF 가 빈 칸으로 나온다.
+    // object-src 는 계속 'none' 이라 <object>/<embed> 로는 못 띄운다(iframe 만 허용).
+    `frame-src 'self'${SUPABASE_ORIGIN ? ` ${SUPABASE_ORIGIN}` : ''}`,
     `object-src 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,

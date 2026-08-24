@@ -58,6 +58,13 @@ export const eventStatusEnum = pgEnum('event_status', ['draft', 'published', 'do
 export const membershipStatusEnum = pgEnum('membership_status', ['active', 'expired']);
 export const teamKindEnum = pgEnum('team_kind', ['activity', 'functional']);
 export const teamPositionEnum = pgEnum('team_position', ['leader', 'member']);
+// 문서의 출처. manual = 회장단이 손으로 쓴 안내 문서, guidebook = 팀 가이드북 PDF 에서 뽑아낸 본문.
+// 갈라 두는 이유: `/documents` 관리 목록에 가이드북 본문까지 섞이면 회장단이 손으로 쓴 문서를
+// 찾기 어렵다. 챗봇 검색은 둘을 구분하지 않는다(같은 doc_chunks 를 본다).
+export const documentKindEnum = pgEnum('document_kind', ['manual', 'guidebook']);
+// 가이드북 처리 단계. extracted = 텍스트를 뽑아 두고 사람 확인을 기다리는 중, ready = 확인까지
+// 끝나 챗봇이 읽는 중, failed = 추출이 실패해 파일만 있는 상태(보기는 되고 챗봇은 모른다).
+export const guidebookStatusEnum = pgEnum('guidebook_status', ['extracted', 'ready', 'failed']);
 export const naverTokenStatusEnum = pgEnum('naver_token_status', ['ok', 'error']);
 // 제거됨: monthWeekEnum — recurring_rules 전용이었다(마이그레이션 0020).
 // F9 신입 모집 지원자 상태(스펙 2026-07-25). 접수 → 서류합격|서류불합격 → 면접완료 → 최종합격|최종불합격.
@@ -301,6 +308,8 @@ export const documents = pgTable('documents', {
     .references(() => users.id),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   piiChecked: boolean('pii_checked').notNull().default(false), // PII 감지 시 확인 요구(규칙 #5)
+  // 손으로 쓴 문서인지, 가이드북 PDF 에서 뽑아낸 본문인지. 관리 목록을 가르는 데만 쓴다.
+  kind: documentKindEnum('kind').notNull().default('manual'),
 });
 
 export const docChunks = pgTable(
@@ -664,3 +673,36 @@ export const schedules = pgTable(
   },
   (t) => [index('schedules_start_idx').on(t.startDate)]
 );
+
+// ── 팀 가이드북 ────────────────────────────────────────────────────────
+// 팀별 가이드북 PDF. 두 가지를 동시에 한다: **부원이 화면에서 바로 보는 파일**과
+// **챗봇이 읽는 본문**(documentId 로 documents 를 가리킨다).
+//
+// 왜 파일과 본문을 갈라 두나: PDF 는 사람이 보기에 좋고 챗봇은 못 읽는다. 그래서 올릴 때
+// 한 번 텍스트로 옮겨 documents 에 넣고, 그 뒤로는 기존 RAG 파이프라인(청킹·임베딩·visibility)이
+// 그대로 처리한다. 가이드북 때문에 검색 코드를 새로 짜지 않는다.
+//
+// **팀당 한 건**(team_id unique). 새로 올리면 이전 파일과 본문을 교체한다 — 가이드북이 여러 벌
+// 쌓이면 어느 것이 지금 것인지 아무도 모르고, 챗봇은 낡은 쪽을 집어 답할 수 있다.
+export const teamGuidebooks = pgTable('team_guidebooks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id')
+    .notNull()
+    .unique()
+    .references(() => teams.id, { onDelete: 'cascade' }),
+  // 챗봇이 읽는 본문. null = 아직 확인 전이거나 추출이 실패한 것(파일 보기는 그래도 된다).
+  documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
+  storagePath: text('storage_path').notNull(), // 버킷 내부 경로(서명 URL 발급·삭제에 쓴다)
+  fileName: text('file_name').notNull(), // 올린 사람이 준 원본 파일명(표시용)
+  fileBytes: integer('file_bytes').notNull(),
+  status: guidebookStatusEnum('status').notNull().default('extracted'),
+  // 추출해 놓고 아직 확인받지 못한 본문. 확인하면 documents 로 옮기고 여기서 비운다.
+  // (확인 전에는 챗봇이 못 읽어야 하므로 doc_chunks 에 넣지 않는다.)
+  pendingText: text('pending_text'),
+  failReason: text('fail_reason'),
+  uploadedBy: uuid('uploaded_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

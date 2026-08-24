@@ -6,12 +6,13 @@
 
 import { and, asc, gte, eq, ne, isNotNull, inArray } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { events, teams, scheduledPosts } from '@/db/schema';
+import { events, teams, scheduledPosts, teamGuidebooks, documents } from '@/db/schema';
 import type { GeminiTool } from './gemini';
 import type { Actor } from '@/auth/permissions';
 import { kstToday, weekdayOf } from '@/lib/kst-date';
 import { listSchedules } from '@/schedules/schedules';
 import { toChatbotView } from '@/schedules/view';
+import { getVolunteerFallback } from './volunteer-fallback';
 
 // 챗봇에 노출할 회차 = 다가오는(오늘 이후) + 취소 안 됨 + 장소가 정해진 것.
 // - 취소: cancelPost 가 예약 취소 시 event.status 를 canceled 로 전이한다(고아 없음, 07-DECISIONS 24).
@@ -134,6 +135,96 @@ export async function getSessionsOnDate(db: Db, dateStr: string, now: Date = new
   return rows.map((r) => toView(r, uploads.get(r.id) ?? null));
 }
 
+// ── 팀 가이드북(회차가 없을 때의 두 번째 근거) ────────────────────────
+//
+// 왜 필요한가: 등록된 회차가 없다고 "봉사 없어요"로 끝내면 틀린 답이 된다. 팀마다 봉사를 여는
+// 요일·주기가 정해져 있고 그것이 가이드북에 적혀 있다. 확정 일정이 없을 때는 **평소 방식**이
+// 부원에게 가장 쓸모 있는 답이다.
+//
+// 왜 문서 검색(RAG)에 맡기지 않고 tool 을 따로 두나: RAG 검색은 **질문이 들어온 순간 한 번**
+// 돌고 끝난다. "2팀 봉사 언제야?" 로 검색했을 때 2팀 가이드북의 '봉사 주기' 대목이 top-k 에
+// 들어올지는 운이다. 회차가 없다는 것을 확인한 **뒤에** 그 팀 가이드북을 펴 보는 것이 순서라,
+// 모델이 그 시점에 부를 수 있는 도구가 필요하다.
+
+/**
+ * 가이드북 본문 길이 상한. 저장되는 것이 **운영 정보 요약**이라 정상값은 200~500자다
+ * (gemini.ts 의 추출 지시). 상한은 이상한 값이 통째로 흘러드는 것을 막는 안전망일 뿐이다.
+ */
+const GUIDEBOOK_MAX_CHARS = 2000;
+
+/**
+ * 챗봇이 가이드북 원문으로 안내할 때 쓰는 주소.
+ *
+ * 서명된 파일 주소(Storage)를 주지 않는 이유: 그 주소는 30분이면 만료되고, 대화 로그에도 남는다.
+ * 만료된 링크가 답변에 박혀 있으면 "가이드북이 안 열린다"가 된다. 화면 주소를 주면 로그인한
+ * 사람만 열리고(가이드북은 내부 자료다) 링크가 늙지 않는다.
+ */
+export const GUIDEBOOK_PAGE_PATH = '/guidebooks';
+
+export interface GuidebookLookup {
+  team: string;
+  found: boolean;
+  /** 봉사 운영 정보 요약(챗봇이 근거로 쓰는 것). 가이드북 전문이 아니다. */
+  content: string | null;
+  /** 원문 PDF 를 볼 수 있는 화면 주소. 요약에 없는 것을 물었을 때 여기로 안내한다. */
+  guidebookLink: string | null;
+}
+
+/**
+ * 팀 이름으로 가이드북 본문을 가져온다. 챗봇이 읽는 것은 **확인을 마친 본문**(status='ready')뿐이다
+ * — 검수 전 본문(pendingText)은 사람이 아직 안 본 글이라 답변 근거가 될 수 없다.
+ *
+ * visibility 필터를 따로 걸지 않는 이유: 가이드북 문서는 항상 member 등급으로 저장된다
+ * (saveGuidebookDocument 가 고정). 부원 이상이면 누구나 볼 수 있는 자료다.
+ */
+export async function getTeamGuidebook(db: Db, teamName: string): Promise<GuidebookLookup> {
+  const name = teamName.trim();
+  if (!name) return { team: teamName, found: false, content: null, guidebookLink: null };
+
+  const [row] = await db
+    .select({ content: documents.contentMd, team: teams.name })
+    .from(teamGuidebooks)
+    .innerJoin(teams, eq(teams.id, teamGuidebooks.teamId))
+    .innerJoin(documents, eq(documents.id, teamGuidebooks.documentId))
+    .where(and(eq(teams.name, name), eq(teamGuidebooks.status, 'ready')))
+    .limit(1);
+
+  if (!row) return { team: name, found: false, content: null, guidebookLink: null };
+  return {
+    team: row.team,
+    found: true,
+    content: row.content.slice(0, GUIDEBOOK_MAX_CHARS),
+    guidebookLink: GUIDEBOOK_PAGE_PATH,
+  };
+}
+
+/** 가이드북 **파일**이 올라와 있는 팀(요약 추출이 실패했어도 원문 링크는 줄 수 있다). */
+export async function teamsWithGuidebookFile(db: Db): Promise<string[]> {
+  const rows = await db
+    .select({ name: teams.name })
+    .from(teamGuidebooks)
+    .innerJoin(teams, eq(teams.id, teamGuidebooks.teamId));
+  return rows.map((r) => r.name).sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+/** 가이드북이 올라와 있는(챗봇이 읽을 수 있는) 팀 이름들. 회차가 없을 때 모델에게 선택지를 준다. */
+export async function teamsWithGuidebook(db: Db): Promise<string[]> {
+  const rows = await db
+    .select({ name: teams.name })
+    .from(teamGuidebooks)
+    .innerJoin(teams, eq(teams.id, teamGuidebooks.teamId))
+    .where(eq(teamGuidebooks.status, 'ready'));
+  return rows.map((r) => r.name).sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+/** 질문자가 속한 활동팀 이름(가이드북을 어느 팀 것으로 펴 볼지 정하는 데 쓴다). */
+export async function actorTeamNames(db: Db, actor: Actor): Promise<string[]> {
+  const ids = actor.teams.map((t) => t.teamId);
+  if (ids.length === 0) return [];
+  const rows = await db.select({ name: teams.name }).from(teams).where(inArray(teams.id, ids));
+  return rows.map((r) => r.name);
+}
+
 // ── Gemini function declarations ───────────────────────────────────────
 export const CHATBOT_TOOLS: GeminiTool[] = [
   {
@@ -162,6 +253,22 @@ export const CHATBOT_TOOLS: GeminiTool[] = [
     },
   },
   {
+    name: 'get_team_guidebook',
+    description:
+      '팀 가이드북에서 뽑아 둔 **그 팀의 봉사 운영 정보 요약**(여는 요일·주기, 신청 방법, 공지 방식, 준비물)을 가져온다. ' +
+      '**등록된 봉사 회차가 없을 때** 이 tool 을 부른다 — 확정 일정이 없어도 "보통 언제 여는지"는 답할 수 있다. ' +
+      '팀별 운영 방식을 묻는 질문("2팀은 언제 봉사해?")에도 쓴다. ' +
+      '돌려주는 content 는 **가이드북 전문이 아니라 봉사 운영 정보만 추린 요약**이다. ' +
+      '거기 없는 내용(팀 소개·활동 내용·세부 규정 등)은 지어내지 말고 guidebookLink 로 안내한다. ' +
+      '여기서 얻은 것은 **평소 방식이지 확정된 일정이 아니다** — 답할 때 반드시 구분해서 말한다.',
+    parameters: {
+      type: 'object',
+      properties: {
+        team: { type: 'string', description: '팀 이름(예: "2팀"). 생략하면 질문자가 속한 팀' },
+      },
+    },
+  },
+  {
     name: 'list_club_schedules',
     description:
       '봉사 말고 **동아리 일정**(총회·MT·정기회의·행사 등)을 캘린더에서 가져온다. ' +
@@ -181,6 +288,34 @@ export const CHATBOT_TOOLS: GeminiTool[] = [
 ];
 
 /**
+ * 등록된 회차가 하나도 없을 때 tool 결과에 함께 실어 보내는 안내 뭉치.
+ *
+ * **비대칭이 핵심이다.** 회차가 있을 때는 이 값을 보내지 않는다 — 답할 때마다 "카페도 확인하세요"가
+ * 붙으면 답이 지저분해지고, 정확한 답까지 의심스럽게 들린다. 비어 있을 때만 붙인다.
+ *
+ * 왜 이 값을 tool 결과에 싣나: 시스템 프롬프트에 규칙을 적어도 **팀 이름·안내 문구 같은 사실**은
+ * 그때그때 DB 에서 와야 한다. 사실은 여기로, 규칙은 시스템 프롬프트로 나눠 둔다.
+ */
+async function noSessionGuidance(db: Db, actor: Actor): Promise<Record<string, unknown>> {
+  const [myTeams, withGuidebook, fallbackNotice] = await Promise.all([
+    actorTeamNames(db, actor),
+    teamsWithGuidebook(db),
+    getVolunteerFallback(db),
+  ]);
+  return {
+    askerTeams: myTeams,
+    teamsWithGuidebook: withGuidebook,
+    fallbackNotice,
+    guidebookLink: GUIDEBOOK_PAGE_PATH,
+    // 이 문장은 우리 서버가 만든 것이지 사용자가 넣은 값이 아니다(인젝션 경계 밖).
+    // 모델이 지금 무엇을 해야 하는지 그 자리에서 알려 주는 것이 가장 확실하다.
+    note:
+      '등록된 봉사 회차가 없다. 여기서 멈추지 말고 get_team_guidebook 으로 그 팀의 평소 운영 방식을 확인해 답하라. ' +
+      '가이드북에도 없으면 fallbackNotice 를 그대로 안내하라. 어느 쪽이든 확정 일정이 아님을 밝혀라.',
+  };
+}
+
+/**
  * 모델이 호출한 tool 을 실행하고 결과 객체를 돌려준다(모델에 functionResponse 로 되돌린다).
  *
  * `actor` 를 받는 이유: 동아리 일정은 **질문자 역할 이하 등급만** 보여야 한다(규칙 #3).
@@ -197,12 +332,31 @@ export async function executeTool(
   if (name === 'list_upcoming_volunteer_sessions') {
     const limit = typeof args.limit === 'number' ? args.limit : undefined;
     const sessions = await listUpcomingSessions(db, { limit, now });
-    return { sessions, count: sessions.length };
+    if (sessions.length > 0) return { sessions, count: sessions.length };
+    return { sessions, count: 0, noSessions: await noSessionGuidance(db, actor) };
   }
   if (name === 'get_volunteer_session_detail') {
     const date = String(args.date ?? '');
     const sessions = await getSessionsOnDate(db, date, now);
-    return { date, sessions, count: sessions.length };
+    if (sessions.length > 0) return { date, sessions, count: sessions.length };
+    return { date, sessions, count: 0, noSessions: await noSessionGuidance(db, actor) };
+  }
+  if (name === 'get_team_guidebook') {
+    // 팀을 안 밝히면 질문자 팀으로 본다. 여러 팀이면 첫 번째(활동팀은 보통 하나다).
+    const asked = typeof args.team === 'string' ? args.team.trim() : '';
+    const team = asked || (await actorTeamNames(db, actor))[0] || '';
+    if (!team) {
+      return { found: false, reason: '어느 팀인지 알 수 없다. 질문자에게 팀을 물어보라.', teamsWithGuidebook: await teamsWithGuidebook(db) };
+    }
+    const out = await getTeamGuidebook(db, team);
+    if (out.found) return { ...out };
+    // 요약이 없어도 **파일은 있을 수 있다**(추출 실패, 확인 대기). 그때는 원문 링크로 안내한다.
+    const files = await teamsWithGuidebookFile(db);
+    return {
+      ...out,
+      guidebookLink: files.includes(team) ? GUIDEBOOK_PAGE_PATH : null,
+      teamsWithGuidebook: await teamsWithGuidebook(db),
+    };
   }
   if (name === 'list_club_schedules') {
     const from = asDate(args.from) ?? kstToday(now); // 기본은 오늘 이후 — 지난 일정을 묻지 않는 한 소용없다

@@ -26,11 +26,14 @@ const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations', label: '예약', desc: '공지 예약 관리', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식 저장', icon: 'doc' },
   { href: '/calendar', label: '캘린더', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
+  { href: '/guidebooks', label: '가이드북', desc: '팀별 활동 안내', icon: 'heart' },
 ];
 // 부원 바로가기 — 캘린더 하나뿐이다(2026-08-04, 결정 89). 부원이 보는 것은 부원 공개 일정만이고,
 // 그 필터는 서버 SQL 이 건다. 메뉴에만 두면 홈에서 한 번 더 들어가야 해 실제로 안 쓰인다.
 const MEMBER_SHORTCUTS: Shortcut[] = [
   { href: '/calendar', label: '캘린더', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
+  // 부원이 가장 자주 여는 자료라 홈에 둔다(메뉴에만 두면 한 번 더 들어가야 해 안 쓰인다).
+  { href: '/guidebooks', label: '가이드북', desc: '팀별 활동 안내', icon: 'heart' },
 ];
 // 신입 모집은 역할에 따라 들어가는 문이 다르다 — 운영진이 맡는 일은 채점, 회장단은 절차 전체.
 const RECRUIT_STAFF: Shortcut = {

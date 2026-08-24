@@ -102,7 +102,10 @@
 
 ### RAG/챗봇
 - `documents` (id, title, content_md, visibility, owner_type, owner_id,
-  updated_by, updated_at, pii_checked bool)
+  updated_by, updated_at, pii_checked bool, **kind** `manual|guidebook` ← 0031)
+  - `kind` 는 **관리 목록을 가르는 용도**다. `manual` = 회장단이 손으로 쓴 안내 문서(`/documents`),
+    `guidebook` = 팀 가이드북 PDF 에서 뽑은 봉사 운영 정보(`/guidebooks` 에서 관리).
+    **챗봇 검색은 둘을 구분하지 않는다** — 같은 `doc_chunks` 를 본다.
 - `doc_chunks` (id, document_id, chunk_index, content, embedding vector)
   - 문서 저장 시 청크 전체 재생성(delete → insert). visibility는 조인으로 상속.
   - ⚠ **pgvector 확장은 `extensions` 스키마에 있다**(0021, 2026-07-29 이전). `public` 이 아니다.
@@ -116,6 +119,23 @@
     지우면 `quota.ts` 가 행 수로 세는 일일 상한(기본 30건)을 버튼 한 번으로 무한 우회할 수 있고,
     감사 기록·챗봇 평가 데이터도 사라진다. 경계는 반드시 **DB 시계(`now()`)** 로 찍는다
     (앱 시계로 찍으면 시계 차이만큼 초기화 직후 메시지가 사라진다 — 07-DECISIONS 61).
+
+### 팀 가이드북   ← 0031
+- `team_guidebooks` (id, **team_id unique**, document_id?, storage_path, file_name, file_bytes,
+  status `extracted|ready|failed`, pending_text?, fail_reason?, uploaded_by, created_at, updated_at)
+  - **팀당 한 건**(`team_id` unique). 새로 올리면 파일과 본문을 교체한다 — 여러 벌이 쌓이면
+    어느 것이 지금 것인지 알 수 없고, 챗봇이 낡은 쪽을 집어 답한다.
+  - **파일과 본문은 별개다.** 파일(Supabase Storage `team-guidebooks`, **비공개 버킷**)은 부원이
+    화면에서 그대로 보는 것이고, 본문(`documents.kind='guidebook'`)은 챗봇이 읽는 것이다.
+    추출이 실패해도 파일 보기는 된다(그때 `status='failed'`, 본문 없음).
+  - **본문에 담는 것은 가이드북 전문이 아니라 봉사 운영 정보 요약**이다(여는 요일·주기, 신청 방법,
+    공지 방식, 준비물). 전문을 넣지 않는 이유는 07-DECISIONS 참고 — 요약이어야 사람이 검수한다.
+  - `pending_text` = 뽑아 놓고 **아직 사람이 확인하지 않은** 본문. 확인하면 `documents` 로 옮기고
+    비운다. 확인 전에는 `doc_chunks` 에 넣지 않으므로 챗봇이 읽지 못한다.
+  - 공개 범위는 **member 고정**(`saveGuidebookDocument`). 부원에게 보여 주려고 만드는 자료라
+    고를 이유가 없고, 실수로 부원에게 안 보이게 저장되는 쪽이 더 나쁘다.
+  - 권한: `guidebook.manage` = **그 팀의 팀장단**(`team_members.position='leader'`) + 회장단.
+    `document.modify`(회장단 전용)와 갈라 둔 것은 주인이 다르기 때문이다.
 
 ### 동아리 일정(캘린더)   ← 0025
 - `schedules` (id, title, start_date, end_date?, start_time?, place?, details?, visibility,

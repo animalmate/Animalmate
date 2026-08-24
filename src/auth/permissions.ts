@@ -42,6 +42,7 @@ export type Action =
   | { kind: 'post.create' }
   | { kind: 'post.modify'; owner: Ownership } // 수정/삭제
   | { kind: 'document.modify'; owner: Ownership } // 수정/삭제
+  | { kind: 'guidebook.manage'; owner: Ownership } // 팀 가이드북 업로드/교체/삭제(팀 소유)
   | { kind: 'schedule.manage' } // 동아리 일정(캘린더) 등록·수정·삭제 — 회장단 전용, 조회는 운영진 이상
   | { kind: 'recurring.manage'; owner: Ownership } // 반복 규칙/프리셋 CRUD(팀 소유)
   | { kind: 'template.manage'; owner: Ownership } // 발행 템플릿 CRUD(팀/개인 소유; global 은 별도 처리)
@@ -83,6 +84,16 @@ export function ownsResource(actor: Actor, owner: Ownership): boolean {
 }
 
 /**
+ * 요청자가 그 팀의 **팀장단**인가(position='leader').
+ *
+ * `ownsResource` 와 다른 이유: 소유권은 "소속 팀원이면 참"이라 팀원 전원이 통과한다. 가이드북은
+ * 팀이 대외적으로 내놓는 자료라 팀원 아무나 갈아치우면 안 된다 — 올리는 사람을 팀장단으로 좁힌다.
+ */
+export function leadsTeam(actor: Actor, teamId: string): boolean {
+  return actor.teams.some((t) => t.teamId === teamId && t.position === 'leader');
+}
+
+/**
  * 쓰기 행위 권한 판단(순수). 서버에서 이 결과로 실행 여부와 audit override 를 결정한다.
  */
 export function authorize(actor: Actor, action: Action): Decision {
@@ -111,6 +122,20 @@ export function authorize(actor: Actor, action: Action): Decision {
         return ownsResource(actor, action.owner) ? ALLOW : ALLOW_OVERRIDE;
       }
       return ownsResource(actor, action.owner) ? ALLOW : deny('not_owner');
+    }
+
+    // 팀 가이드북: 그 팀의 **팀장단**과 회장단만. 문서(document.modify)와 갈라 둔 이유는
+    // 주인이 다르기 때문이다 — 지식베이스 문서는 동아리 전체가 따르는 공식 정보라 회장단이 쥐지만,
+    // 가이드북은 각 팀이 자기 팀 운영 방식을 적은 자료라 그 팀이 직접 관리하는 편이 낫다.
+    // 팀원(position='member')은 제외한다: 팀이 밖에 내놓는 자료라 아무나 갈아치우면 안 된다.
+    case 'guidebook.manage': {
+      if (!isStaffPlus(actor.role)) return deny('role_insufficient');
+      if (isPrivileged(actor.role)) {
+        // 회장단은 남의 팀 가이드북도 손댈 수 있다. 자기 팀이 아니면 override 로 남긴다.
+        return action.owner.ownerType === 'team' && leadsTeam(actor, action.owner.ownerId) ? ALLOW : ALLOW_OVERRIDE;
+      }
+      if (action.owner.ownerType !== 'team') return deny('not_owner'); // 가이드북은 팀 소유만 존재한다
+      return leadsTeam(actor, action.owner.ownerId) ? ALLOW : deny('not_owner');
     }
 
     // 챗봇 지식베이스 문서: 관리(생성·수정·삭제)는 회장단·시스템관리자 전용(운영진·부원 불가).

@@ -24,7 +24,12 @@ interface NavItem {
 const COMMON_MENU: NavItem[] = [{ href: '/chatbot', label: '챗봇', icon: 'chat' }];
 // 부원 메뉴 = 챗봇 + 캘린더(2026-08-04, 결정 89). 캘린더를 COMMON 에 넣지 않는 이유는
 // 운영진·회장단 메뉴 순서가 예약·템플릿 다음이어야 하기 때문이다(홈 카드 순서와 맞춘다).
-const MEMBER_MENU: NavItem[] = [...COMMON_MENU, { href: '/calendar', label: '캘린더', icon: 'calendar' }];
+const MEMBER_MENU: NavItem[] = [
+  ...COMMON_MENU,
+  { href: '/calendar', label: '캘린더', icon: 'calendar' },
+  // 가이드북은 부원이 **보는 쪽**이 주 용도라 부원 메뉴에도 둔다(올리는 것은 팀장단·회장단).
+  { href: '/guidebooks', label: '가이드북', icon: 'heart' },
+];
 // 순서는 홈 화면 바로가기 카드(`app/page.tsx` STAFF_SHORTCUTS)와 맞춘다 — 두 곳이 어긋나면
 // 같은 메뉴를 화면마다 다른 자리에서 찾게 된다(2026-08-03 사용자 지정: 예약·템플릿 다음 일정).
 const STAFF_MENU: NavItem[] = [
@@ -32,6 +37,7 @@ const STAFF_MENU: NavItem[] = [
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/calendar', label: '캘린더', icon: 'calendar' },
+  { href: '/guidebooks', label: '가이드북', icon: 'heart' },
   { href: '/admin/recruit/screening', label: '신입모집', icon: 'userPlus', match: '/admin/recruit' },
 ];
 // 문서(챗봇 지식베이스)는 회장단·시스템관리자만. 팀 배정은 회원 관리 화면으로 통합(별도 팀 메뉴 없음).
@@ -41,6 +47,7 @@ const BOARD_MENU: NavItem[] = [
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/calendar', label: '캘린더', icon: 'calendar' },
+  { href: '/guidebooks', label: '가이드북', icon: 'heart' },
   { href: '/documents', label: '문서', icon: 'layers' },
   { href: '/admin/members', label: '회원', icon: 'users' },
   { href: '/admin/recruit/notice-edit', label: '신입모집', icon: 'userPlus', match: '/admin/recruit' },
@@ -60,6 +67,7 @@ function activeKey(pathname: string): string {
   if (pathname.startsWith('/chatbot')) return '/chatbot';
   if (pathname.startsWith('/guides')) return '/guides';
   if (pathname.startsWith('/calendar')) return '/calendar';
+  if (pathname.startsWith('/guidebooks')) return '/guidebooks';
   if (pathname.startsWith('/documents')) return '/documents';
   if (pathname.startsWith('/reservations')) return '/reservations';
   if (pathname.startsWith('/templates')) return '/templates';

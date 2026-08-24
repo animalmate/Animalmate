@@ -94,6 +94,81 @@ export async function createDocument(db: Db, actor: Actor, input: DocumentInput)
   return doc;
 }
 
+/**
+ * 팀 가이드북 본문을 챗봇 지식베이스에 올린다(팀당 한 건, 있으면 교체).
+ *
+ * `createDocument` 를 쓰지 않는 이유는 **권한이 다르기 때문**이다. 지식베이스 문서 관리는
+ * 회장단 전용(`document.modify`)이지만, 가이드북은 그 팀의 팀장단이 직접 올린다
+ * (`guidebook.manage`). 파이프라인(PII 검사 → 청킹 → 임베딩 → 통째 교체)은 똑같이 쓴다.
+ *
+ * 공개 범위는 **member 고정**이다. 가이드북은 애초에 부원에게 보여 주려고 만드는 자료라
+ * 고를 이유가 없고, 고르게 두면 실수로 부원에게 안 보이게 저장되는 쪽이 더 나쁘다.
+ */
+export async function saveGuidebookDocument(
+  db: Db,
+  actor: Actor,
+  input: { teamId: string; title: string; contentMd: string; existingDocumentId?: string | null; piiAck?: boolean }
+): Promise<Document> {
+  const owner = { ownerType: 'team' as const, ownerId: input.teamId };
+  requireAuthorized(actor, { kind: 'guidebook.manage', owner });
+
+  const findings = detectPii(input.contentMd);
+  if (findings.length > 0 && !input.piiAck) throw new PiiBlockedError(findings);
+
+  const chunkRows = await embedChunks(input.title, input.contentMd);
+
+  // 기존 행이 있으면 갱신한다 — 새로 만들면 옛 가이드북 본문이 검색에 남아 챗봇이 낡은 쪽을 집는다.
+  const existing = input.existingDocumentId
+    ? (await db.select().from(documents).where(eq(documents.id, input.existingDocumentId)).limit(1))[0]
+    : undefined;
+
+  const doc = await db.transaction(async (tx) => {
+    if (existing) {
+      const [row] = await tx
+        .update(documents)
+        .set({
+          title: input.title,
+          contentMd: input.contentMd,
+          visibility: 'member',
+          updatedBy: actor.userId,
+          updatedAt: new Date(),
+          piiChecked: findings.length > 0,
+        })
+        .where(eq(documents.id, existing.id))
+        .returning();
+      await writeChunks(tx, existing.id, chunkRows);
+      return row!;
+    }
+    const [row] = await tx
+      .insert(documents)
+      .values({
+        title: input.title,
+        contentMd: input.contentMd,
+        visibility: 'member',
+        ownerType: 'team',
+        ownerId: input.teamId,
+        kind: 'guidebook',
+        updatedBy: actor.userId,
+        piiChecked: findings.length > 0,
+      })
+      .returning();
+    await writeChunks(tx, row!.id, chunkRows);
+    return row!;
+  });
+
+  await recordAudit(
+    db,
+    buildAuditEntry({
+      actorUserId: actor.userId,
+      action: existing ? 'guidebook.document.update' : 'guidebook.document.create',
+      targetTable: 'documents',
+      targetId: doc.id,
+      after: { title: doc.title, teamId: input.teamId, chunks: chunkRows.length },
+    })
+  );
+  return doc;
+}
+
 export type DocumentPatch = Partial<Pick<DocumentInput, 'title' | 'contentMd' | 'visibility' | 'piiAck'>>;
 
 export async function updateDocument(db: Db, actor: Actor, id: string, patch: DocumentPatch): Promise<Document> {
@@ -165,7 +240,14 @@ export async function listDocuments(db: Db, actor: Actor): Promise<DocumentRow[]
     if (teamIds.length) conds.push(and(eq(documents.ownerType, 'team'), inArray(documents.ownerId, teamIds)));
     where = or(...conds);
   }
-  const rows = await db.select().from(documents).where(where).orderBy(desc(documents.updatedAt));
+  // 가이드북 본문은 이 목록에 넣지 않는다 — 관리하는 곳이 `/guidebooks` 로 따로 있고,
+  // 여기 섞이면 회장단이 손으로 쓴 문서를 찾기 어려워진다. 챗봇 검색은 둘을 구분하지 않는다.
+  const manualOnly = eq(documents.kind, 'manual');
+  const rows = await db
+    .select()
+    .from(documents)
+    .where(where ? and(manualOnly, where) : manualOnly)
+    .orderBy(desc(documents.updatedAt));
   return rows.map((d) => ({
     id: d.id,
     title: d.title,

@@ -27,7 +27,18 @@ const SYSTEM_PROMPT = `너는 대학생 동물봉사 동아리 "애니멀메이�
    봉사 회차는 봉사 tool, 총회·MT·정기회의 같은 동아리 행사는 \`list_club_schedules\` 를 쓴다.
 7. tool 결과의 **두 시각을 섞지 않는다.** \`meetTime\` = 봉사 당일 모이는 시각, \`upload\` = 공지가 카페에 올라가는 시각이다.
    "공지 몇 시에 올라와?"는 \`upload\` 로 답한다(\`upload.done\` 이 true 면 이미 올라간 것이다). \`upload\` 가 없으면 업로드 시각이 아직 안 정해진 것이다.
-8. 날짜의 요일은 tool 이 준 \`weekday\`를 그대로 쓴다. 직접 계산하지 않는다.`;
+8. 날짜의 요일은 tool 이 준 \`weekday\`를 그대로 쓴다. 직접 계산하지 않는다.
+9. **봉사 회차가 하나도 없을 때(count=0)는 "봉사 없어요"로 끝내지 않는다.** 등록된 것이 없을 뿐이지, 안 하는 것이 아니다. 이 순서로 답한다.
+   ① tool 결과의 \`noSessions\` 를 보고 \`get_team_guidebook\` 을 불러 그 팀이 **보통 언제 봉사를 여는지** 확인한다.
+   ② 가이드북에 적혀 있으면 그 평소 방식을 알려 준다(예: "보통 토요일에 열려요").
+   ③ 가이드북에도 없으면 \`noSessions.fallbackNotice\` 의 안내를 그대로 전한다.
+10. **확정된 일정과 평소 방식을 절대 섞어 말하지 않는다.** 가이드북에서 온 것은 "보통", "대개" 처럼 평소 방식임이 드러나게 쓰고, 확정 일정이 아직 없다는 것을 함께 밝힌다.
+   회차 tool 에서 나온 날짜만 확정 일정이다. 가이드북의 요일을 "이번 주 토요일에 봉사가 있다"처럼 확정처럼 말하면 안 된다.
+11. 가이드북·평소 방식으로 답했다면 그것은 근거 있는 답이다. 규칙 2 의 "모른다"로 넘기지 않는다.
+12. \`get_team_guidebook\` 의 \`content\` 는 **가이드북 전문이 아니라 봉사 운영 정보만 추린 요약**이다. 거기 없는 팀 이야기(활동 내용·팀 분위기·세부 규정 등)를 물으면 지어내지 말고, \`guidebookLink\` 가 있을 때 그 링크를 마크다운 링크로 안내한다.
+   예: "그 내용은 제가 가진 요약에는 없어요. [2팀 가이드북](/guidebooks)에서 확인해 주세요."
+   \`guidebookLink\` 가 없으면(그 팀 가이드북이 아직 안 올라옴) 규칙 2 대로 모른다고 답한다.
+13. 링크는 tool 이 준 \`guidebookLink\` 값만 쓴다. 주소를 직접 만들어 내지 않는다.`;
 
 export interface AskResult {
   answer: string;
@@ -78,6 +89,21 @@ export function isRefusal(answer: string): boolean {
   return answer.includes('개인정보') && (answer.includes('안내') || answer.includes('문의') || answer.includes('없'));
 }
 
+/**
+ * 이 tool 결과가 **답변 근거가 되는가.** 아래 `grounded` 판정에 쓴다.
+ *
+ * 단순히 `count > 0` 만 보면 안 된다: 봉사 회차가 0건일 때 tool 이 함께 실어 보내는
+ * `noSessions`(그 팀 평소 운영 방식을 찾아보라는 안내 + 기본 안내 문구)와, 가이드북 조회
+ * 결과(`found`)가 **바로 그 상황에서 답을 만드는 재료**다. 이것들을 근거로 세지 않으면
+ * "등록된 회차 없음"이 곧장 핸드오프로 떨어져, 가이드북 폴백이 한 번도 실행되지 못한다.
+ */
+export function toolGrounded(out: Record<string, unknown>): boolean {
+  if (typeof out.count === 'number' && out.count > 0) return true;
+  if (out.noSessions) return true; // 회차 0건일 때의 안내 뭉치
+  if (out.found === true) return true; // 가이드북을 실제로 찾음
+  return false;
+}
+
 export async function askChatbot(db: Db, actor: Actor, question: string, deps: AskDeps = {}): Promise<AskResult> {
   const q = question.trim();
   if (!q) return { answer: HANDOFF_MESSAGE, sources: [], handedOff: true };
@@ -110,7 +136,7 @@ export async function askChatbot(db: Db, actor: Actor, question: string, deps: A
     const responses = [];
     for (const fc of result.functionCalls) {
       const out = await execute(fc.name, fc.args);
-      if ((out.count as number | undefined) && (out.count as number) > 0) toolDataProduced = true;
+      if (toolGrounded(out)) toolDataProduced = true;
       responses.push({ functionResponse: { name: fc.name, response: out } });
     }
     contents.push({ role: 'user', parts: responses });
