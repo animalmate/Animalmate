@@ -61,7 +61,7 @@ export type Action =
   | { kind: 'bot.token' } // 봇 토큰 관리
   | { kind: 'joincode.manage' } // 학기 가입코드 발급/재발급
   | { kind: 'recruit.score' } // F9 신입 모집: 채점·개인메모·공용메모지(운영진 이상)
-  | { kind: 'recruit.notice' } // F9 신입 모집: 공고 본문·포스터·지원서 문항·기수 생성(회장단 + 공고 편집 팀)
+  | { kind: 'recruit.notice' } // F9 신입 모집: 공고·안내문구·마감/공개 스위치·기수 생성(회장단 + 공고 편집 팀)
   | { kind: 'recruit.manage' }; // F9 신입 모집: 확정·배정·공개·폐기·export(회장단 전용)
 
 export type DenyReason = 'membership_inactive' | 'role_insufficient' | 'not_owner';
@@ -88,7 +88,7 @@ export function isStaffPlus(role: Role): boolean {
 }
 
 /**
- * 모집 공고를 쓸 수 있는가 — 회장단, 또는 **공고 편집 권한이 켜진 팀**에 속한 운영진(=홍보팀).
+ * 모집 공고·안내를 다룰 수 있는가 — 회장단, 또는 **공고 편집 권한이 켜진 팀**에 속한 운영진(=홍보팀).
  *
  * 판단 근거는 팀 이름이 아니라 `teams.can_edit_notice` 플래그다(회장단이 회원 관리에서 켠다).
  * 이름 문자열로 하면 팀명을 한 번 바꿀 때 권한이 조용히 사라지고, PRD 핵심 결정 6(조직 이름·
@@ -96,8 +96,15 @@ export function isStaffPlus(role: Role): boolean {
  *
  * 팀장단(position='leader')으로 좁히지 않는다: 공고 글·포스터를 실제로 만드는 사람은 팀원이고,
  * 팀 배정 자체가 이미 member→staff 승격 조건이라 부원은 여기까지 오지 못한다.
- * 대외 효력이 있는 값(마감 스위치·합격자 안내문 등)과 **기수 삭제**는 회장단 전용으로 남는다 —
- * 기수 생성은 공고를 쓰기 위한 준비지만, 삭제는 되돌릴 수 없는 정리 작업이라 급할 일이 없다.
+ *
+ * **덮는 범위**(2026-08-25, 결정 141 로 넓어졌다): 공고 본문·포스터·지원서 문항 · 기수 생성 ·
+ * 모집 마감 스위치 · 합격 축하 멘트 · 합격 후 안내 · 면접 장소 프리셋 · 대기실 업무 목록 ·
+ * 지원자 공개 스위치(면접 일정/최종 결과).
+ *
+ * **남은 회장단 전용**(`recruit.manage` + 기수 삭제): 서류/최종 합격 확정 · 면접 슬롯 배정 ·
+ * 지원자 팀 변경 · 데이터 폐기 · CSV export · 기수 삭제.
+ * 경계는 이제 "대외에 나가느냐"가 아니라 **"합격 여부를 정하느냐"**다 — 정하는 것은 회장단,
+ * 정해진 것을 언제 어떻게 알리느냐는 홍보팀도 한다.
  */
 export function canEditRecruitNotice(actor: Actor): boolean {
   if (isPrivileged(actor.role)) return true;
@@ -139,8 +146,9 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'recruit.score':
       return isStaffPlus(actor.role) ? ALLOW : deny('role_insufficient');
 
-    // F9 공고 작성(본문·포스터·지원서 문항·기수 생성/삭제): 회장단 + 공고 편집 권한이 켜진 팀.
-    // 운영진이라고 다 되는 것이 아니다 — 팀 플래그가 없으면 거부(결정 66 이 막았던 구멍).
+    // F9 공고·안내(본문·포스터·지원서 문항·기수 생성·마감/공개 스위치·합격자 안내문):
+    // 회장단 + 공고 편집 권한이 켜진 팀. 운영진이라고 다 되는 것이 아니다 —
+    // 팀 플래그가 없으면 거부(결정 66 이 막았던 구멍).
     case 'recruit.notice':
       return canEditRecruitNotice(actor) ? ALLOW : deny('role_insufficient');
 
@@ -183,7 +191,7 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'board.registry':
     case 'bot.token':
     case 'joincode.manage':
-    case 'recruit.manage': // 결정은 회장단 — 운영진은 합격 여부를 바꿀 수 없다
+    case 'recruit.manage': // 합격 여부를 정하는 것은 회장단 — 홍보팀도 여기는 못 넘는다(결정 141)
       return isPrivileged(actor.role) ? ALLOW : deny('role_insufficient');
   }
 }

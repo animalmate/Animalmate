@@ -42,9 +42,11 @@
   - ⚠ `term_end` 는 **더 이상 읽히지 않는다**(2026-07-31 이후). 가입 시 값이 들어가지만 만료 판정에
     쓰이지 않는다 — 컬럼은 이력 보존을 위해 남겨 두었다.
 - `teams` (id, name, kind[activity|functional], is_active, **can_edit_notice**, leaders jsonb)
-  - can_edit_notice(0032): **모집 공고 편집 권한**. 켜면 그 팀 소속 운영진이 F9 0번 화면(공고 본문·
-    포스터·지원서 문항 + 기수 생성)을 쓸 수 있다(홍보팀 용도). 마감 스위치·합격자 안내문 등
-    대외 결정 필드와 **기수 삭제**는 켜도 회장단 전용이다(라우트가 필드 단위로 거른다).
+  - can_edit_notice(0032): **모집 공고 편집 권한**. 켜면 그 팀 소속 운영진이 F9 0번 화면 전부
+    (공고 본문·포스터·지원서 문항 · 기수 생성 · 마감 스위치 · 합격자 안내문 · 면접 장소 프리셋 ·
+    대기실 업무 목록)와 **지원자 공개 스위치**(`PATCH /recruit/cohorts/[id]`)를 쓸 수 있다(홍보팀 용도,
+    결정 141로 범위 확대). **기수 삭제**와 합격 여부를 정하는 행위(확정·배정·팀 변경·폐기)는
+    켜도 회장단 전용이다.
     회장단만 토글(`setTeamNoticeEditing`, audit severity=high). **팀 이름으로 판단하지 않는 이유**는
     07-DECISIONS 66/140 — 이름은 매 학기 바뀌고, 옛 `isPRTeamOrPrivileged` 는 UUID 를 이름처럼
     비교해 항상 false 였다. `loadActor` 는 `can_edit_notice AND is_active` 로 Actor 에 채운다

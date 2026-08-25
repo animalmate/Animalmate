@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { canEditRecruitNotice, isPrivileged, isStaffPlus } from '@/auth/permissions';
+import { canEditRecruitNotice, isStaffPlus } from '@/auth/permissions';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { updateCohortNoticeAndSettings } from '@/recruit/notice';
 import { resolveApplyForm } from '@/recruit/apply-form';
@@ -61,34 +61,17 @@ export async function GET(req: Request): Promise<Response> {
   });
 }
 
-// 이 화면은 홍보 업무(공고 본문·포스터·지원서 문항)와 결정 업무(마감 스위치·합격자 안내문)가
-// 한 화면에 섞여 있다. 그래서 **필드 단위로** 권한을 나눈다 — 홍보팀이 공고를 쓰고,
-// 대외 결정에 해당하는 값은 회장단만 바꾼다(09-RECRUIT-DESIGN §4 recruit.manage).
+// 이 라우트의 **필드 단위 권한 구분은 없어졌다**(2026-08-25, 결정 141 — 사용자 지시).
+// 게이트를 통과한 사람(회장단 + 공고 편집 권한이 켜진 팀)은 이 화면의 값을 전부 바꾼다:
+// 공고 본문·포스터·지원서 문항 + 마감 스위치·합격 축하 멘트·합격 후 안내·면접 장소 프리셋·
+// 대기실 업무 목록.
 //
-// 홍보팀이 못 바꾸는 필드: isClosed(접수 차단), congratsMessage·postPassNotice(합격자에게 나가는 문구),
-// venues(면접 장소 프리셋 — 면접 배정은 회장단 일이다), dutyRoles(대기실 업무 목록).
+// 결정 66 이 잠재워 두고 결정 140 이 잠깐 되살렸던 `MANAGE_ONLY_FIELDS` 블록은 여기서 지웠다
+// (필요하면 git 이력에 있다). 다시 필드를 가르려면 **"보냈다"가 아니라 "바뀌었다"로 판정**해야
+// 한다는 점만 기억할 것 — 화면이 값을 통째로 보내오므로 보낸 것만 보면 공고만 고쳐 저장해도
+// 403 이 나서 저장 자체가 불가능해진다.
 //
-// 화면이 값을 통째로 보내오므로 **"보냈다"가 아니라 "바뀌었다"로 판정한다**. 그렇지 않으면
-// 홍보팀이 공고만 고쳐 저장해도 함께 실려 온 기존 값 때문에 403 이 나서 저장 자체가 불가능해진다.
-const MANAGE_ONLY_FIELDS = [
-  { key: 'isClosed', label: '모집 마감 스위치' },
-  { key: 'congratsMessage', label: '합격 축하 멘트' },
-  { key: 'postPassNotice', label: '합격 후 안내' },
-  { key: 'venues', label: '면접 장소 프리셋' },
-  { key: 'dutyRoles', label: '대기실 업무 목록' }, // 면접 당일 배정과 같은 급 = 회장단
-] as const;
-
-/** 얕은 값 비교(문자열·불리언·문자열 배열). 이 네 필드에 중첩 객체는 없다. */
-function sameValue(a: unknown, b: unknown): boolean {
-  if (Array.isArray(a) || Array.isArray(b)) {
-    const xs = Array.isArray(a) ? a : [];
-    const ys = Array.isArray(b) ? b : [];
-    return xs.length === ys.length && xs.every((v, i) => v === ys[i]);
-  }
-  // null 과 '' 는 화면 왕복에서 서로 바뀌므로 같은 것으로 본다(빈 값 → 헛된 403 방지).
-  const norm = (v: unknown) => (v === null || v === undefined ? '' : v);
-  return norm(a) === norm(b);
-}
+// 여전히 이 라우트 밖에 있는 것: 기수 삭제 · 서류/최종 확정 · 면접 배정 · 지원자 팀 변경(회장단).
 
 export async function POST(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
@@ -96,6 +79,7 @@ export async function POST(req: Request): Promise<Response> {
   // 회장단 + 공고 편집 권한이 켜진 팀(홍보팀). 화면(page.tsx)만 열고 여기를 두면 URL 로 그대로
   // 저장된다 — UI 를 숨기거나 여는 것은 권한 검사가 아니다(규칙 #6).
   // 운영진 전원이 아니라 **플래그가 켜진 팀**만이다(07-DECISIONS 140, 결정 66 이 막았던 구멍).
+  // 통과하면 이 화면의 값은 전부 바꿀 수 있다(결정 141).
   if (!canEditRecruitNotice(actor)) {
     return NextResponse.json(
       { error: 'forbidden', message: '모집 공고는 회장단과 공고 편집 권한이 있는 팀만 수정할 수 있습니다.' },
@@ -137,30 +121,6 @@ export async function POST(req: Request): Promise<Response> {
 
     const before = await getCohortById(cohortId);
     if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-
-    // 여기부터가 **홍보팀에게만 적용되는 필드 경계**다(2026-08-25, 결정 140 — 결정 66 의 잠들어
-    // 있던 블록을 다시 켰다). 회장단은 이 블록을 건너뛰고 전 필드를 바꾼다.
-    if (!isPrivileged(actor.role)) {
-      // venues 는 GET 이 기본값을 채워 내려보내므로(DB 는 null) 비교도 같은 기준으로 해야 한다.
-      const beforeValue = (key: string): unknown =>
-        key === 'venues'
-          ? (before.venues ?? DEFAULT_VENUES)
-          : key === 'dutyRoles'
-          ? resolveDutyRoles(before.dutyRoles)
-          : (before as Record<string, unknown>)[key];
-      const attempted = MANAGE_ONLY_FIELDS.filter(
-        (f) => body[f.key] !== undefined && !sameValue(body[f.key], beforeValue(f.key))
-      );
-      if (attempted.length > 0) {
-        return NextResponse.json(
-          {
-            error: 'forbidden',
-            message: `${attempted.map((f) => f.label).join(' · ')}은(는) 회장단만 변경할 수 있습니다.`,
-          },
-          { status: 403 }
-        );
-      }
-    }
 
     const updated = await updateCohortNoticeAndSettings(cohortId, {
       noticeContent,

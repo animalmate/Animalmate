@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isPrivileged, isStaffPlus } from '@/auth/permissions';
+import { canEditRecruitNotice, isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { deleteCohort, getCohortById, updateCohortPublicSwitches } from '@/recruit/cohorts';
 import { listApplicantsByCohort } from '@/recruit/applicants';
 import { internalError } from '@/http/errors';
@@ -22,14 +22,22 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   return NextResponse.json({ cohort });
 }
 
-// 공개 스위치(면접 일정·최종 결과) 조작 = recruit.manage → 회장단 전용.
-// 운영진이 결과 공개를 켤 수 있으면 "채점은 운영진, 결정은 회장단" 불변식이 깨진다
-// (09-RECRUIT-DESIGN §0 역할 분담, §4 권한).
+// 공개 스위치(면접 일정·최종 결과) 조작 = recruit.notice → 회장단 + 공고 편집 권한이 켜진 팀
+// (2026-08-25, 결정 141 — 사용자 지시로 회장단 전용에서 넓혔다).
+//
+// ⚠ 이 라우트에서 **가장 무거운 것이 resultPublic 이다**: 켜는 순간 지원자가 /recruit 조회에서
+//   합격 여부를 보고, 되돌려도 이미 본 사람은 되돌릴 수 없다. 그래서 아래 audit 는 severity=high
+//   이고, 이 값만은 누가 언제 켰는지가 반드시 남아야 한다.
+//   **합격 여부를 정하는 것 자체는 여전히 회장단이다**(bulk_status·최종 확정은 recruit.manage).
+//   여기서 여는 것은 "이미 회장단이 확정한 결과를 지원자에게 보여줄지"뿐이다.
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!isPrivileged(actor.role)) {
-    return NextResponse.json({ error: 'forbidden', message: '공개 설정은 회장단만 변경할 수 있습니다.' }, { status: 403 });
+  if (!canEditRecruitNotice(actor)) {
+    return NextResponse.json(
+      { error: 'forbidden', message: '공개 설정은 회장단과 공고 편집 권한이 있는 팀만 변경할 수 있습니다.' },
+      { status: 403 }
+    );
   }
 
   const { id } = await context.params;

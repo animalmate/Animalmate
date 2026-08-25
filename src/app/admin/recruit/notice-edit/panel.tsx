@@ -11,11 +11,12 @@ import { DEFAULT_APPLY_FORM, resolveApplyForm, type ApplyFormConfig } from '@/re
 import { ApplyFormEditor } from './apply-form-editor';
 
 export function RecruitNoticeEditPanel({ role }: { role: Role }) {
-  // 이 화면에는 **두 종류의 사람**이 들어온다(2026-08-25, 결정 140 — page.tsx 의 requireNoticeEditor):
-  //  · 회장단 → 전 필드
-  //  · 공고 편집 권한이 켜진 팀(홍보팀)의 운영진 → 공고 본문·포스터·지원서 문항 + 기수 생성
-  // 그래서 canManage 로 대외 결정 필드(마감 스위치·합격자 안내문·면접 장소·대기실 업무)를 가른다.
-  // **UI 를 감추는 것은 권한이 아니다**(규칙 #6) — 같은 경계가 API 라우트에 필드 단위로 또 있다.
+  // 이 화면의 값은 게이트를 통과한 사람이 **전부** 바꾼다(2026-08-25, 결정 141) —
+  // 회장단과 공고 편집 권한이 켜진 팀(홍보팀)이 같은 것을 본다. 결정 140 까지 있던 필드 단위
+  // 구분(마감 스위치·합격자 안내문·면접 장소·대기실 업무)은 사용자 지시로 없앴다.
+  //
+  // canManage 에 남은 일은 **기수 삭제 버튼 하나**뿐이다. 되돌릴 수 없는 정리 작업이라 회장단에
+  // 남겨 뒀다. **UI 를 감추는 것은 권한이 아니다**(규칙 #6) — 삭제는 라우트도 회장단만 받는다.
   const canManage = isPrivileged(role);
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
@@ -28,6 +29,10 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
   const [congratsMessage, setCongratsMessage] = useState('');
   const [postPassNotice, setPostPassNotice] = useState('');
   const [isClosed, setIsClosed] = useState(false);
+  // 지원자 공개 스위치(면접 일정/링크, 최종 결과). 6번 화면에도 같은 스위치가 있고 같은 API 를 부른다 —
+  // 홍보팀은 6번(회장단 전용)에 못 들어가므로 여기에도 둔다(결정 141).
+  const [schedulePublic, setSchedulePublic] = useState(false);
+  const [resultPublic, setResultPublic] = useState(false);
   const [venuesText, setVenuesText] = useState('학생회관 301호\n학생회관 302호');
   // 면접 당일 대기실 업무 이름들(3번 화면 배정표의 열). 서버가 기본값을 채워 내려보낸다.
   const [dutyRolesText, setDutyRolesText] = useState('');
@@ -75,6 +80,8 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       setCongratsMessage(data.cohort.congratsMessage || '');
       setPostPassNotice(data.cohort.postPassNotice || '');
       setIsClosed(!!data.cohort.isClosed);
+      setSchedulePublic(!!data.cohort.schedulePublic);
+      setResultPublic(!!data.cohort.resultPublic);
       // 저장된 적이 없으면 resolveApplyForm 이 기본값을 채워 준다.
       setApplyForm(resolveApplyForm(data.cohort.applyForm));
       setVenuesText((data.cohort.venues || ['학생회관 301호', '학생회관 302호']).join('\n'));
@@ -242,24 +249,23 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       const res = await fetch('/api/recruit/notice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 회장단 전용 필드는 아예 보내지 않는다. 화면에 없는 값을 실어 보내면
-        // 서버가 "바꾸려 했다"고 볼 여지가 생긴다.
+        // 화면에 있는 값은 전부 보낸다(결정 141 — 필드 단위 구분이 없어졌다).
         body: JSON.stringify({
           cohortId: selectedCohortId,
           noticeContent,
           noticeImages,
           applyForm,
-          ...(canManage ? { congratsMessage, postPassNotice, isClosed, venues, dutyRoles } : {}),
+          congratsMessage,
+          postPassNotice,
+          isClosed,
+          venues,
+          dutyRoles,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        setMessage(
-          canManage
-            ? '✅ 모집 공고 본문, 포스터 이미지, 마감 스위치 및 안내 설정이 DB에 성공적으로 저장되었습니다.'
-            : '✅ 공고 글·포스터·지원서 문항이 저장되었습니다.'
-        );
+        setMessage('✅ 모집 공고 본문, 포스터 이미지, 마감 스위치 및 안내 설정이 DB에 성공적으로 저장되었습니다.');
       } else {
         setMessage(`❌ 저장 실패 (${res.status}): ${data.message || data.error || '알 수 없는 서버 오류'}`);
       }
@@ -303,6 +309,46 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
     }
   };
 
+  /**
+   * 지원자 공개 스위치. 두 값을 늘 함께 보낸다 — 서버가 undefined 를 "안 바꿈"으로 읽으므로
+   * 하나만 보내도 되지만, 화면이 둘 다 들고 있어 같이 보내는 편이 상태가 어긋날 여지가 없다.
+   *
+   * 실패하면 **화면 값을 되돌린다**. 안 그러면 체크박스는 켜졌는데 지원자에게는 안 보이는,
+   * 가장 알아채기 어려운 어긋남이 생긴다(마감 스위치와 같은 처리).
+   */
+  const handleUpdateSwitches = async (nextSchedule: boolean, nextResult: boolean) => {
+    if (!selectedCohortId) {
+      setMessage('❌ 모집 기수를 먼저 선택해 주세요.');
+      return;
+    }
+    const prev = { schedule: schedulePublic, result: resultPublic };
+    setSchedulePublic(nextSchedule);
+    setResultPublic(nextResult);
+    setSaving(true);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/recruit/cohorts/${selectedCohortId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedulePublic: nextSchedule, resultPublic: nextResult }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMessage('✅ 지원자 공개 설정이 변경되었습니다.');
+      } else {
+        setSchedulePublic(prev.schedule);
+        setResultPublic(prev.result);
+        setMessage(`❌ ${data.message || data.error || '공개 설정을 변경하지 못했습니다.'}`);
+      }
+    } catch (err: any) {
+      setSchedulePublic(prev.schedule);
+      setResultPublic(prev.result);
+      setMessage(`❌ 통신 오류: ${err?.message || '서버에 연결할 수 없습니다.'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -314,7 +360,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           <p className="mt-1 text-sm text-ink-500">
             {canManage
               ? '신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.'
-              : '기수를 만들고 공개 공고 글·포스터·지원서 문항을 작성합니다. 기수 삭제·모집 마감 스위치·합격자 안내문은 회장단이 맡습니다.'}
+              : '기수 생성, 공개 공고 글·포스터·지원서 문항, 모집 마감 스위치, 합격자 안내문, 공개 스위치까지 맡습니다. 기수 삭제만 회장단이 합니다.'}
           </p>
         </div>
 
@@ -402,15 +448,12 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
               </span>
             </div>
             <p className="text-xs text-ink-500 mt-1">
-              {canManage
-                ? '모집 중단 스위치를 켜면 지원서 작성 페이지 버튼이 즉시 비활성화되고 마감 팝업이 노출됩니다.'
-                : '모집을 열고 닫는 것은 회장단이 합니다.'}
+              모집 중단 스위치를 켜면 지원서 작성 페이지 버튼이 즉시 비활성화되고 마감 팝업이 노출됩니다.
             </p>
           </div>
         </div>
 
-        {canManage ? (
-          <button
+        <button
             type="button"
             disabled={saving}
             onClick={handleToggleClosed}
@@ -421,13 +464,49 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
             }`}
           >
             {saving ? '상태 변경 중…' : isClosed ? '모집 재개하기 (지원서 열기)' : '모집 중단하기 (지원 마감)'}
-          </button>
-        ) : (
-          <span className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-ink-400 ring-1 ring-ink-200">
-            <Icon name="lock" size={14} />
-            회장단 전용
-          </span>
-        )}
+        </button>
+      </Card>
+
+      {/* 지원자 공개 스위치. 6번 최종 결정 화면(회장단 전용)에도 같은 스위치가 있고 같은 API 를
+          부른다 — 어느 쪽에서 켜도 결과는 같다. 홍보팀은 6번에 못 들어가므로 여기에 둔다(결정 141).
+          ⚠ "최종 합격 결과 공개"는 켜는 순간 지원자가 합격 여부를 보고, 되돌려도 이미 본 사람은
+             되돌릴 수 없다. 그래서 경고를 옆에 붙이고 서버는 audit 에 [high] 로 남긴다. */}
+      <Card className="space-y-3">
+        <div>
+          <h2 className="text-base font-bold text-ink-900">지원자 공개 설정</h2>
+          <p className="mt-1 text-xs text-ink-500">
+            켜면 지원자가 <strong>/recruit</strong> 조회에서 바로 볼 수 있습니다. 끄면 결과를 알 수 없습니다.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 rounded-2xl border border-cream-200 bg-cream-50 p-3 px-5 sm:flex-row sm:items-center sm:gap-6">
+          <label className="flex min-h-tap cursor-pointer items-center gap-2.5 text-xs font-bold text-ink-900">
+            <input
+              type="checkbox"
+              checked={schedulePublic}
+              disabled={saving || !selectedCohortId}
+              onChange={(e) => handleUpdateSwitches(e.target.checked, resultPublic)}
+              className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>면접 일정/링크 지원자 공개</span>
+          </label>
+
+          <div className="hidden h-4 w-px bg-cream-200 sm:block" />
+
+          <label className="flex min-h-tap cursor-pointer items-center gap-2.5 text-xs font-bold text-ink-900">
+            <input
+              type="checkbox"
+              checked={resultPublic}
+              disabled={saving || !selectedCohortId}
+              onChange={(e) => handleUpdateSwitches(schedulePublic, e.target.checked)}
+              className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>최종 합격 결과 지원자 공개</span>
+          </label>
+        </div>
+        <p className="text-[11px] text-ink-500">
+          <strong className="text-coral-700">최종 합격 결과 공개</strong>는 켜는 즉시 지원자가 합격 여부를 봅니다.
+          다시 꺼도 이미 본 사람에게는 되돌려지지 않아요. 회장단이 최종 확정을 마친 뒤에 켜세요.
+        </p>
       </Card>
 
       {/* 설정 입력 카드 */}
@@ -492,8 +571,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           )}
         </div>
 
-        {canManage ? (
-          <div className="border-t border-cream-200 pt-6 space-y-4">
+        <div className="border-t border-cream-200 pt-6 space-y-4">
             <h2 className="text-base font-bold text-ink-900">대면 면접 장소 프리셋 (줄바꿈 구분)</h2>
             <Field label="대면 면접 장소 후보 목록" hint="면접 배정 시 클릭 한 번으로 선택 가능한 장소 프리셋입니다. (최대 2~3곳)">
               <textarea
@@ -516,8 +594,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
                 onChange={(e) => setDutyRolesText(e.target.value)}
               />
             </Field>
-          </div>
-        ) : null}
+        </div>
 
         {/* 공개 지원서(/recruit/apply)의 선택지·문항. 예전에는 화면 코드에 박혀 있어
             바꾸려면 배포가 필요했다. 지망 팀 목록은 여기가 아니라 "회원 관리"의 팀이 그대로 쓰인다. */}
@@ -529,7 +606,6 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           <ApplyFormEditor value={applyForm} onChange={setApplyForm} />
         </div>
 
-        {canManage ? (
         <div className="border-t border-cream-200 pt-6 space-y-4">
           <h2 className="text-base font-bold text-ink-900">최종 합격자 축하 멘트 및 합격 후 안내</h2>
 
@@ -551,7 +627,6 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
             />
           </Field>
         </div>
-        ) : null}
 
         <StatusMessage text={message} />
 

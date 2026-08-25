@@ -169,7 +169,7 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     expect(authorize(expired, { kind: 'recruit.notice' }).reason).toBe('membership_inactive');
   });
 
-  it('16-4. 홍보팀이어도 recruit.manage(확정·공개·폐기)는 여전히 거부', () => {
+  it('16-4. 홍보팀이어도 recruit.manage(확정·배정·폐기)는 여전히 거부', () => {
     const pr = actor('staff', { teams: [team('t-pr', 'member', true)] });
     expect(authorize(pr, { kind: 'recruit.manage' }).reason).toBe('role_insufficient');
     // 헬퍼 자체도 같은 경계를 지킨다.
@@ -177,7 +177,7 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     expect(isPrivileged(pr.role)).toBe(false);
   });
 
-  // 기수는 **생성만** 홍보팀에게 열려 있다(결정 140). 삭제 라우트는 authorize 를 거치지 않고
+  // 기수는 **생성만** 홍보팀에게 열려 있다(결정 140·141). 삭제 라우트는 authorize 를 거치지 않고
   // isPrivileged 로 직접 가르므로, 여기서 못 박는 것은 "두 권한이 같은 값이 아니다"라는 사실이다 —
   // 나중에 삭제 게이트를 canEditRecruitNotice 로 바꾸면 이 테스트가 근거로 남는다.
   it('16-5. 기수 생성(recruit.notice)과 삭제(회장단)는 서로 다른 칸이다', () => {
@@ -189,7 +189,21 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     expect(isPrivileged(board.role)).toBe(true);
   });
 
-  it('16. recruit.manage(업로드·확정·배정·공개·폐기) = 회장단 전용: 운영진도 거부', () => {
+  // 결정 141 로 경계가 "대외에 나가느냐"에서 **"합격 여부를 정하느냐"** 로 바뀌었다.
+  // 홍보팀은 정해진 결과를 **알리는** 쪽(공개 스위치·합격자 안내문)까지 하고, **정하는** 쪽
+  // (확정·배정·팀 변경·폐기)은 못 넘는다. 이 두 줄이 그 경계다.
+  it('16-6. 결정 141 경계 — 알리는 것은 홍보팀, 정하는 것은 회장단', () => {
+    const pr = actor('staff', { teams: [team('t-pr', 'member', true)] });
+    // 알리는 쪽: 공고·안내문구·마감/공개 스위치 = recruit.notice
+    expect(authorize(pr, { kind: 'recruit.notice' }).allowed).toBe(true);
+    // 정하는 쪽: 확정·배정·폐기 = recruit.manage
+    expect(authorize(pr, { kind: 'recruit.manage' }).allowed).toBe(false);
+    // 채점은 원래 운영진 전원이라 플래그와 무관하다.
+    expect(authorize(actor('staff'), { kind: 'recruit.score' }).allowed).toBe(true);
+    expect(authorize(actor('staff'), { kind: 'recruit.notice' }).allowed).toBe(false);
+  });
+
+  it('16. recruit.manage(확정·배정·팀변경·폐기) = 회장단 전용: 운영진도 거부', () => {
     expect(authorize(actor('staff'), { kind: 'recruit.manage' }).reason).toBe('role_insufficient');
     expect(authorize(actor('member'), { kind: 'recruit.manage' }).reason).toBe('role_insufficient');
     expect(authorize(actor('board'), { kind: 'recruit.manage' }).allowed).toBe(true);
