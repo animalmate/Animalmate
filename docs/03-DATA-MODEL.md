@@ -41,7 +41,14 @@
   - 크론이 매일 **1년 미접속** 건을 expired로 강등(`users.last_seen_at` 기준). 회장단만 memberships를 변경 가능.
   - ⚠ `term_end` 는 **더 이상 읽히지 않는다**(2026-07-31 이후). 가입 시 값이 들어가지만 만료 판정에
     쓰이지 않는다 — 컬럼은 이력 보존을 위해 남겨 두었다.
-- `teams` (id, name, kind[activity|functional], is_active, leaders jsonb)
+- `teams` (id, name, kind[activity|functional], is_active, **can_edit_notice**, leaders jsonb)
+  - can_edit_notice(0032): **모집 공고 편집 권한**. 켜면 그 팀 소속 운영진이 F9 0번 화면(공고 본문·
+    포스터·지원서 문항 + 기수 생성)을 쓸 수 있다(홍보팀 용도). 마감 스위치·합격자 안내문 등
+    대외 결정 필드와 **기수 삭제**는 켜도 회장단 전용이다(라우트가 필드 단위로 거른다).
+    회장단만 토글(`setTeamNoticeEditing`, audit severity=high). **팀 이름으로 판단하지 않는 이유**는
+    07-DECISIONS 66/140 — 이름은 매 학기 바뀌고, 옛 `isPRTeamOrPrivileged` 는 UUID 를 이름처럼
+    비교해 항상 false 였다. `loadActor` 는 `can_edit_notice AND is_active` 로 Actor 에 채운다
+    (비활성 팀은 소속 행이 남아 있어도 권한이 함께 접힌다).
   - leaders(0006): **앱 미가입자 전용** 수동 팀장단 [{label,name,phone}] (공지 `{{팀장단}}`에 자동 명단 뒤로 덧붙음).
     가입 팀장단은 여기 두지 않고 team_members(position=leader)로 관리. 같은 전화번호는 공지에서 자동 명단과 중복 제거.
     개인정보 — 런타임 입력이며 코드/시드/커밋에 넣지 않는다(규칙 #4). setTeamManualLeaders 가 저장.

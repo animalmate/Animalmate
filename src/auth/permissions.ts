@@ -14,6 +14,15 @@ export type OwnerType = (typeof ownerTypeEnum.enumValues)[number]; // personal |
 export interface ActorTeam {
   teamId: string;
   position: 'leader' | 'member';
+  /**
+   * 이 팀이 **지금** 모집 공고를 편집할 수 있는가 = `teams.can_edit_notice && teams.is_active`.
+   *
+   * loadActor 가 두 값을 합쳐 채운다 — 비활성화한 팀은 소속 행(team_members)이 그대로 남으므로,
+   * 플래그만 보면 접은 팀이 권한을 계속 들고 있게 된다.
+   * 팀 **이름**으로 판단하지 않는다(07-DECISIONS 66): 이름은 매 학기 바뀌고, 이 리포는 이미
+   * UUID 를 이름처럼 비교해 항상 false 인 검사를 오래 달고 있었다.
+   */
+  canEditNotice: boolean;
 }
 
 /** 요청자(인증된 사용자)의 권한 판단에 필요한 최소 컨텍스트. */
@@ -52,7 +61,8 @@ export type Action =
   | { kind: 'bot.token' } // 봇 토큰 관리
   | { kind: 'joincode.manage' } // 학기 가입코드 발급/재발급
   | { kind: 'recruit.score' } // F9 신입 모집: 채점·개인메모·공용메모지(운영진 이상)
-  | { kind: 'recruit.manage' }; // F9 신입 모집: 업로드·확정·배정·공개·폐기·export(회장단 전용)
+  | { kind: 'recruit.notice' } // F9 신입 모집: 공고 본문·포스터·지원서 문항·기수 생성(회장단 + 공고 편집 팀)
+  | { kind: 'recruit.manage' }; // F9 신입 모집: 확정·배정·공개·폐기·export(회장단 전용)
 
 export type DenyReason = 'membership_inactive' | 'role_insufficient' | 'not_owner';
 
@@ -75,6 +85,23 @@ export function isPrivileged(role: Role): boolean {
 /** 운영진 이상(게시물·예약 생성 등). */
 export function isStaffPlus(role: Role): boolean {
   return role === 'staff' || isPrivileged(role);
+}
+
+/**
+ * 모집 공고를 쓸 수 있는가 — 회장단, 또는 **공고 편집 권한이 켜진 팀**에 속한 운영진(=홍보팀).
+ *
+ * 판단 근거는 팀 이름이 아니라 `teams.can_edit_notice` 플래그다(회장단이 회원 관리에서 켠다).
+ * 이름 문자열로 하면 팀명을 한 번 바꿀 때 권한이 조용히 사라지고, PRD 핵심 결정 6(조직 이름·
+ * 수치는 가변, 상수 금지)에도 어긋난다 — 07-DECISIONS 66 이 이 방식을 지정했다.
+ *
+ * 팀장단(position='leader')으로 좁히지 않는다: 공고 글·포스터를 실제로 만드는 사람은 팀원이고,
+ * 팀 배정 자체가 이미 member→staff 승격 조건이라 부원은 여기까지 오지 못한다.
+ * 대외 효력이 있는 값(마감 스위치·합격자 안내문 등)과 **기수 삭제**는 회장단 전용으로 남는다 —
+ * 기수 생성은 공고를 쓰기 위한 준비지만, 삭제는 되돌릴 수 없는 정리 작업이라 급할 일이 없다.
+ */
+export function canEditRecruitNotice(actor: Actor): boolean {
+  if (isPrivileged(actor.role)) return true;
+  return isStaffPlus(actor.role) && actor.teams.some((t) => t.canEditNotice);
 }
 
 /** 요청자가 해당 리소스의 소유자인가(personal=본인, team=소속 팀원). */
@@ -111,6 +138,11 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'post.create':
     case 'recruit.score':
       return isStaffPlus(actor.role) ? ALLOW : deny('role_insufficient');
+
+    // F9 공고 작성(본문·포스터·지원서 문항·기수 생성/삭제): 회장단 + 공고 편집 권한이 켜진 팀.
+    // 운영진이라고 다 되는 것이 아니다 — 팀 플래그가 없으면 거부(결정 66 이 막았던 구멍).
+    case 'recruit.notice':
+      return canEditRecruitNotice(actor) ? ALLOW : deny('role_insufficient');
 
     // 게시물 수정·삭제, 반복 규칙/템플릿 관리: 부원 불가. 회장단·시스템관리자는 소유권 우회(override).
     // 운영진은 소유자(본인/소속팀)일 때만.
@@ -161,6 +193,6 @@ export function authorize(actor: Actor, action: Action): Decision {
 // **UUID** 라서 'pr'/'홍보' 부분 문자열이 들어갈 수 없었다(UUID 는 0-9a-f 만). 즉 항상 false 여서
 // 실제로는 회장단 전용과 똑같이 동작했고, 단위 테스트는 teamId 에 'pr_team' 이라는 가짜 문자열을
 // 넣어 통과하고 있었다(테스트가 실제 동작을 검증하지 못함).
-// 호출부는 전부 isPrivileged 로 바꿨다 — 실제 동작은 그대로다.
-// 홍보팀에 권한을 열려면 teamId 문자열이 아니라 teams.name 을 조회하는 검사를 새로 만들어야 한다.
+// **대체됨**: 위 `canEditRecruitNotice` — 이름이 아니라 `teams.can_edit_notice` 플래그를 본다
+// (마이그레이션 0032, 07-DECISIONS 140). 팀명을 바꿔도 권한이 따라 사라지지 않는다.
 

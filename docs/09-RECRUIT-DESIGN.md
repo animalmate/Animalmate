@@ -105,7 +105,13 @@ interview_done ──(회장단 최종확정)──▶ final_pass 또는 final_f
 ## 4. 권한 (permissions.ts Action 추가)
 - `{ kind: 'recruit.score' }` — **staff+**. 본인 점수·코멘트, 개인 메모, 공용 메모지 쓰기.
   (열람도 staff+ 이지만 authorize 는 쓰기 판단만 하므로, 읽기 라우트는 `isStaffPlus(actor.role)` 로 직접 게이트.)
-- `{ kind: 'recruit.manage' }` — **board only**(isPrivileged). 업로드·기수 생성·서류/최종 확정·슬롯 배정·
+- `{ kind: 'recruit.notice' }` — **board + `teams.can_edit_notice` 가 켜진 팀의 staff**(홍보팀).
+  0번 화면: 공고 본문·포스터·지원서 문항 + **기수 생성**. 회장단이 회원 관리에서 팀 단위로 켠다.
+  **기수 삭제는 열지 않는다** — 되돌릴 수 없는 정리 작업이라 급할 일이 없다(`DELETE /cohorts/[id]` = board only).
+  같은 화면 안에서도 대외 결정 필드(마감 스위치·합격 축하 멘트·합격 후 안내·면접 장소 프리셋·
+  대기실 업무 목록)는 회장단 전용 — `/api/recruit/notice` 가 **"보냈다"가 아니라 "바뀌었다"** 로
+  필드 단위 판정한다(화면이 값을 통째로 보내오므로 보낸 것만 보면 저장 자체가 막힌다).
+- `{ kind: 'recruit.manage' }` — **board only**(isPrivileged). 서류/최종 확정·슬롯 배정·
   공개 스위치·면접불참·CSV export·폐기.
 - audit: `recruit.manage` 는 관리 행위 → `isManagementAction` 에 추가(항상 audit). 채점/메모는
   도메인 서비스가 필요한 것만 audit(대량이라 전건 audit 는 노이즈 — 확정·폐기·export 만 남긴다).

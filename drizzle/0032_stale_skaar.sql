@@ -1,0 +1,1 @@
+ALTER TABLE "teams" ADD COLUMN "can_edit_notice" boolean DEFAULT false NOT NULL;

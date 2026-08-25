@@ -121,7 +121,7 @@ suite('양식 스코프 — 쓰는 범위는 넓고, 고치는 범위는 그대�
   });
 
   it('소속 팀 양식은 고칠 수 있다', async () => {
-    const staffInB: Actor = { userId: meId, role: 'staff', membershipActive: true, teams: [{ teamId: teamBId, position: 'leader' }] };
+    const staffInB: Actor = { userId: meId, role: 'staff', membershipActive: true, teams: [{ teamId: teamBId, position: 'leader', canEditNotice: false }] };
     const updated = await updateTemplate(db, staffInB, tplBId, { defaultPlace: '테스트장소' });
     expect(updated.defaultPlace).toBe('테스트장소');
   });

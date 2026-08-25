@@ -62,7 +62,7 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
     await sql.end({ timeout: 5 });
   });
 
-  const leaderOfA: () => Actor = () => ({ userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader' }] });
+  const leaderOfA: () => Actor = () => ({ userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader', canEditNotice: false }] });
   const board: () => Actor = () => ({ userId, role: 'board', membershipActive: true, teams: [] });
   const vol = (teamId: string) => ({ kind: 'volunteer' as const, teamId, boardMenuid: MENUID, title: '봉사', contentMd: '내용' });
 
@@ -217,7 +217,7 @@ suite('봉사(팀) 예약 생성 권한 — 팀장은 자기 팀만, 회장단�
   it('남의 팀 예약의 회차는 팀장이 취소할 수 없다', async () => {
     const post = await createReservation(db, board(), vol(teamBId));
     createdPosts.push(post.id);
-    const leaderA: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader' }] };
+    const leaderA: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader', canEditNotice: false }] };
     await expect(cancelEvent(db, leaderA, post.id)).rejects.toBeInstanceOf(PermissionError);
   });
   // 팀별 발행 시각이 30분 간격으로 정해져 있어, 같은 분에 두 건이 잡히면 슬롯 중복 예약이다.

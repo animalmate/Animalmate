@@ -112,7 +112,7 @@ function Fact({
   );
 }
 
-export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
+export function RecruitInterviewConsolePanel({ role, canEditNotice }: { role: Role; canEditNotice: boolean }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -523,7 +523,7 @@ export function RecruitInterviewConsolePanel({ role }: { role: Role }) {
         </div>
       </div>
 
-      <RecruitNav role={role} />
+      <RecruitNav role={role} canEditNotice={canEditNotice} />
 
       <ScreenNotes
         screen="interview-console"

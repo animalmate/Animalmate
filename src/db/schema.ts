@@ -169,6 +169,11 @@ export const teams = pgTable('teams', {
   name: text('name').notNull(),
   kind: teamKindEnum('kind').notNull(),
   isActive: boolean('is_active').notNull().default(true),
+  // 모집 공고 편집 권한(0032). 켜진 팀에 소속된 운영진은 신입 모집 0번 화면에서 공고 본문·포스터·
+  // 지원서 문항을 쓰고 기수를 만들 수 있다(홍보팀 용도). **팀 이름으로 판단하지 않는 이유**는
+  // 07-DECISIONS 66 에 있다 — 이름은 매 학기 바뀌고, 이 리포는 이미 UUID 를 이름처럼 비교해
+  // 항상 false 인 검사(`isPRTeamOrPrivileged`)를 오래 달고 있었다. 회장단이 회원 관리에서 켠다.
+  canEditNotice: boolean('can_edit_notice').notNull().default(false),
   // 매 학기 교체되는 팀장단 명단(공지 {{팀장단}} 자동 삽입용).
   leaders: jsonb('leaders').$type<TeamLeader[]>().notNull().default(sql`'[]'::jsonb`),
 });

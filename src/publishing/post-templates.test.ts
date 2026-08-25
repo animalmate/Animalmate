@@ -30,7 +30,7 @@ describe('canEditTemplate — 고칠 수 있는 양식 판정(쓰는 범위와 �
     userId: ME,
     role,
     membershipActive: true,
-    teams: teamIds.map((teamId) => ({ teamId, position: 'member' as const })),
+    teams: teamIds.map((teamId) => ({ teamId, position: 'member' as const, canEditNotice: false })),
   });
 
   it('운영진: 소속 팀 양식은 고칠 수 있다', () => {

@@ -2,7 +2,7 @@
 // 데이터 접근은 서버(service role) db 주입. 메일러/시각/secret 주입으로 테스트 가능.
 
 import { and, eq } from 'drizzle-orm';
-import { users, memberships, teamMembers } from '@/db/schema';
+import { users, memberships, teamMembers, teams as teamsTable } from '@/db/schema';
 import type { Db, Database } from '@/db/types';
 import type { Actor, ActorTeam, Role } from '@/auth/permissions';
 import { validateJoinCode } from './join-codes';
@@ -189,9 +189,18 @@ export async function loadActor(db: DB, userId: string, sessionVersion?: number)
       .select({ role: memberships.role })
       .from(memberships)
       .where(and(eq(memberships.userId, userId), eq(memberships.status, 'active'))),
+    // teams 를 조인하는 이유: 공고 편집 권한이 팀 플래그(can_edit_notice)에 있다(0032).
+    // team_members 만 읽으면 팀 이름으로 판단하는 옛 방식으로 되돌아간다(07-DECISIONS 66).
+    // 별칭(teamsTable)을 쓰는 것은 아래 지역 변수 `teams` 와 이름이 겹치기 때문이다.
     db
-      .select({ teamId: teamMembers.teamId, position: teamMembers.position })
+      .select({
+        teamId: teamMembers.teamId,
+        position: teamMembers.position,
+        canEditNotice: teamsTable.canEditNotice,
+        teamActive: teamsTable.isActive,
+      })
       .from(teamMembers)
+      .innerJoin(teamsTable, eq(teamsTable.id, teamMembers.teamId))
       .where(eq(teamMembers.userId, userId)),
   ]);
   if (!u) return null;
@@ -206,7 +215,13 @@ export async function loadActor(db: DB, userId: string, sessionVersion?: number)
 
   let role: Role = 'member';
   for (const r of ms) if (ROLE_RANK[r.role] > ROLE_RANK[role]) role = r.role;
-  const teams: ActorTeam[] = tms.map((t) => ({ teamId: t.teamId, position: t.position }));
+  // 비활성 팀은 권한도 접힌 것으로 본다 — 팀을 비활성화해도 team_members 행은 남기 때문에,
+  // 플래그만 보면 해체한 팀이 공고 편집 권한을 계속 들고 있게 된다.
+  const teams: ActorTeam[] = tms.map((t) => ({
+    teamId: t.teamId,
+    position: t.position,
+    canEditNotice: t.canEditNotice && t.teamActive,
+  }));
   return { userId, name: u.name, role, membershipActive: ms.length > 0, teams };
 }
 

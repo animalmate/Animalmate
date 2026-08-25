@@ -68,7 +68,7 @@ suite('F1 — 템플릿 / 다건 예약 생성 / 미완성 점검', () => {
     const [u] = await db.insert(users).values({ email: LEADER_EMAIL, name: '팀장' }).returning();
     await db.insert(teamMembers).values({ teamId, userId: u!.id, position: 'leader' });
     board = { userId: u!.id, role: 'board', membershipActive: true, teams: [] };
-    leader = { userId: u!.id, role: 'staff', membershipActive: true, teams: [{ teamId, position: 'leader' }] };
+    leader = { userId: u!.id, role: 'staff', membershipActive: true, teams: [{ teamId, position: 'leader', canEditNotice: false }] };
   });
 
   afterAll(async () => {

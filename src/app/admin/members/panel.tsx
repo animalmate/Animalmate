@@ -15,7 +15,7 @@ interface Member {
   teams: UserTeam[];
 }
 interface ManualLeader { label: string; name: string; phone: string }
-interface Team { id: string; name: string; kind: string; isActive: boolean; leaders: ManualLeader[] }
+interface Team { id: string; name: string; kind: string; isActive: boolean; canEditNotice: boolean; leaders: ManualLeader[] }
 
 const ROLE_LABEL: Record<string, string> = { member: '부원', staff: '운영진', board: '회장단', sysadmin: '시스템관리자' };
 const ROLES = ['member', 'staff', 'board', 'sysadmin'];
@@ -420,8 +420,16 @@ function TeamsSection({ teams, onChange, onError }: { teams: Team[]; onChange: (
                 <span className="font-semibold text-ink-900">
                   {t.name} <span className="text-xs text-ink-500">({KIND_LABEL[t.kind] ?? t.kind})</span>
                   {!t.isActive ? <span className="ml-1 text-xs text-ink-400">· 비활성</span> : null}
+                  {t.canEditNotice ? (
+                    <span className="ml-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-bold text-blue-700">공고 편집</span>
+                  ) : null}
                 </span>
-                <span className="flex gap-2">
+                <span className="flex flex-wrap gap-2">
+                  {/* 공고 편집 권한 = 신입 모집 0번 화면(공고 글·포스터·지원서 문항·기수)을 이 팀에 연다.
+                      팀 이름으로 홍보팀을 알아내지 않고 여기서 손으로 켠다(07-DECISIONS 140). */}
+                  <SecondaryButton onClick={() => patchTeam(t.id, { canEditNotice: !t.canEditNotice })}>
+                    {t.canEditNotice ? '공고 편집 권한 끄기' : '공고 편집 권한 주기'}
+                  </SecondaryButton>
                   <SecondaryButton onClick={() => patchTeam(t.id, { isActive: !t.isActive })}>{t.isActive ? '비활성화' : '활성화'}</SecondaryButton>
                   <SecondaryButton onClick={() => removeTeam(t)}>삭제</SecondaryButton>
                 </span>
@@ -431,6 +439,9 @@ function TeamsSection({ teams, onChange, onError }: { teams: Team[]; onChange: (
           ))}
           <InfoText>
             팀장단 이름·전화는 회원 각자의 정보에서 자동으로 들어가요. 아래 "미가입자 팀장단"은 앱에 가입하지 않은 사람만 공지에 덧붙일 때 써요.
+            <br />
+            "공고 편집 권한"을 켜면 그 팀 소속 운영진이 신입 모집 0번 화면에서 공고 글·포스터·지원서 문항을 쓰고 기수를 만들 수 있어요(홍보팀용).
+            모집 마감 스위치·합격자 안내문·기수 삭제는 켜도 회장단만 합니다. 팀을 비활성화하면 이 권한도 함께 멈춰요.
           </InfoText>
         </div>
       ) : null}

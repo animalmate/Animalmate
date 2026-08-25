@@ -63,6 +63,8 @@ export async function PATCH(req: Request): Promise<Response> {
     // change_team/bulk_team 도 여기 포함된다: 예전엔 isPRTeamOrPrivileged 를 썼지만 그 함수는
     // teamId(UUID)에 'pr'/'홍보' 가 들어있는지 보는 검사라 실제로는 절대 참이 되지 않았다
     // (= 사실상 회장단 전용). 착시를 없애고 실제 동작과 일치시킨다.
+    // ⚠ 결정 140 이 만든 `canEditRecruitNotice`(홍보팀 개방)를 여기에 끌어오지 말 것 —
+    //    그것은 **공고를 쓰는 권한**이고, 여기는 지원자의 합격·배정을 바꾸는 **결정**이다.
     if (['bulk_status', 'assign_slot', 'assign_slot_bulk', 'update_station', 'change_team', 'bulk_team'].includes(action)) {
       if (!isPrivileged(actor.role)) {
         return NextResponse.json({ error: 'forbidden', message: '이 작업은 회장단만 할 수 있습니다.' }, { status: 403 });

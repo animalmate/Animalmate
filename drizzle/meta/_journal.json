@@ -225,6 +225,13 @@
       "when": 1787575942996,
       "tag": "0031_petite_stark_industries",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787669317021,
+      "tag": "0032_stale_skaar",
+      "breakpoints": true
     }
   ]
 }

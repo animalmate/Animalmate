@@ -11,11 +11,11 @@ import { DEFAULT_APPLY_FORM, resolveApplyForm, type ApplyFormConfig } from '@/re
 import { ApplyFormEditor } from './apply-form-editor';
 
 export function RecruitNoticeEditPanel({ role }: { role: Role }) {
-  // ⚠ 이 화면은 **회장단 전용**이다(2026-07-31, 결정 66 — page.tsx 의 requireBoard).
-  //    따라서 아래 canManage 는 지금 **항상 true** 이고, `canManage ? ... : ...` 의 else 쪽은
-  //    실행되지 않는다. 지우지 않고 남겨 둔 이유: 홍보팀(운영진)에게 공고 작성만 다시 열기로 하면
-  //    필요한 것이 정확히 이 필드 단위 구분이기 때문이다(결정 31 이 그 설계였다).
-  //    **살아 있는 권한 검사로 오해하지 말 것** — 진짜 게이트는 page.tsx 와 API 라우트에 있다.
+  // 이 화면에는 **두 종류의 사람**이 들어온다(2026-08-25, 결정 140 — page.tsx 의 requireNoticeEditor):
+  //  · 회장단 → 전 필드
+  //  · 공고 편집 권한이 켜진 팀(홍보팀)의 운영진 → 공고 본문·포스터·지원서 문항 + 기수 생성
+  // 그래서 canManage 로 대외 결정 필드(마감 스위치·합격자 안내문·면접 장소·대기실 업무)를 가른다.
+  // **UI 를 감추는 것은 권한이 아니다**(규칙 #6) — 같은 경계가 API 라우트에 필드 단위로 또 있다.
   const canManage = isPrivileged(role);
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
@@ -308,13 +308,13 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (회장단)</h1>
+            <h1 className="text-[24px] font-bold text-ink-900">0. 모집 공고 및 안내 설정 (회장단·홍보팀)</h1>
             <HelpButton screen="recruit-notice" />
           </div>
           <p className="mt-1 text-sm text-ink-500">
             {canManage
               ? '신입 모집 기수 생성/삭제, 공개 공고 포스터/안내문구, 모집 마감 스위치 및 축하 멘트 관리.'
-              : '공개 공고 글과 포스터, 지원서 문항을 작성합니다. 기수 생성·모집 마감·합격자 안내문은 회장단이 맡습니다.'}
+              : '기수를 만들고 공개 공고 글·포스터·지원서 문항을 작성합니다. 기수 삭제·모집 마감 스위치·합격자 안내문은 회장단이 맡습니다.'}
           </p>
         </div>
 
@@ -330,14 +330,15 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
         </div>
       </div>
 
-      <RecruitNav role={role} />
+      {/* 이 화면까지 온 사람은 게이트를 통과했으므로 0단계는 항상 열려 있다. */}
+      <RecruitNav role={role} canEditNotice />
 
       {/* 모집 기수 선택 및 관리 */}
       <Card className="space-y-4">
         <div className="flex items-center justify-between border-b border-cream-200 pb-3">
-          <h2 className="text-base font-bold text-ink-900">{canManage ? '모집 기수 선택 및 생성 / 삭제' : '모집 기수 선택'}</h2>
+          <h2 className="text-base font-bold text-ink-900">{canManage ? '모집 기수 선택 및 생성 / 삭제' : '모집 기수 선택 및 생성'}</h2>
           <span className="text-xs text-ink-500">
-            {canManage ? '새로운 신입 기수를 생성하거나 기존 기수를 관리합니다.' : '작성할 공고의 기수를 고릅니다.'}
+            {canManage ? '새로운 신입 기수를 생성하거나 기존 기수를 관리합니다.' : '공고를 쓸 기수를 고르거나 새로 만듭니다. 삭제는 회장단이 합니다.'}
           </span>
         </div>
 
@@ -358,8 +359,9 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
             </Field>
           </div>
 
-          {canManage ? (
-            <div className="flex items-end gap-2 flex-1 min-w-[320px]">
+          {/* 기수 **생성**은 홍보팀에게도 열려 있다(결정 140) — 공고를 쓰려면 담을 기수가 먼저
+              있어야 한다. **삭제는 회장단만**이라 아래 버튼은 canManage 로 가른다. */}
+          <div className="flex items-end gap-2 flex-1 min-w-[320px]">
               <div className="flex-1">
                 <Field label="새 신입 기수 생성">
                   <Input
@@ -373,7 +375,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
               <Button type="button" onClick={handleCreateCohort} className="h-control whitespace-nowrap">
                 + 기수 생성
               </Button>
-              {selectedCohortId && (
+              {canManage && selectedCohortId && (
                 <DangerButton
                   type="button"
                   onClick={() => setShowDeleteModal(true)}
@@ -382,8 +384,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
                   기수 삭제
                 </DangerButton>
               )}
-            </div>
-          ) : null}
+          </div>
         </div>
       </Card>
 

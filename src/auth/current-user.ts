@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { db } from '@/db/client';
 import { verifySession, SESSION_COOKIE } from './session';
 import { loadActor } from './auth-service';
-import { isPrivileged, isStaffPlus, type Actor } from './permissions';
+import { authorize, isPrivileged, isStaffPlus, type Actor } from './permissions';
 
 export async function getCurrentActor(): Promise<Actor | null> {
   const secret = process.env.SESSION_SECRET;
@@ -35,5 +35,18 @@ export async function requireStaff(): Promise<Actor> {
 export async function requireBoard(): Promise<Actor> {
   const actor = await requireActor();
   if (!isPrivileged(actor.role)) redirect('/');
+  return actor;
+}
+
+/**
+ * 모집 공고 편집 권한 필수 — 회장단, 또는 공고 편집 권한이 켜진 팀(홍보팀)의 운영진.
+ * 부족하면 홈으로.
+ *
+ * `authorize` 를 거치는 이유는 임기 만료(membershipActive=false)까지 한 번에 막기 위해서다.
+ * 이 화면은 대외에 그대로 나가는 공고를 쓰는 자리라, 만료된 계정이 남아 있으면 안 된다.
+ */
+export async function requireNoticeEditor(): Promise<Actor> {
+  const actor = await requireActor();
+  if (!authorize(actor, { kind: 'recruit.notice' }).allowed) redirect('/');
   return actor;
 }

@@ -21,22 +21,22 @@ const manageA = { kind: 'guidebook.manage', owner: { ownerType: 'team', ownerId:
 
 describe('guidebook.manage', () => {
   it('그 팀 팀장단은 허용', () => {
-    const a = actor({ teams: [{ teamId: TEAM_A, position: 'leader' }] });
+    const a = actor({ teams: [{ teamId: TEAM_A, position: 'leader', canEditNotice: false }] });
     expect(authorize(a, manageA)).toMatchObject({ allowed: true, override: false });
   });
 
   it('같은 팀이어도 팀원(member)은 거부 — 팀이 밖에 내놓는 자료다', () => {
-    const a = actor({ teams: [{ teamId: TEAM_A, position: 'member' }] });
+    const a = actor({ teams: [{ teamId: TEAM_A, position: 'member', canEditNotice: false }] });
     expect(authorize(a, manageA)).toMatchObject({ allowed: false, reason: 'not_owner' });
   });
 
   it('다른 팀 팀장단은 거부', () => {
-    const a = actor({ teams: [{ teamId: TEAM_B, position: 'leader' }] });
+    const a = actor({ teams: [{ teamId: TEAM_B, position: 'leader', canEditNotice: false }] });
     expect(authorize(a, manageA)).toMatchObject({ allowed: false, reason: 'not_owner' });
   });
 
   it('부원은 팀장단이어도 거부(역할이 먼저)', () => {
-    const a = actor({ role: 'member', teams: [{ teamId: TEAM_A, position: 'leader' }] });
+    const a = actor({ role: 'member', teams: [{ teamId: TEAM_A, position: 'leader', canEditNotice: false }] });
     expect(authorize(a, manageA)).toMatchObject({ allowed: false, reason: 'role_insufficient' });
   });
 
@@ -46,17 +46,17 @@ describe('guidebook.manage', () => {
   });
 
   it('회장단이 자기 팀 가이드북을 만지면 override 가 아니다', () => {
-    const a = actor({ role: 'board', teams: [{ teamId: TEAM_A, position: 'leader' }] });
+    const a = actor({ role: 'board', teams: [{ teamId: TEAM_A, position: 'leader', canEditNotice: false }] });
     expect(authorize(a, manageA)).toMatchObject({ allowed: true, override: false });
   });
 
   it('임기 만료(멤버십 비활성)면 팀장단이어도 거부', () => {
-    const a = actor({ membershipActive: false, teams: [{ teamId: TEAM_A, position: 'leader' }] });
+    const a = actor({ membershipActive: false, teams: [{ teamId: TEAM_A, position: 'leader', canEditNotice: false }] });
     expect(authorize(a, manageA)).toMatchObject({ allowed: false, reason: 'membership_inactive' });
   });
 
   it('개인 소유 가이드북은 존재하지 않는다(팀 소유만)', () => {
-    const a = actor({ teams: [{ teamId: TEAM_A, position: 'leader' }] });
+    const a = actor({ teams: [{ teamId: TEAM_A, position: 'leader', canEditNotice: false }] });
     const personal = { kind: 'guidebook.manage', owner: { ownerType: 'personal', ownerId: 'u1' } } as const;
     expect(authorize(a, personal)).toMatchObject({ allowed: false, reason: 'not_owner' });
   });

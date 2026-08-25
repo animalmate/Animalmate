@@ -33,6 +33,35 @@ export async function setTeamActive(db: Db, actor: Actor, id: string, isActive: 
   await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: isActive ? 'team.activate' : 'team.deactivate', targetTable: 'teams', targetId: id, after: { isActive } }));
   return row;
 }
+/**
+ * 모집 공고 편집 권한 토글(`teams.can_edit_notice`, 0032) — 회장단만.
+ *
+ * 이 플래그 하나가 그 팀 소속 운영진 전원에게 신입 모집 0번 화면(공고 본문·포스터·지원서 문항·
+ * 기수 생성/삭제)을 연다. 팀 **이름**이 아니라 플래그로 두는 이유는 07-DECISIONS 66/140 참고 —
+ * 이름은 매 학기 바뀌고, 이름으로 판단하면 팀명 한 번 고칠 때 권한이 조용히 사라진다.
+ *
+ * 권한 경계가 움직이는 일이라 항상 audit 에 남긴다(규칙 #4).
+ */
+export async function setTeamNoticeEditing(db: Db, actor: Actor, id: string, canEditNotice: boolean): Promise<Team> {
+  ensureBoard(actor);
+  const [before] = await db.select().from(teams).where(eq(teams.id, id)).limit(1);
+  if (!before) throw new Error('team not found');
+  const [row] = await db.update(teams).set({ canEditNotice }).where(eq(teams.id, id)).returning();
+  await recordAudit(
+    db,
+    buildAuditEntry({
+      actorUserId: actor.userId,
+      action: canEditNotice ? 'team.noticeEditing.grant' : 'team.noticeEditing.revoke',
+      targetTable: 'teams',
+      targetId: id,
+      before: { canEditNotice: before.canEditNotice },
+      after: { canEditNotice },
+      severity: 'high',
+    })
+  );
+  return row!;
+}
+
 // 팀 소속·직함 배정은 org/team-members.ts 의 setUserTeams(회원별), 미가입자 팀장단은 setTeamManualLeaders 로.
 
 export class TeamInUseError extends Error {

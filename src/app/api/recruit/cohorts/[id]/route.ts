@@ -70,6 +70,10 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 export async function DELETE(req: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  // 삭제는 **생성과 짝이 아니다** — 회장단 전용이다(07-DECISIONS 140, 사용자 결정).
+  // 홍보팀에게 여는 것은 기수 **생성**뿐이다(공고를 쓰려면 담을 기수가 먼저 있어야 하니까).
+  // 삭제는 아래 두 그물(지원자 0명 + 명칭 재입력)을 통과하면 되돌릴 수 없고, 잘못 만든 기수를
+  // 치우는 일은 급하지 않다. 공고를 쓰다 실수로 지우는 쪽이 훨씬 비싸다.
   if (!isPrivileged(actor.role)) {
     return NextResponse.json({ error: 'forbidden', message: '기수 삭제는 회장단만 할 수 있습니다.' }, { status: 403 });
   }

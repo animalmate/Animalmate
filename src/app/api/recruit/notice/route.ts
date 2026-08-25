@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isPrivileged, isStaffPlus } from '@/auth/permissions';
+import { canEditRecruitNotice, isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { updateCohortNoticeAndSettings } from '@/recruit/notice';
 import { resolveApplyForm } from '@/recruit/apply-form';
@@ -62,14 +62,14 @@ export async function GET(req: Request): Promise<Response> {
 }
 
 // 이 화면은 홍보 업무(공고 본문·포스터·지원서 문항)와 결정 업무(마감 스위치·합격자 안내문)가
-// 한 화면에 섞여 있다. 그래서 **필드 단위로** 권한을 나눈다 — 운영진(홍보팀)이 공고를 쓰고,
+// 한 화면에 섞여 있다. 그래서 **필드 단위로** 권한을 나눈다 — 홍보팀이 공고를 쓰고,
 // 대외 결정에 해당하는 값은 회장단만 바꾼다(09-RECRUIT-DESIGN §4 recruit.manage).
 //
-// 운영진이 못 바꾸는 필드: isClosed(접수 차단), congratsMessage·postPassNotice(합격자에게 나가는 문구),
-// venues(면접 장소 프리셋 — 면접 배정은 회장단 일이다).
+// 홍보팀이 못 바꾸는 필드: isClosed(접수 차단), congratsMessage·postPassNotice(합격자에게 나가는 문구),
+// venues(면접 장소 프리셋 — 면접 배정은 회장단 일이다), dutyRoles(대기실 업무 목록).
 //
 // 화면이 값을 통째로 보내오므로 **"보냈다"가 아니라 "바뀌었다"로 판정한다**. 그렇지 않으면
-// 운영진이 공고만 고쳐 저장해도 함께 실려 온 기존 값 때문에 403 이 나서 저장 자체가 불가능해진다.
+// 홍보팀이 공고만 고쳐 저장해도 함께 실려 온 기존 값 때문에 403 이 나서 저장 자체가 불가능해진다.
 const MANAGE_ONLY_FIELDS = [
   { key: 'isClosed', label: '모집 마감 스위치' },
   { key: 'congratsMessage', label: '합격 축하 멘트' },
@@ -93,10 +93,14 @@ function sameValue(a: unknown, b: unknown): boolean {
 export async function POST(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  // 회장단 전용(2026-07-31, 결정 66). 화면(page.tsx)만 좁히고 여기를 두면 URL 로 그대로 저장된다 —
-  // UI 를 숨기는 것은 권한 검사가 아니다(규칙 #6).
-  if (!isPrivileged(actor.role)) {
-    return NextResponse.json({ error: 'forbidden', message: '모집 공고 설정은 회장단만 변경할 수 있습니다.' }, { status: 403 });
+  // 회장단 + 공고 편집 권한이 켜진 팀(홍보팀). 화면(page.tsx)만 열고 여기를 두면 URL 로 그대로
+  // 저장된다 — UI 를 숨기거나 여는 것은 권한 검사가 아니다(규칙 #6).
+  // 운영진 전원이 아니라 **플래그가 켜진 팀**만이다(07-DECISIONS 140, 결정 66 이 막았던 구멍).
+  if (!canEditRecruitNotice(actor)) {
+    return NextResponse.json(
+      { error: 'forbidden', message: '모집 공고는 회장단과 공고 편집 권한이 있는 팀만 수정할 수 있습니다.' },
+      { status: 403 }
+    );
   }
 
   try {
@@ -134,10 +138,8 @@ export async function POST(req: Request): Promise<Response> {
     const before = await getCohortById(cohortId);
     if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-    // ⚠ 아래 블록은 **지금 실행되지 않는다** — 위 게이트가 회장단만 통과시키므로 여기 오는
-    //    actor 는 전부 isPrivileged 다(2026-07-31, 결정 66). 지우지 않은 이유는 홍보팀에게
-    //    공고 작성만 다시 열기로 하면 필요한 것이 정확히 이 필드 단위 구분이기 때문이다.
-    //    **살아 있는 방어선으로 세지 말 것** — 지금 막고 있는 것은 위의 isPrivileged 한 줄이다.
+    // 여기부터가 **홍보팀에게만 적용되는 필드 경계**다(2026-08-25, 결정 140 — 결정 66 의 잠들어
+    // 있던 블록을 다시 켰다). 회장단은 이 블록을 건너뛰고 전 필드를 바꾼다.
     if (!isPrivileged(actor.role)) {
       // venues 는 GET 이 기본값을 채워 내려보내므로(DB 는 null) 비교도 같은 기준으로 해야 한다.
       const beforeValue = (key: string): unknown =>

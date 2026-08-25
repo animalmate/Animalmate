@@ -372,7 +372,7 @@ function ScoreDetail({
   );
 }
 
-export function RecruitReviewPanel({ role }: { role: Role }) {
+export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEditNotice: boolean }) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -624,7 +624,7 @@ export function RecruitReviewPanel({ role }: { role: Role }) {
         </div>
       </div>
 
-      <RecruitNav role={role} />
+      <RecruitNav role={role} canEditNotice={canEditNotice} />
 
       <Card className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -84,13 +84,13 @@ suite('예약 큐 스코프 — 팀장은 자기 팀+개인만, 회장단은 전
   const ALL = ['A팀 봉사', 'A팀 예약', 'B팀 봉사', 'B팀 예약', '내 개인 예약'];
 
   it('팀A 팀장: 팀과 무관하게 전체를 본다', async () => {
-    const actor: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader' }] };
+    const actor: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader', canEditNotice: false }] };
     const rows = (await listReservations(db, { actor })).filter((r) => r.boardMenuid === MENUID);
     expect(titles(rows)).toEqual(ALL);
   });
 
   it('팀B 팀장(다른 사용자): 소속과 무관하게 전체를 본다', async () => {
-    const actor: Actor = { userId: crypto.randomUUID(), role: 'staff', membershipActive: true, teams: [{ teamId: teamBId, position: 'leader' }] };
+    const actor: Actor = { userId: crypto.randomUUID(), role: 'staff', membershipActive: true, teams: [{ teamId: teamBId, position: 'leader', canEditNotice: false }] };
     const rows = (await listReservations(db, { actor })).filter((r) => r.boardMenuid === MENUID);
     expect(titles(rows)).toEqual(ALL);
   });
@@ -151,7 +151,7 @@ suite('예약 큐 스코프 — 팀장은 자기 팀+개인만, 회장단은 전
   });
 
   it('팀A 팀장이 B팀으로 걸러 보는 것도 된다(보는 범위가 전체이므로)', async () => {
-    const actor: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader' }] };
+    const actor: Actor = { userId, role: 'staff', membershipActive: true, teams: [{ teamId: teamAId, position: 'leader', canEditNotice: false }] };
     const rows = (await listReservations(db, { actor, teamId: teamBId })).filter((r) => r.boardMenuid === MENUID);
     expect(titles(rows)).toEqual(['B팀 봉사', 'B팀 예약']);
   });

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isPrivileged } from '@/auth/permissions';
+import { canEditRecruitNotice } from '@/auth/permissions';
 import { getCohortById } from '@/recruit/cohorts';
 import { internalError } from '@/http/errors';
 import {
@@ -13,16 +13,18 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// 공고 포스터는 지원자에게 그대로 보이는 대외 자료 → 공고 편집과 같은 권한(회장단 전용).
-async function requireBoard() {
+// 포스터는 공고 본문과 같은 화면에서 같은 사람이 만든다 → 게이트도 공고 편집과 똑같이 둔다
+// (회장단 + 공고 편집 권한이 켜진 팀). 여기만 회장단으로 남기면 홍보팀이 글은 쓰는데
+// 포스터를 못 올려 결국 아무것도 못 하는 화면이 된다.
+async function requireNoticeEditor() {
   const actor = await getCurrentActor();
   if (!actor || !actor.membershipActive) {
     return { error: NextResponse.json({ error: 'unauthorized' }, { status: 401 }) };
   }
-  if (!isPrivileged(actor.role)) {
+  if (!canEditRecruitNotice(actor)) {
     return {
       error: NextResponse.json(
-        { error: 'forbidden', message: '공고 이미지는 회장단만 관리할 수 있습니다.' },
+        { error: 'forbidden', message: '공고 이미지는 회장단과 공고 편집 권한이 있는 팀만 관리할 수 있습니다.' },
         { status: 403 }
       ),
     };
@@ -31,7 +33,7 @@ async function requireBoard() {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const gate = await requireBoard();
+  const gate = await requireNoticeEditor();
   if (gate.error) return gate.error;
 
   try {
@@ -68,7 +70,7 @@ export async function POST(req: Request): Promise<Response> {
 
 // 공고에서 뺀 이미지를 스토리지에서도 지운다(안 지우면 용량만 계속 늘어난다).
 export async function DELETE(req: Request): Promise<Response> {
-  const gate = await requireBoard();
+  const gate = await requireNoticeEditor();
   if (gate.error) return gate.error;
 
   const url = new URL(req.url).searchParams.get('url');
