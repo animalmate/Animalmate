@@ -54,10 +54,33 @@ export interface AskDeps {
   execTool?: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }
 
-/** 답변이 사실상 핸드오프인지(근거 없음). 로그·평가의 handedOff 판정에 쓴다.
- *  핸드오프 문구의 고유 표현으로 판정한다("운영진 문의"만으로는 개인정보 거절과 겹쳐서 안 쓴다). */
+/**
+ * "없다"는 뜻으로 답을 비켜 간 문구들. 정확히 이 표현들만 본다 —
+ * "운영진에게 문의"는 **개인정보 거절과 겹쳐서** 판정에 쓸 수 없다(`isRefusal` 참고).
+ *
+ * 왜 한 문장으로 안 되나: 규칙 2 는 핸드오프 문구를 그대로 쓰라고 지시하지만 **지시만으로는
+ * 보장되지 않는다**(결정 46 이 출처 표기에서 이미 겪은 것과 같다). 특히 2026-08-24 에 규칙 12 로
+ * "그 내용은 제가 가진 요약에는 없어요" 라는 **다른 거절 화법을 모델에게 가르치면서**, 모델이
+ * 그것을 일반 질문에도 응용하기 시작했다("제가 가진 정보에 없어요"). temperature 0.2 라 매번은
+ * 아니고 실측 25회 중 3회였다(2026-08-26).
+ *
+ * 이 오판정은 테스트만의 문제가 아니었다 — `chat_logs.handed_off` 가 false 로 남아
+ * `/admin/chatbot` 의 "답하지 못한 질문" 리포트(결정 85)에서 빠지고, 아무 자료도 쓰지 않은
+ * 답변에 `sources` 가 붙는다(결정 46).
+ */
+const HANDOFF_MARKS: readonly (string | RegExp)[] = [
+  '제가 모르는',
+  // 자료/정보/요약/기록 + "에(는) 없" · "에(는) 들어 있지 않"
+  /(?:자료|정보|요약|기록)에(?:는)?\s*(?:들어\s*있지\s*않|없)/,
+];
+
+/** 답변이 사실상 핸드오프인지(근거 없음). 로그·평가의 handedOff 판정에 쓴다. */
 export function isHandoff(answer: string): boolean {
-  return answer.includes('제가 모르는') || answer.includes('자료에 없'); // 신·구 문구 모두 인식
+  // 가이드북으로 넘긴 답(규칙 12)은 **근거 있는 안내**다. "요약에는 없어요"로 시작하더라도
+  // 볼 곳을 정확히 알려 준 것이므로 핸드오프로 세지 않는다 — 세면 어제 만든 가이드북 폴백이
+  // 통째로 "답하지 못한 질문"으로 집계된다.
+  if (answer.includes('/guidebooks')) return false;
+  return HANDOFF_MARKS.some((m) => (typeof m === 'string' ? answer.includes(m) : m.test(answer)));
 }
 
 /**
