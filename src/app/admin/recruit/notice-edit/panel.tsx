@@ -365,13 +365,17 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
         </div>
 
         <div>
+          {/* 이 화면에서 가장 자주 누르는 링크인데 흰 바탕에 회색 테두리라 눈에 띄지 않았다.
+              파란 테두리·바탕으로 올리고 글자도 키운다. ↗ 문자 대신 external 아이콘을 쓴다 —
+              폰트에 따라 ↗ 가 네모로 깨지고 크기도 글자에 끌려다닌다. */}
           <a
             href="/recruit/notice"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-cream-100 text-ink-900 border border-ink-200 rounded-xl text-xs font-bold transition-all shadow-sm no-underline"
+            className="inline-flex min-h-tap items-center gap-2 rounded-xl border-2 border-blue-500 bg-blue-50 px-5 py-3 text-sm font-bold text-blue-700 no-underline shadow-card transition-colors hover:border-blue-600 hover:bg-blue-100"
           >
-            <span>공개 공고 페이지 바로가기 ↗</span>
+            <span>공개 공고 페이지 바로가기</span>
+            <Icon name="external" size={16} className="shrink-0" />
           </a>
         </div>
       </div>
