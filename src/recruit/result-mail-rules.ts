@@ -8,6 +8,7 @@
 //   이름+전화번호를 맞혀야 열리므로(lookup.ts) 확인 경로로 훨씬 안전하다.
 
 import type { RecruitStatus } from './status';
+import { isValidEmail } from '../lib/email';
 
 export type ResultMailStage = 'document' | 'interview' | 'final';
 
@@ -53,7 +54,10 @@ export function isResultMailTarget(
   applicant: { status: RecruitStatus; slotId: string | null; email: string | null }
 ): boolean {
   // 이메일이 없으면 보낼 곳이 없다. 지원서에서 이메일 문항을 끈 기수도 있다(결정 146).
-  if (!applicant.email || !applicant.email.trim()) return false;
+  // **형식까지 본다**: 접수 라우트가 막기 전에 저장된 행에는 주소가 아닌 값이 들어 있을 수 있고,
+  // 그 값은 곧장 nodemailer 의 `to` 가 된다(src/lib/email.ts). 대상에서 빼면 대기열에 담기지도
+  // 않고, 미리보기 인원수도 실제로 나갈 통수와 어긋나지 않는다.
+  if (!isValidEmail(applicant.email)) return false;
 
   switch (stage) {
     case 'document':

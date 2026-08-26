@@ -4,8 +4,10 @@ import { clientIp, consumeRateLimit, RateLimitError, RULES } from '@/http/rate-l
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
 import { submitApplicant } from '@/recruit/applicants';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
+import { applicantEmailChangedMail, defaultMailer } from '@/auth/mailer';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
+import { isValidEmail } from '@/lib/email';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,6 +36,28 @@ function checkApplicantLengths(f: Record<string, string | null>): void {
   checkLength('가치관 주제', f.essayValuesTopic, LIMITS.name);
   checkLength('자기소개', f.essayIntro, LIMITS.contentMd);
   checkLength('가치관', f.essayValues, LIMITS.contentMd);
+}
+
+/**
+ * 재제출로 연락받을 주소가 바뀌었을 때 **직전 주소**로 알린다.
+ *
+ * 주소 단위 발송 상한(`mailToAddress` — 가입·로그인과 같은 통)을 함께 쓴다: 이 알림 자체가
+ * 남의 메일함을 채우는 도구가 되면 안 된다. 이름·전화를 아는 사람이 두 주소를 번갈아 넣으며
+ * 재제출하면 알림이 그만큼 나가기 때문이다.
+ *
+ * 어떤 실패도 밖으로 던지지 않는다 — 알림을 못 보낸 것 때문에 지원서 접수가 실패하면 안 된다.
+ */
+async function notifyEmailChanged(previousEmail: string): Promise<void> {
+  // 예전에 저장된 행에는 주소가 아닌 값이 들어 있을 수 있다(형식 검사 이전). 보낼 수 없는 곳에
+  // 보내려 하지 않는다.
+  if (!isValidEmail(previousEmail)) return;
+  try {
+    await consumeRateLimit(db, RULES.mailToAddress, previousEmail.trim().toLowerCase());
+    await defaultMailer().send(applicantEmailChangedMail(previousEmail));
+  } catch (e) {
+    if (e instanceof RateLimitError) return; // 상한에 걸린 것은 정상 동작이다
+    console.error('[recruit/apply] 이메일 변경 알림 발송 실패(접수는 계속)', e);
+  }
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -120,6 +144,17 @@ export async function POST(req: Request): Promise<Response> {
     }
     checkApplicantLengths(fields);
 
+    // 이메일은 **결과 안내 메일이 실제로 나가는 주소**다. 길이만 재고 넘기면 콤마로 이어 붙인
+    // 다중 수신자나 개행이 그대로 저장돼, 나중에 nodemailer 의 `to` 로 들어간다(src/lib/email.ts).
+    // 화면의 `type="email"` 은 검증이 아니다(규칙 #6) — 비로그인 공개 폼이라 특히 그렇다.
+    // 빈 값은 통과시킨다: 지원서 양식에서 이메일 문항을 끈 기수가 있다(결정 146).
+    if (fields.email && !isValidEmail(fields.email)) {
+      return NextResponse.json(
+        { error: 'bad_email', message: '이메일 주소 형식이 올바르지 않습니다. 주소 하나만 적어 주세요.' },
+        { status: 400 }
+      );
+    }
+
     // 같은 기수에 같은 사람(이름+전화)이 다시 내면 **마지막 지원서만 남긴다** — 새 행을 만들지 않고
     // 제자리에서 갈아 끼운다(면접 배정·점수·메모가 지원자 id 를 물고 있다. submitApplicant 주석).
     const outcome = await submitApplicant({
@@ -147,11 +182,18 @@ export async function POST(req: Request): Promise<Response> {
           targetTable: 'recruit_applicants',
           targetId: outcome.applicantId,
           before: { status: outcome.previousStatus, scoreCount: outcome.previousScoreCount },
-          after: { cohortId },
-          // 채점이 끝난 지원서가 갈린 것은 눈에 띄어야 한다.
-          ...(outcome.previousScoreCount > 0 ? { severity: 'high' as const } : {}),
+          // 주소 자체는 싣지 않는다(위 주석 — PII 는 파기 범위 밖으로 나가면 안 된다).
+          // **바뀌었다는 사실만** 남긴다. 결과 안내 메일이 갈 곳이 달라진 것이라 운영진이 알아야 한다.
+          after: { cohortId, emailChanged: outcome.replacedEmail !== null },
+          // 채점이 끝난 지원서가 갈렸거나, 연락받을 주소가 바뀐 것은 눈에 띄어야 한다.
+          ...(outcome.previousScoreCount > 0 || outcome.replacedEmail ? { severity: 'high' as const } : {}),
         })
       );
+
+      // 주소가 바뀌었으면 **직전 주소로** 알린다(mailer.ts applicantEmailChangedMail 주석).
+      // 접수 응답을 붙잡아 두지 않으려고 결과를 기다리되, 실패해도 접수는 성공으로 끝낸다 —
+      // 알림을 못 보낸 것이 지원자 잘못은 아니다.
+      if (outcome.replacedEmail) await notifyEmailChanged(outcome.replacedEmail);
     }
 
     return NextResponse.json({ ok: true, applicantId: outcome.applicantId, replaced: outcome.replaced });

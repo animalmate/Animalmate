@@ -313,6 +313,14 @@ export interface SubmissionOutcome {
   previousStatus: RecruitStatus | null;
   /** 갈아 끼울 때 이미 매겨져 있던 점수 개수. 0 이 아니면 채점자가 읽은 내용이 바뀐 것이다. */
   previousScoreCount: number;
+  /**
+   * 재제출이 **연락받을 주소를 바꿨을 때** 직전 주소. 안 바뀌었으면 null.
+   *
+   * 이 값을 돌려주는 이유는 하나다 — 그 주소로 "바뀌었다"고 알리기 위해서다(호출부가 보낸다).
+   * **저장하지 않는다**: audit_logs 는 기수 폐기(`recruit/purge`) 범위 밖이라, 여기 주소를
+   * 복사하면 폐기해도 사본이 남는다(아래 재제출 audit 주석과 같은 이유).
+   */
+  replacedEmail: string | null;
 }
 
 /**
@@ -372,6 +380,8 @@ export async function submitApplicant(input: ApplicantSubmission): Promise<Submi
         status: recruitApplicants.status,
         assignedTeam: recruitApplicants.assignedTeam,
         wishTeam1: recruitApplicants.wishTeam1,
+        // 재제출이 연락받을 주소를 바꿨는지 보려고 읽는다(아래 주석).
+        email: recruitApplicants.email,
       })
       .from(recruitApplicants)
       .where(
@@ -396,7 +406,7 @@ export async function submitApplicant(input: ApplicantSubmission): Promise<Submi
         })
         .returning({ id: recruitApplicants.id });
       if (!created) return null;
-      return { applicantId: created.id, replaced: false, previousStatus: null, previousScoreCount: 0 };
+      return { applicantId: created.id, replaced: false, previousStatus: null, previousScoreCount: 0, replacedEmail: null };
     }
 
     // 운영진이 배정팀을 손대지 않았을 때만 새 1지망을 따라간다(위 주석).
@@ -406,10 +416,25 @@ export async function submitApplicant(input: ApplicantSubmission): Promise<Submi
       .from(recruitScores)
       .where(eq(recruitScores.applicantId, existing.id));
 
+    // ── 연락받을 주소(이메일) ────────────────────────────────────────────
+    // 이 폼은 비로그인이고 신원 확인이 **이름+전화뿐**이다. 그 둘을 아는 사람이 재제출하면
+    // 이메일까지 갈아 끼울 수 있고, 그러면 결과 안내 메일이 그 사람에게 간다(보안 QA 2026-08-26).
+    // 덮어쓰기 정책 자체는 그대로 둔다(사용자 결정) — 대신 두 가지를 붙인다.
+    //  ① 빈 값으로는 지우지 않는다. 지원서 양식에서 이메일 문항을 끄면(결정 146) 재제출마다
+    //     null 이 덮어써서 보낼 주소가 조용히 사라진다. 이건 방어 이전에 그냥 버그다.
+    //  ② 주소가 실제로 **바뀌면** 직전 주소를 호출부에 돌려준다 → 그쪽으로 알림이 나간다.
+    //     막지 못하는 자리(오타 수정과 구분할 방법이 없다)라 **본인이 즉시 알게** 만든다 —
+    //     회장단 권한 변경 알림이 행위자까지 포함해 보내는 것과 같은 발상이다(auth/operators.ts).
+    const previousEmail = (existing.email ?? '').trim();
+    const nextEmail = (input.email ?? '').trim();
+    const emailChanged =
+      previousEmail !== '' && nextEmail !== '' && previousEmail.toLowerCase() !== nextEmail.toLowerCase();
+
     await tx
       .update(recruitApplicants)
       .set({
         ...values,
+        ...(nextEmail ? {} : { email: existing.email ?? null }), // ① 빈 값으로 지우지 않는다
         ...(staffMovedTeam ? {} : { assignedTeam: input.wishTeam1 ?? null }),
       })
       .where(eq(recruitApplicants.id, existing.id));
@@ -419,6 +444,7 @@ export async function submitApplicant(input: ApplicantSubmission): Promise<Submi
       replaced: true,
       previousStatus: existing.status as RecruitStatus,
       previousScoreCount: scored.length,
+      replacedEmail: emailChanged ? previousEmail : null,
     };
   });
 }

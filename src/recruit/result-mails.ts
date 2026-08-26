@@ -12,6 +12,7 @@ import { db } from '../db/client';
 import { recruitApplicants, recruitCohorts, recruitResultMails } from '../db/schema';
 import { defaultMailer, type Mailer } from '../auth/mailer';
 import { buildAuditEntry, recordAudit } from '../auth/audit';
+import { isValidEmail } from '../lib/email';
 import type { RecruitStatus } from './status';
 import {
   isExhausted,
@@ -63,11 +64,14 @@ async function collect(cohortId: string, stage: ResultMailStage) {
     isResultMailTarget(stage, { status: a.status as RecruitStatus, slotId: a.slotId, email: a.email })
   );
 
-  // 이메일만 없어서 빠진 사람 — 대상 조건은 맞는데 보낼 곳이 없는 경우다.
+  // 이메일만 없어서(또는 형식이 아니라서) 빠진 사람 — 단계 조건은 맞는데 보낼 곳이 없는 경우다.
+  // 자리 표시 주소는 **반드시 통과하는 값**이어야 이 뺄셈이 성립한다(`isResultMailTarget` 이
+  // 형식까지 보므로 'x@x' 같은 값을 쓰면 아무도 세지 못하고 늘 0 이 된다).
+  const PLACEHOLDER_EMAIL = 'x@example.invalid';
   const noEmail = applicants.filter(
     (a) =>
       !isResultMailTarget(stage, { status: a.status as RecruitStatus, slotId: a.slotId, email: a.email }) &&
-      isResultMailTarget(stage, { status: a.status as RecruitStatus, slotId: a.slotId, email: 'x@x' })
+      isResultMailTarget(stage, { status: a.status as RecruitStatus, slotId: a.slotId, email: PLACEHOLDER_EMAIL })
   ).length;
 
   const existing = targets.length
@@ -219,11 +223,15 @@ export async function runResultMailWorker(deps: { mailer?: Mailer; appUrl?: stri
   for (const row of batch) {
     const attempts = row.attempts + 1;
 
-    if (!row.email || !row.email.trim()) {
-      // 담은 뒤에 이메일이 지워진 경우. 재시도해도 저절로 풀리지 않는다 — 즉시 확정 실패.
+    if (!isValidEmail(row.email)) {
+      // 담은 뒤에 이메일이 지워졌거나, 주소가 아닌 값이 들어 있는 경우.
+      // **여기가 마지막 관문이다**: 이 값은 바로 다음 줄에서 nodemailer 의 `to` 가 되므로,
+      // 접수 단계에서 막았더라도(apply/route.ts) 그 전에 저장된 행을 위해 한 번 더 본다
+      // (콤마로 이어 붙인 다중 수신자·헤더 인젝션 — src/lib/email.ts 머리 주석).
+      // 재시도해도 저절로 풀리지 않는다 — 즉시 확정 실패.
       await db
         .update(recruitResultMails)
-        .set({ status: 'failed', attempts, lastError: '이메일 주소가 없습니다.' })
+        .set({ status: 'failed', attempts, lastError: '이메일 주소가 없거나 형식이 올바르지 않습니다.' })
         .where(eq(recruitResultMails.id, row.id));
       summary.failed += 1;
       continue;

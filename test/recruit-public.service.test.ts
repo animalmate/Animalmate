@@ -202,6 +202,53 @@ suite('공개 접수·조회 (실 DB)', () => {
     expect(row!.assignedTeam).toBe('3팀'); // 배정은 운영진 결정 그대로
   });
 
+  // ── 재제출과 연락받을 주소 ────────────────────────────────────────────
+  // 이 폼은 비로그인이고 신원 확인이 **이름+전화뿐**이다. 그 둘을 아는 사람이 재제출하면
+  // 이메일까지 갈아 끼울 수 있고, 그러면 결과 안내 메일이 그 사람에게 간다(보안 QA 2026-08-26).
+  // 오타 수정과 서버에서 구분할 방법이 없어 막지는 않되, **직전 주소가 반드시 밖으로 나와야**
+  // 호출부가 그 주소로 알릴 수 있다. 그 계약을 여기서 고정한다.
+  describe('재제출이 연락받을 주소를 다룰 때', () => {
+    const MNAME = 'QA주소바꾸는사람';
+    const MPHONE = '01044443333';
+    const submit = (email?: string | null) =>
+      submitApplicant({ cohortId: newCohortId, name: MNAME, phone: MPHONE, email: email ?? null });
+
+    const stored = async () => {
+      const [row] = await db
+        .select()
+        .from(recruitApplicants)
+        .where(and(eq(recruitApplicants.cohortId, newCohortId), eq(recruitApplicants.name, MNAME)));
+      return row!;
+    };
+
+    it('처음 접수는 주소가 바뀐 것이 아니다', async () => {
+      const o = await submit('first@example.invalid');
+      expect(o!.replaced).toBe(false);
+      expect(o!.replacedEmail).toBeNull();
+      expect((await stored()).email).toBe('first@example.invalid');
+    });
+
+    it('같은 주소로 다시 내면 바뀐 것이 아니다(대소문자·공백 무시)', async () => {
+      const o = await submit('  First@Example.INVALID ');
+      expect(o!.replaced).toBe(true);
+      expect(o!.replacedEmail).toBeNull(); // 같은 주소 → 알림 없음
+    });
+
+    it('빈 값으로는 기존 주소를 지우지 않는다 — 이메일 문항을 끈 기수에서 주소가 증발한다', async () => {
+      const o = await submit(null);
+      expect(o!.replaced).toBe(true);
+      expect(o!.replacedEmail).toBeNull(); // 지운 것이 아니므로 알림 대상도 아니다
+      expect((await stored()).email).toBe('first@example.invalid');
+    });
+
+    it('주소가 실제로 바뀌면 **직전 주소**를 돌려준다 — 그쪽으로 알림이 나간다', async () => {
+      const o = await submit('attacker@example.invalid');
+      expect(o!.replaced).toBe(true);
+      expect(o!.replacedEmail).toBe('first@example.invalid');
+      expect((await stored()).email).toBe('attacker@example.invalid');
+    });
+  });
+
   it('다른 기수의 지원서는 중복이 아니다 — 재지원을 막으면 안 된다', async () => {
     const other = await db
       .insert(recruitCohorts)
