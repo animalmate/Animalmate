@@ -9,6 +9,7 @@ import { validateJoinCode } from './join-codes';
 import { createEmailCode, verifyEmailCode, CooldownError } from './otp';
 import { signSession } from './session';
 import { alreadyRegisteredMail, type Mailer } from './mailer';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 
 type DB = Db;
 
@@ -28,8 +29,9 @@ export interface AuthCtx {
   now?: Date;
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const norm = (email: string) => email.trim().toLowerCase();
+// 주소 형식 판단은 `@/lib/email` 하나만 본다 — 여기와 지원서 접수에 각각 정규식을 두면
+// 언젠가 한쪽만 고쳐지고, 그때 새는 것은 메일 발송 경로다(그 파일 머리 주석).
+const norm = normalizeEmail;
 const ROLE_RANK: Record<Role, number> = { member: 0, staff: 1, board: 2, sysadmin: 2 };
 
 function fmtDate(d: Date): string {
@@ -57,7 +59,7 @@ export async function requestSignup(
   ctx: AuthCtx
 ): Promise<void> {
   const email = norm(input.email);
-  if (!EMAIL_RE.test(email)) throw new AuthError('invalid_email');
+  if (!isValidEmail(email)) throw new AuthError('invalid_email');
   if (!(await validateJoinCode(db, input.joinCode))) throw new AuthError('invalid_join_code', 403);
 
   if (await getUserByEmail(db, email)) {
