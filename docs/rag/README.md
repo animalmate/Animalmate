@@ -13,11 +13,20 @@
 **또는 스크립트로 한 번에 올린다**(손으로 붙여넣다 공개 범위를 잘못 고르는 사고를 막는다):
 
 ```bash
-npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor <회장단 userId>          # 미리보기
-npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor <회장단 userId> --apply  # 실제 저장
+npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor you@example.com          # 미리보기
+npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor you@example.com --apply  # 실제 저장
+npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor you@example.com --audit  # 저장된 문서 PII 재검사
 ```
 
+`--actor` 는 **이메일이나 userId** 둘 다 받고, 역할은 DB 에서 확인한다(회장단·시스템관리자가 아니면 거부).
+미리보기는 파일과 DB 가 **어떻게 다른지**까지 말해 준다 — "이미 최신"이면 올릴 것이 없다는 뜻이다.
+
 제목이 같은 문서가 있으면 교체하고 다시 임베딩한다. 아래 표는 스크립트의 `PLAN` 과 같은 값이다.
+
+> ⚠ **`/documents` 화면에서 이 문서들의 제목을 바꾸지 말 것.** 동기화는 제목으로 짝을 찾으므로,
+> 제목을 고치면 다음 실행이 교체 대신 **새 문서를 만들고** 옛 문서가 그대로 남는다. 챗봇은 같은
+> 안내를 두 벌 검색하게 되고 그중 하나는 영영 낡는다. 내용을 고칠 때는 이 폴더의 파일을 고쳐서
+> 다시 올린다. 실수로 그렇게 됐다면 미리보기 끝에 "PLAN 에 없는 손글씨 문서"로 뜬다.
 
 | 파일 | 문서 제목 | 공개 범위 |
 |---|---|---|
