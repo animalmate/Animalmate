@@ -16,10 +16,17 @@ function VisBadge({ v }: { v: Visibility }) {
 }
 
 // 공개 범위별 생성 진입점 — 어떤 문서를 넣는지 예시로 안내한다(결정 19).
+//
+// **회장단 전용을 뒤늦게 열었다**(2026-08-26, 결정 145). 결정 19 는 "운영이 2단계로 충분"이라고
+// board 를 UI 에서 감췄는데, 실제로 회장단만 읽어야 하는 문서가 생겼다(홈페이지 사용 안내 —
+// 지원자 파기·최종 확정·팀 권한 이야기가 들어 있어 운영진에게 나가면 안 된다).
+// 감춰 두면 만들 길만 없는 것이 아니라 **되돌릴 길도 없다**: 이미 board 인 문서를 편집하러 열면
+// 드롭다운에 맞는 항목이 없어 빈칸으로 뜨고, 한 번 다른 값을 고르면 회장단으로 못 되돌아간다.
 const NEW_KINDS: { visibility: Visibility; title: string; examples: string }[] = [
   // 날짜가 있는 것(총회·MT 등)은 여기 적지 않는다 — 문서는 썩고, 일정은 캘린더에 있으면 챗봇이 알아서 읽는다.
   { visibility: 'member', title: '부원·운영진 공개 문서', examples: '동아리 회칙, 운영진 구성, 가이드북(부원용), 회비 안내 등' },
   { visibility: 'staff', title: '운영진 공개 문서', examples: '운영진 회의록, 가이드북(운영진용), 동아리 행사 기획, 신입기수 면접 안내 등' },
+  { visibility: 'board', title: '회장단 전용 문서', examples: '인수인계 자료, 회장단 체크리스트, 신입 모집 운영 판단 기준 등' },
 ];
 
 interface DocRow {
@@ -145,10 +152,14 @@ export function DocumentsPanel() {
           <Field label="제목">
             <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="예: 회비 안내" />
           </Field>
-          <Field label="공개 범위" hint="부원 공개면 전원이, 운영진 공개면 운영진·회장단만 챗봇에서 검색해요">
+          <Field
+            label="공개 범위"
+            hint="부원 공개면 전원이, 운영진 공개면 운영진·회장단이, 회장단 전용이면 회장단만 챗봇에서 검색해요"
+          >
             <Select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value as Visibility })}>
               <option value="member">부원·운영진 공개</option>
               <option value="staff">운영진 공개</option>
+              <option value="board">회장단 전용</option>
             </Select>
           </Field>
           <Field label="내용 (마크다운)" hint="헤딩(##)으로 나누면 챗봇이 더 잘 찾아요. 직접 쓰거나 파일을 올려도 돼요.">
@@ -195,8 +206,8 @@ export function DocumentsPanel() {
         </p>
       </div>
 
-      {/* 공개 범위별 생성 진입점 두 개 */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/* 공개 범위별 생성 진입점 */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {NEW_KINDS.map((k) => (
           <button
             key={k.visibility}

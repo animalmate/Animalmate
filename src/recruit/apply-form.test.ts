@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ALWAYS_ON_FIELDS,
   resolveApplyForm,
   DEFAULT_APPLY_FORM,
   FIELD_KEYS,
+  isFieldOn,
   linesToList,
   listToLines,
 } from './apply-form';
@@ -33,6 +35,43 @@ describe('지원서 양식 설정 정규화', () => {
     expect(resolveApplyForm({ fields: { englishName: { label: null } } }).fields.englishName.label).toBe(
       DEFAULT_APPLY_FORM.fields.englishName.label
     );
+  });
+
+  it('스위치가 없던 옛 설정은 빈 제목을 "꺼짐"으로 읽는다 — 마이그레이션 없이 이어진다', () => {
+    const off = resolveApplyForm({ fields: { englishName: { label: '' } } }).fields.englishName;
+    expect(off.enabled).toBe(false);
+    expect(isFieldOn(off)).toBe(false);
+
+    const on = resolveApplyForm({ fields: { englishName: { label: '영문 이름' } } }).fields.englishName;
+    expect(on.enabled).toBe(true);
+    expect(isFieldOn(on)).toBe(true);
+  });
+
+  it('스위치를 끄면 제목·안내 문구는 그대로 남는다 — 다시 켤 때 쓰던 문구를 잃지 않는다', () => {
+    const saved = { fields: { otAttend: { enabled: false, label: 'OT 참가 여부', description: 'OT 는 3월 2일' } } };
+    const f = resolveApplyForm(saved).fields.otAttend;
+    expect(f.enabled).toBe(false);
+    expect(isFieldOn(f)).toBe(false); // 지원서에는 안 나간다
+    expect(f.label).toBe('OT 참가 여부'); // 그래도 문구는 살아 있다
+    expect(f.description).toBe('OT 는 3월 2일');
+  });
+
+  it('스위치가 켜져 있어도 제목이 비어 있으면 내보내지 않는다', () => {
+    const f = resolveApplyForm({ fields: { otAttend: { enabled: true, label: '  ' } } }).fields.otAttend;
+    expect(f.enabled).toBe(true);
+    expect(isFieldOn(f)).toBe(false); // 제목 없는 입력칸을 지원자에게 보이지 않는다
+  });
+
+  it('이름·전화번호는 저장된 값이 무엇이든 켜진 채로 나온다 — 결과 조회 키', () => {
+    const r = resolveApplyForm({
+      fields: { name: { enabled: false, label: '', required: false }, phone: { enabled: false, label: '' } },
+    });
+    for (const k of ALWAYS_ON_FIELDS) {
+      expect(r.fields[k].enabled).toBe(true);
+      expect(r.fields[k].required).toBe(true);
+      expect(isFieldOn(r.fields[k])).toBe(true);
+      expect(r.fields[k].label.trim()).not.toBe(''); // 빈 제목이면 기본 문구로 되돌린다
+    }
   });
 
   it('안내 문구의 줄바꿈을 보존한다', () => {

@@ -436,6 +436,14 @@ export function RecruitScreeningPanel({ role, canEditNotice }: { role: Role; can
                       인근 역: <strong className="text-ink-900">{selectedApp.nearStation}</strong>
                     </p>
                   )}
+                  {/* OT 참가 여부 — 받기만 하고 어느 화면에도 안 보이던 값이다(2026-08-26).
+                      OT 는 합격자 첫 모임이라 "못 온다"고 적은 사람은 서류를 볼 때 알고 있어야 한다.
+                      기수 설정에서 이 문항을 끄면 값이 비어 이 줄도 나오지 않는다. */}
+                  {selectedApp.otAttend && (
+                    <p className="text-xs text-ink-500 font-medium">
+                      OT 참가: <strong className="text-ink-900">{selectedApp.otAttend}</strong>
+                    </p>
+                  )}
                 </div>
               </div>
 

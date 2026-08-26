@@ -13,12 +13,32 @@ import { shortTeamName } from './team-name';
 
 /** 문항 하나의 표시 설정. */
 export interface FieldConfig {
-  /** 문항 제목. 비우면 그 문항을 지원서에서 뺀다(이름·전화번호는 제외 — 항상 받는다). */
+  /**
+   * 이 문항을 지원서에 내보내는가.
+   *
+   * 왜 제목 비우기와 따로 두나: 예전에는 끄는 방법이 **제목을 지우는 것**뿐이었다. 그러면 끄는
+   * 순간 안내 문구까지 날아가서, 다음 기수에 다시 켜려면 처음부터 다시 써야 했다. OT 참가 여부는
+   * 기수마다 켰다 껐다 하는 문항이라(추가모집은 OT 이후에 들어와 물을 이유가 없다) 그 손해가
+   * 매번 난다. 스위치를 따로 두면 **문구를 남긴 채 껐다 켤 수 있다**(2026-08-26, 결정 146).
+   */
+  enabled: boolean;
+  /** 문항 제목. 비어 있으면 켜져 있어도 내보내지 않는다(제목 없는 입력칸을 지원자에게 보이지 않는다). */
   label: string;
   /** 문항 아래 안내 문구. 줄바꿈 그대로 보인다. */
   description: string;
   required: boolean;
 }
+
+/**
+ * 이 문항을 실제로 지원서에 내보내는가 — **화면과 검증이 같은 답을 보게 하는 단 하나의 판정.**
+ * 스위치가 켜져 있어도 제목이 비어 있으면 내보내지 않는다: 옛 기수 설정(스위치가 없던 시절)의
+ * "제목을 비워 끈다"가 그대로 유효하고, 제목 없는 입력칸이 지원자에게 보이는 일도 막는다.
+ */
+export const isFieldOn = (f: FieldConfig): boolean => f.enabled && f.label.trim() !== '';
+
+/** 이름·전화번호는 지원 결과 조회의 매칭 키라 끌 수 없다(제목도 비울 수 없다). */
+export const ALWAYS_ON_FIELDS = ['name', 'phone'] as const satisfies readonly FieldKey[];
+const ALWAYS_ON_SET: ReadonlySet<string> = new Set(ALWAYS_ON_FIELDS);
 
 /** 설정 가능한 문항 키 — recruit_applicants 컬럼과 대응한다. */
 export const FIELD_KEYS = [
@@ -73,6 +93,7 @@ export interface ApplyFormConfig {
 }
 
 const f = (label: string, description = '', required = true): FieldConfig => ({
+  enabled: true,
   label,
   description,
   required,
@@ -154,8 +175,12 @@ const cleanText = (v: unknown, fallback: string): string =>
 
 const cleanField = (v: unknown, fallback: FieldConfig): FieldConfig => {
   const o = (v ?? {}) as Partial<FieldConfig>;
+  const label = cleanText(o.label, fallback.label);
   return {
-    label: cleanText(o.label, fallback.label),
+    // 스위치가 없던 시절에 저장한 기수: 제목이 비어 있으면 껐다는 뜻이었다. 그 판단을 그대로 잇는다.
+    // (마이그레이션이 필요 없는 이유 — 옛 jsonb 를 읽는 순간 같은 의미로 해석된다.)
+    enabled: typeof o.enabled === 'boolean' ? o.enabled : label.trim() !== '',
+    label,
     description: cleanText(o.description, fallback.description),
     required: typeof o.required === 'boolean' ? o.required : fallback.required,
   };
@@ -171,7 +196,12 @@ export function resolveApplyForm(raw: unknown): ApplyFormConfig {
 
   const fields = {} as Record<FieldKey, FieldConfig>;
   for (const k of FIELD_KEYS) {
-    fields[k] = cleanField(rawFields[k], DEFAULT_APPLY_FORM.fields[k]);
+    const field = cleanField(rawFields[k], DEFAULT_APPLY_FORM.fields[k]);
+    // 이름·전화번호는 저장된 값이 무엇이든 켠다. 화면에서 잠그는 것만으로는 부족하다 —
+    // 옛 기수 설정이나 손으로 고친 jsonb 에 enabled:false 가 들어와도 조회 키가 사라지면 안 된다.
+    fields[k] = ALWAYS_ON_SET.has(k)
+      ? { ...field, enabled: true, label: field.label.trim() || DEFAULT_APPLY_FORM.fields[k].label, required: true }
+      : field;
   }
 
   // 옛 형식 이어받기: 문항별 설정(fields)이 생기기 전에는 자기소개·가치관 문구를

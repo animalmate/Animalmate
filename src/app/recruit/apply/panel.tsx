@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { CursorDog } from '@/components/cursor-dog';
-import type { ApplyFormConfig, FieldKey } from '@/recruit/apply-form';
+import { isFieldOn, type ApplyFormConfig, type FieldKey } from '@/recruit/apply-form';
 import { CONSENT_LABEL } from '@/legal/privacy';
 
 interface CohortSummary {
@@ -101,8 +101,8 @@ export function PublicRecruitApplyPanel({
   const set = <K extends keyof typeof EMPTY_FORM>(key: K, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  /** 문항이 켜져 있는가(문구를 비우면 그 문항을 받지 않는다). */
-  const on = (k: FieldKey) => config.fields[k].label.trim() !== '';
+  /** 문항이 켜져 있는가 — 판정은 apply-form.ts 한 곳에만 둔다(스위치 + 빈 제목). */
+  const on = (k: FieldKey) => isFieldOn(config.fields[k]);
   /** Field 에 넘길 공통 속성. */
   const fp = (k: FieldKey) => ({
     label: config.fields[k].label,

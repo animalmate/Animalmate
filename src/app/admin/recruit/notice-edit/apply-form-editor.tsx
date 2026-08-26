@@ -3,7 +3,9 @@
 import React from 'react';
 import { Field, Input } from '@/components/ui';
 import {
+  ALWAYS_ON_FIELDS,
   FIELD_KEYS,
+  isFieldOn,
   linesToList,
   listToLines,
   type ApplyFormConfig,
@@ -32,8 +34,8 @@ const FIELD_TITLES: Record<FieldKey, string> = {
   englishName: '영문 이름',
 };
 
-/** 이름·전화번호는 지원 결과 조회의 매칭 키라 끄거나 선택으로 바꿀 수 없다. */
-const ALWAYS_ON: FieldKey[] = ['name', 'phone'];
+/** 이름·전화번호는 지원 결과 조회의 매칭 키라 끄거나 선택으로 바꿀 수 없다(apply-form.ts 가 강제). */
+const ALWAYS_ON: readonly FieldKey[] = ALWAYS_ON_FIELDS;
 
 /** 선택지 목록을 쓰는 문항과, 그 목록이 설정의 어느 키인지. */
 const OPTION_LISTS: { key: keyof ApplyFormConfig; title: string; hint: string }[] = [
@@ -65,7 +67,8 @@ export function ApplyFormEditor({
       <p className="text-[13px] leading-relaxed text-ink-500">
         공개 지원서(/recruit/apply)에 나오는 문항 문구·안내·선택지입니다. 안내 문구는 줄바꿈이 그대로 보입니다.
         <br />
-        <strong className="text-ink-900">문항 제목을 비우면 그 항목은 지원서에서 빠집니다.</strong>{' '}
+        <strong className="text-ink-900">문항의 &lsquo;사용&rsquo; 스위치를 끄면 그 항목은 지원서에서 빠집니다.</strong>{' '}
+        꺼도 제목과 안내 문구는 그대로 남아 있어, 다음 기수에 다시 켜면 쓰던 문구를 그대로 씁니다.
         (이름·전화번호는 결과 조회에 필요해 항상 받습니다.)
       </p>
 
@@ -73,7 +76,10 @@ export function ApplyFormEditor({
       <div className="space-y-3">
         {FIELD_KEYS.map((k) => {
           const locked = ALWAYS_ON.includes(k);
-          const off = value.fields[k].label.trim() === '';
+          const field = value.fields[k];
+          const off = !isFieldOn(field);
+          // 스위치는 켜 뒀는데 제목이 비어 있는 상태 — 왜 안 나오는지 알려 주지 않으면 한참 헤맨다.
+          const blankLabel = field.enabled && field.label.trim() === '';
           return (
             <div
               key={k}
@@ -84,31 +90,50 @@ export function ApplyFormEditor({
                   {FIELD_TITLES[k]}
                   {off && <span className="ml-2 normal-case text-coral-600">지원서에서 빠짐</span>}
                 </span>
-                <label className="flex cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-ink-700">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-primary"
-                    checked={value.fields[k].required}
-                    disabled={locked}
-                    onChange={(e) => setField(k, { required: e.target.checked })}
-                  />
-                  필수
-                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-ink-700">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-primary"
+                      checked={field.enabled}
+                      disabled={locked}
+                      onChange={(e) => setField(k, { enabled: e.target.checked })}
+                    />
+                    사용
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-ink-700">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-primary"
+                      checked={field.required}
+                      disabled={locked || !field.enabled}
+                      onChange={(e) => setField(k, { required: e.target.checked })}
+                    />
+                    필수
+                  </label>
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Input
                   uiSize="sm"
                   type="text"
-                  placeholder="문항 제목 (비우면 항목 제외)"
-                  value={value.fields[k].label}
+                  placeholder="문항 제목"
+                  value={field.label}
                   onChange={(e) => setField(k, { label: e.target.value })}
-                  disabled={locked && false}
+                  // 이름·전화번호 제목은 잠근다. 예전에는 `locked && false` 라 항상 열려 있어서,
+                  // 제목을 비우면 지원자에게 라벨 없는 빈 칸이 보였다(결과 조회 키라 뺄 수도 없다).
+                  disabled={locked}
                 />
+                {blankLabel && (
+                  <p className="text-[12px] font-semibold text-coral-600">
+                    제목이 비어 있어 지원서에 나오지 않습니다. 제목을 넣거나 &lsquo;사용&rsquo;을 꺼 주세요.
+                  </p>
+                )}
                 <textarea
                   className={`${taCls} h-16`}
                   placeholder="안내 문구 (선택, 줄바꿈 가능)"
-                  value={value.fields[k].description}
+                  value={field.description}
                   onChange={(e) => setField(k, { description: e.target.value })}
                 />
               </div>
