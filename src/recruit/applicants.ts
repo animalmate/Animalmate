@@ -1,6 +1,6 @@
 // F9 신입 모집 지원자 CRUD 및 관리 서비스
 import { db } from '../db/client';
-import { recruitApplicants, recruitScores } from '../db/schema';
+import { recruitApplicants, recruitCohorts, recruitScores } from '../db/schema';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 import { attendanceRevertTarget, RecruitStatus } from './status';
 import { normalizeMoveTeam, type ReviewMark } from './review-marks';
@@ -278,7 +278,8 @@ export async function findApplicantInCohort(cohortId: string, name: string, phon
   return found ?? null;
 }
 
-export async function createSingleApplicant(input: {
+/** 공개 지원 폼이 채우는 값들 — 재제출 때 통째로 갈아 끼우는 범위이기도 하다. */
+export interface ApplicantSubmission {
   cohortId: string;
   name: string;
   phone: string;
@@ -299,36 +300,124 @@ export async function createSingleApplicant(input: {
   essayValues?: string | null;
   essayValuesTopic?: string | null;
   englishName?: string | null;
-}) {
+}
+
+export interface SubmissionOutcome {
+  applicantId: string;
+  /** 기존 지원서를 갈아 끼웠는가(= 중복 제출이었는가). */
+  replaced: boolean;
+  /** 갈아 끼우기 직전의 상태 — 심사가 이미 진행된 뒤였는지 감사 로그에 남긴다. */
+  previousStatus: RecruitStatus | null;
+  /** 갈아 끼울 때 이미 매겨져 있던 점수 개수. 0 이 아니면 채점자가 읽은 내용이 바뀐 것이다. */
+  previousScoreCount: number;
+}
+
+/**
+ * 지원서를 접수한다 — **같은 기수에 같은 사람이 다시 내면 마지막 지원서만 남는다.**
+ *
+ * 왜 거절이 아니라 덮어쓰기인가: 예전에는 두 번째 제출을 409 로 막고 "고치려면 운영진에게
+ * 문의하세요"라고 했다. 그런데 지원자가 다시 내는 이유는 대개 **오타·빠뜨린 문항을 고치려는
+ * 것**이고, 그때마다 운영진이 대신 고쳐 줘야 했다. 사용자 지시로 마지막 것을 남긴다.
+ *
+ * **행을 지우고 새로 만들지 않고 제자리에서 갈아 끼운다.** 면접 배정(`slot_id`)·점수·메모·쪽지는
+ * 전부 지원자 id 를 물고 있어서, 새 행을 만들면 그것들이 통째로 끊긴다. 심사 진행 상태
+ * (`status`·`review_mark`)도 지원서 내용이 아니라 **운영진이 만든 값**이라 건드리지 않는다.
+ *
+ * `assigned_team` 은 조건부다: 운영진이 손대지 않아 아직 1지망과 같을 때만 새 1지망을 따라간다.
+ * 회장단이 이미 다른 팀으로 옮겨 놨다면 재제출이 그 결정을 되돌리면 안 된다.
+ *
+ * 기수 행을 `FOR UPDATE` 로 잠그고 한 트랜잭션에서 처리한다: 잠그지 않으면 제출 버튼을 두 번
+ * 빠르게 눌렀을 때 양쪽이 "없다"를 보고 **두 행을 만든다**. 중복 검사가 곧 도배 방어이기도 해서
+ * (rate-limit.ts recruitApply 주석) 이 구멍은 그냥 두면 안 된다. 기수당 접수는 많아야 수백 건이라
+ * 직렬화 비용은 없는 것이나 같다.
+ */
+export async function submitApplicant(input: ApplicantSubmission): Promise<SubmissionOutcome | null> {
   const cleanPhone = input.phone.replace(/[^0-9]/g, '');
-  const [created] = await db
-    .insert(recruitApplicants)
-    .values({
-      cohortId: input.cohortId,
-      name: input.name.trim(),
-      phone: cleanPhone,
-      gender: input.gender ?? null,
-      birthDate: input.birthDate ?? null,
-      school: input.school ?? null,
-      department: input.department ?? null,
-      email: input.email ?? null,
-      applyRoute: input.applyRoute ?? null,
-      otherActivities: input.otherActivities ?? null,
-      expectedFrequency: input.expectedFrequency ?? null,
-      wishTeam1: input.wishTeam1 ?? null,
-      wishTeam2: input.wishTeam2 ?? null,
-      assignedTeam: input.wishTeam1 ?? null, // 초기 배정팀은 1지망 팀으로 설정
-      nearStation: input.nearStation ?? null,
-      otAttend: input.otAttend ?? null,
-      remoteInterviewWish: input.remoteInterviewWish ?? null,
-      essayIntro: input.essayIntro ?? null,
-      essayValues: input.essayValues ?? null,
-      essayValuesTopic: input.essayValuesTopic ?? null,
-      englishName: input.englishName ?? null,
-      status: 'received',
-    })
-    .returning();
-  return created;
+  const cleanName = input.name.trim();
+
+  const values = {
+    gender: input.gender ?? null,
+    birthDate: input.birthDate ?? null,
+    school: input.school ?? null,
+    department: input.department ?? null,
+    email: input.email ?? null,
+    applyRoute: input.applyRoute ?? null,
+    otherActivities: input.otherActivities ?? null,
+    expectedFrequency: input.expectedFrequency ?? null,
+    wishTeam1: input.wishTeam1 ?? null,
+    wishTeam2: input.wishTeam2 ?? null,
+    nearStation: input.nearStation ?? null,
+    otAttend: input.otAttend ?? null,
+    remoteInterviewWish: input.remoteInterviewWish ?? null,
+    essayIntro: input.essayIntro ?? null,
+    essayValues: input.essayValues ?? null,
+    essayValuesTopic: input.essayValuesTopic ?? null,
+    englishName: input.englishName ?? null,
+  };
+
+  return db.transaction(async (tx) => {
+    // 같은 기수의 접수를 한 줄로 세운다(위 주석 — 두 번 누르기 경합).
+    await tx
+      .select({ id: recruitCohorts.id })
+      .from(recruitCohorts)
+      .where(eq(recruitCohorts.id, input.cohortId))
+      .for('update');
+
+    const [existing] = await tx
+      .select({
+        id: recruitApplicants.id,
+        status: recruitApplicants.status,
+        assignedTeam: recruitApplicants.assignedTeam,
+        wishTeam1: recruitApplicants.wishTeam1,
+      })
+      .from(recruitApplicants)
+      .where(
+        and(
+          eq(recruitApplicants.cohortId, input.cohortId),
+          eq(recruitApplicants.name, cleanName),
+          eq(recruitApplicants.phone, cleanPhone)
+        )
+      )
+      .limit(1);
+
+    if (!existing) {
+      const [created] = await tx
+        .insert(recruitApplicants)
+        .values({
+          cohortId: input.cohortId,
+          name: cleanName,
+          phone: cleanPhone,
+          ...values,
+          assignedTeam: input.wishTeam1 ?? null, // 초기 배정팀은 1지망 팀으로 설정
+          status: 'received',
+        })
+        .returning({ id: recruitApplicants.id });
+      if (!created) return null;
+      return { applicantId: created.id, replaced: false, previousStatus: null, previousScoreCount: 0 };
+    }
+
+    // 운영진이 배정팀을 손대지 않았을 때만 새 1지망을 따라간다(위 주석).
+    const staffMovedTeam = existing.assignedTeam !== existing.wishTeam1;
+    const scored = await tx
+      .select({ id: recruitScores.id })
+      .from(recruitScores)
+      .where(eq(recruitScores.applicantId, existing.id));
+
+    await tx
+      .update(recruitApplicants)
+      .set({
+        ...values,
+        ...(staffMovedTeam ? {} : { assignedTeam: input.wishTeam1 ?? null }),
+      })
+      .where(eq(recruitApplicants.id, existing.id));
+
+    return {
+      applicantId: existing.id,
+      replaced: true,
+      previousStatus: existing.status as RecruitStatus,
+      previousScoreCount: scored.length,
+    };
+  });
 }
 
 /**

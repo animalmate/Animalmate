@@ -8,7 +8,7 @@ import { users, recruitCohorts, recruitApplicants, rateLimits } from '@/db/schem
 import { RULES } from '@/http/rate-limit';
 import { lookupApplicantResult } from '@/recruit/lookup';
 import { lookupFailKey } from '@/recruit/lookup-key';
-import { findApplicantInCohort } from '@/recruit/applicants';
+import { findApplicantInCohort, submitApplicant } from '@/recruit/applicants';
 import { TEST_DATABASE_URL } from './db-url';
 
 const suite = describe;
@@ -124,7 +124,7 @@ suite('공개 접수·조회 (실 DB)', () => {
     expect(r!.assignedTeam).toBeNull();
   });
 
-  it('같은 기수에 이미 낸 지원서를 찾아낸다 — 두 번 제출을 막는 근거', async () => {
+  it('같은 기수에 이미 낸 지원서를 찾아낸다 — 재제출이 갈아 끼울 대상', async () => {
     const dup = await findApplicantInCohort(newCohortId, NAME, PHONE);
     expect(dup).not.toBeNull();
   });
@@ -133,6 +133,73 @@ suite('공개 접수·조회 (실 DB)', () => {
     expect(await findApplicantInCohort(newCohortId, NAME, '010-5555-6666')).not.toBeNull();
     // 이름 앞뒤 공백도 같은 사람이다.
     expect(await findApplicantInCohort(newCohortId, ` ${NAME} `, PHONE)).not.toBeNull();
+  });
+
+  it('중복 제출은 행을 늘리지 않고 마지막 지원서로 갈아 끼운다', async () => {
+    const before = await findApplicantInCohort(newCohortId, NAME, PHONE);
+    expect(before).not.toBeNull();
+
+    // 전화번호 형식과 이름 공백을 바꿔 내도 같은 사람으로 본다(위 두 테스트의 매칭 키).
+    const outcome = await submitApplicant({
+      cohortId: newCohortId,
+      name: ` ${NAME} `,
+      phone: '010-5555-6666',
+      school: '고친학교',
+      essayIntro: '고쳐서 다시 낸 자기소개',
+    });
+
+    expect(outcome).not.toBeNull();
+    expect(outcome!.replaced).toBe(true);
+    // **같은 행**이어야 한다 — 면접 배정·점수·메모가 이 id 를 물고 있다.
+    expect(outcome!.applicantId).toBe(before!.id);
+
+    const rows = await db
+      .select()
+      .from(recruitApplicants)
+      .where(and(eq(recruitApplicants.cohortId, newCohortId), eq(recruitApplicants.name, NAME)));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.school).toBe('고친학교');
+    expect(rows[0]!.essayIntro).toBe('고쳐서 다시 낸 자기소개');
+  });
+
+  it('처음 내는 지원서는 replaced 가 아니다', async () => {
+    const outcome = await submitApplicant({
+      cohortId: newCohortId,
+      name: 'QA처음내는사람',
+      phone: '01077778888',
+      wishTeam1: '1팀',
+    });
+    expect(outcome!.replaced).toBe(false);
+    expect(outcome!.previousScoreCount).toBe(0);
+
+    const rows = await db
+      .select()
+      .from(recruitApplicants)
+      .where(and(eq(recruitApplicants.cohortId, newCohortId), eq(recruitApplicants.name, 'QA처음내는사람')));
+    expect(rows).toHaveLength(1);
+    // 초기 배정팀은 1지망을 따라간다.
+    expect(rows[0]!.assignedTeam).toBe('1팀');
+  });
+
+  it('운영진이 팀을 옮겨 놓은 지원자는 재제출이 그 배정을 되돌리지 않는다', async () => {
+    await db
+      .update(recruitApplicants)
+      .set({ assignedTeam: '3팀' }) // 회장단이 손으로 옮긴 상태
+      .where(and(eq(recruitApplicants.cohortId, newCohortId), eq(recruitApplicants.name, 'QA처음내는사람')));
+
+    await submitApplicant({
+      cohortId: newCohortId,
+      name: 'QA처음내는사람',
+      phone: '01077778888',
+      wishTeam1: '2팀', // 지원자는 1지망을 바꿔서 다시 냈다
+    });
+
+    const [row] = await db
+      .select()
+      .from(recruitApplicants)
+      .where(and(eq(recruitApplicants.cohortId, newCohortId), eq(recruitApplicants.name, 'QA처음내는사람')));
+    expect(row!.wishTeam1).toBe('2팀'); // 지망은 새 값으로
+    expect(row!.assignedTeam).toBe('3팀'); // 배정은 운영진 결정 그대로
   });
 
   it('다른 기수의 지원서는 중복이 아니다 — 재지원을 막으면 안 된다', async () => {

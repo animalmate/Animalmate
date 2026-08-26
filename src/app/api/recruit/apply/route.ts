@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { clientIp, consumeRateLimit, RateLimitError, RULES } from '@/http/rate-limit';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
-import { createSingleApplicant, findApplicantInCohort } from '@/recruit/applicants';
+import { submitApplicant } from '@/recruit/applicants';
+import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
 
@@ -119,32 +120,41 @@ export async function POST(req: Request): Promise<Response> {
     }
     checkApplicantLengths(fields);
 
-    // 두 번 누르거나 제출 후 새로고침하면 같은 지원서가 한 건 더 들어간다.
-    // 그러면 심사 목록에 같은 사람이 두 번 뜨고, 결과 조회도 어느 지원서를 볼지 모호해진다.
-    const already = await findApplicantInCohort(cohortId, fields.name, fields.phone);
-    if (already) {
-      return NextResponse.json(
-        {
-          error: 'already_applied',
-          message: '이미 접수된 지원서가 있습니다. 내용을 고치려면 운영진에게 문의해 주세요.',
-          applicantId: already.id,
-        },
-        { status: 409 }
-      );
-    }
-
-    const applicant = await createSingleApplicant({
+    // 같은 기수에 같은 사람(이름+전화)이 다시 내면 **마지막 지원서만 남긴다** — 새 행을 만들지 않고
+    // 제자리에서 갈아 끼운다(면접 배정·점수·메모가 지원자 id 를 물고 있다. submitApplicant 주석).
+    const outcome = await submitApplicant({
       cohortId,
       ...fields,
       name: fields.name,
       phone: fields.phone,
     });
 
-    if (!applicant) {
+    if (!outcome) {
       return NextResponse.json({ error: 'create_failed', message: '지원서 저장 중 오류가 발생했습니다.' }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, applicantId: applicant.id });
+    if (outcome.replaced) {
+      // **내용은 남기지 않는다.** 자기소개서·연락처는 PII 라 기수 파기(`recruit/purge`)로 지워져야
+      // 하는데, audit_logs 는 그 파기 범위 밖이다. 여기 본문을 복사하면 파기해도 사본이 남는다.
+      // 남길 값은 "언제 누구 지원서가 갈렸는가"와 **채점 뒤였는지**뿐이다 — 점수가 이미 있는데
+      // 내용이 바뀌었다면 채점자가 읽은 글과 지금 글이 다르다는 뜻이라 운영진이 알아야 한다.
+      // 지원자는 로그인하지 않으므로 actorUserId 는 null(= 공개 폼 본인 제출)이다.
+      await recordAudit(
+        db,
+        buildAuditEntry({
+          actorUserId: null,
+          action: 'recruit.applicant.resubmit',
+          targetTable: 'recruit_applicants',
+          targetId: outcome.applicantId,
+          before: { status: outcome.previousStatus, scoreCount: outcome.previousScoreCount },
+          after: { cohortId },
+          // 채점이 끝난 지원서가 갈린 것은 눈에 띄어야 한다.
+          ...(outcome.previousScoreCount > 0 ? { severity: 'high' as const } : {}),
+        })
+      );
+    }
+
+    return NextResponse.json({ ok: true, applicantId: outcome.applicantId, replaced: outcome.replaced });
   } catch (e) {
     if (e instanceof InputTooLongError) {
       return NextResponse.json({ error: 'too_long', message: e.message }, { status: 400 });

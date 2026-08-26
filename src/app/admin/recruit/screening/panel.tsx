@@ -11,7 +11,7 @@ import { RecruitNav } from '@/components/recruit-nav';
 import { ScreenNotes } from '@/components/screen-notes';
 import { EssayBlock } from '@/components/essay-block';
 import { AutoGrowTextarea } from '@/components/auto-grow-textarea';
-import { Button, Card, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
+import { Button, Card, DangerButton, Field, Input, Select, StatusMessage, TeamOptions, ToolbarSelect } from '@/components/ui';
 
 export function RecruitScreeningPanel({ role, canEditNotice }: { role: Role; canEditNotice: boolean }) {
   const canManage = isPrivileged(role);
@@ -33,6 +33,7 @@ export function RecruitScreeningPanel({ role, canEditNotice }: { role: Role; can
   const [myScore, setMyScore] = useState<string>(NO_SCORE);
   const [myComment, setMyComment] = useState<string>('');
   const [savingScore, setSavingScore] = useState(false);
+  const [deletingScore, setDeletingScore] = useState(false);
   const [message, setMessage] = useState('');
 
   const QUICK_SCORES = ['5.0', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5', '10.0'];
@@ -219,6 +220,48 @@ export function RecruitScreeningPanel({ role, canEditNotice }: { role: Role; can
   const currentDocScores = scores.filter(
     (s) => s.applicantId === selectedApplicantId && s.stage === 'document'
   );
+  const myExistingScore = currentDocScores.find((s) => s.scorerUserId === viewerUserId);
+
+  /**
+   * 내가 매긴 서류 점수를 지운다 — 지원자를 잘못 고른 채 저장했을 때의 되돌리기.
+   *
+   * 면접 콘솔과 같은 이유로 필요하다(07-DECISIONS 143): 낮은 점수로 덮어쓰는 것은 되돌리기가
+   * 아니다. 0점은 '0점을 준 것'이라 평균에 그대로 들어가고, 서류 집계의 **채점 인원**에도
+   * 계속 잡혀 "3명이 봤다"는 판정이 거짓이 된다.
+   * 서버가 scorerUserId 로 좁혀 지우므로 다른 운영진 점수는 이 길로 건드릴 수 없다.
+   */
+  const handleDeleteMyScore = async () => {
+    if (!selectedApplicantId || !myExistingScore) return;
+    const who = selectedApp?.name ?? '이 지원자';
+    if (
+      !confirm(
+        `${who} 님에게 매긴 내 서류 점수 ${parseFloat(myExistingScore.score).toFixed(1)}점과 코멘트를 지웁니다. 계속할까요?`
+      )
+    )
+      return;
+
+    setDeletingScore(true);
+    setMessage('');
+    try {
+      const res = await fetch(
+        `/api/recruit/scores?applicantId=${encodeURIComponent(selectedApplicantId)}&stage=document`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        setMessage('🗑️ 내 서류 점수를 지웠습니다.');
+        // 입력칸도 비운다. refreshScores 뒤 useEffect 가 맞춰 주지만, 지운 값이 잠깐이라도 남아
+        // 있으면 '안 지워졌나' 싶어 한 번 더 누르게 된다.
+        setMyScore(NO_SCORE);
+        setMyComment('');
+        await refreshScores();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setMessage(`❌ 오류: ${data.message || data.error}`);
+      }
+    } finally {
+      setDeletingScore(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -416,6 +459,12 @@ export function RecruitScreeningPanel({ role, canEditNotice }: { role: Role; can
                   <span className="text-xs text-blue-700 font-semibold">0.0 ~ 10.0점 (0.5 단위)</span>
                 </div>
 
+                {myExistingScore && (
+                  <p className="rounded-lg bg-cream-100 px-3 py-2 text-xs font-semibold text-ink-700">
+                    이미 {parseFloat(myExistingScore.score).toFixed(1)}점을 매겼습니다 — 저장하면 덮어씁니다.
+                  </p>
+                )}
+
                 {/* 퀵 버튼은 5.0 부터라 낮은 점수를 아예 줄 수 없었다 — 직접 입력칸을 둔다. */}
                 <div className="flex flex-wrap items-end gap-4">
                   <div className="w-32">
@@ -471,9 +520,21 @@ export function RecruitScreeningPanel({ role, canEditNotice }: { role: Role; can
                   ) : (
                     <span />
                   )}
-                  <Button type="button" disabled={savingScore || !hasScore} onClick={handleSaveScore}>
-                    {savingScore ? '저장 중…' : '서류 점수 저장'}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* 이미 내가 채점한 지원자에게만 되돌리는 길을 연다. */}
+                    {myExistingScore && (
+                      <DangerButton
+                        type="button"
+                        disabled={deletingScore || savingScore}
+                        onClick={handleDeleteMyScore}
+                      >
+                        {deletingScore ? '지우는 중…' : '내 점수 지우기'}
+                      </DangerButton>
+                    )}
+                    <Button type="button" disabled={savingScore || !hasScore} onClick={handleSaveScore}>
+                      {savingScore ? '저장 중…' : '서류 점수 저장'}
+                    </Button>
+                  </div>
                 </div>
               </div>
 

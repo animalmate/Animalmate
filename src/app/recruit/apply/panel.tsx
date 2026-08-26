@@ -92,7 +92,7 @@ export function PublicRecruitApplyPanel({
   // 비대면 면접은 라디오가 아니라 체크박스다 — 체크하면 비대면 희망, 안 하면 대면.
   const [remoteWish, setRemoteWish] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState<{ name: string; phone: string } | null>(null);
+  const [submitted, setSubmitted] = useState<{ name: string; phone: string; replaced: boolean } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   // 개인정보 수집·이용 동의. 지원자는 비부원이라 동의 없이 받아 두면 안 된다.
   // 서버(/api/recruit/apply)도 같은 값을 다시 검사한다(규칙 #6).
@@ -155,7 +155,7 @@ export function PublicRecruitApplyPanel({
 
       const data = await res.json();
       if (res.ok && data.ok) {
-        setSubmitted({ name: form.name, phone: form.phone });
+        setSubmitted({ name: form.name, phone: form.phone, replaced: data.replaced === true });
       } else if (res.status === 429) {
         setErrorMsg(`제출 시도가 너무 잦습니다. ${data.retryAfter || 60}초 후 다시 시도해 주세요.`);
       } else {
@@ -207,7 +207,7 @@ export function PublicRecruitApplyPanel({
       <NoticeCard
         tone="success"
         icon="check"
-        title="지원서가 접수되었습니다"
+        title={submitted.replaced ? '지원서를 다시 접수했습니다' : '지원서가 접수되었습니다'}
         actions={
           <>
             <a href="/recruit" className={linkPrimary}>
@@ -219,6 +219,13 @@ export function PublicRecruitApplyPanel({
           </>
         }
       >
+        {/* 앞서 낸 것이 남아 있는지 지원자가 알 길이 없다 — 남는 것이 무엇인지 분명히 말해 준다. */}
+        {submitted.replaced && (
+          <p className="font-semibold">
+            같은 이름·연락처로 앞서 낸 지원서가 있어 <strong>방금 제출하신 내용으로 대체</strong>했습니다.
+            심사에는 이번에 내신 지원서만 쓰입니다.
+          </p>
+        )}
         <p>심사 결과는 조회 페이지에서 이름과 전화번호로 확인하실 수 있습니다.</p>
         <dl className="mt-3 space-y-1 rounded-xl border border-ink-100 bg-cream-25 p-3 text-left text-[13px] text-ink-700">
           <div className="flex gap-2">
@@ -462,7 +469,6 @@ export function PublicRecruitApplyPanel({
                       {config.remoteInterviewCheckboxLabel}
                     </span>
                   </label>
-                  <p className="text-[12px] text-ink-400">체크하지 않으면 대면 면접으로 진행됩니다.</p>
                 </div>
               )}
             </section>
