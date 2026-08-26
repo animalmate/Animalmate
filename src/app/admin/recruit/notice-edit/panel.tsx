@@ -9,6 +9,7 @@ import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
 import { DEFAULT_APPLY_FORM, resolveApplyForm, type ApplyFormConfig } from '@/recruit/apply-form';
 import { ApplyFormEditor } from './apply-form-editor';
+import { ResultMailCard } from './result-mail-card';
 
 export function RecruitNoticeEditPanel({ role }: { role: Role }) {
   // 이 화면의 값은 게이트를 통과한 사람이 **전부** 바꾼다(2026-08-25, 결정 141) —
@@ -512,6 +513,16 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           다시 꺼도 이미 본 사람에게는 되돌려지지 않아요. 회장단이 최종 확정을 마친 뒤에 켜세요.
         </p>
       </Card>
+
+      {/* 결과 안내 메일 — 공개 스위치 바로 아래. 스위치를 켠 다음에 하는 일이라 순서대로 놓는다.
+          발송은 스위치에 자동으로 붙이지 않는다(결정 148 — 스위치는 되돌릴 수 있고 메일은 아니다). */}
+      {selectedCohortId && (
+        <ResultMailCard
+          cohortId={selectedCohortId}
+          schedulePublic={schedulePublic}
+          resultPublic={resultPublic}
+        />
+      )}
 
       {/* 설정 입력 카드 */}
       <Card className="space-y-6">

@@ -175,6 +175,7 @@ node scripts/bootstrap-token.mjs  # 암호화해서 naver_tokens 에 저장(.env
 |---|---|---|
 | `publish` | 매분 | 예약 공지가 안 나간다 |
 | `draft-generate` | 매일 | 미완성 점검 알림·미접속 만료·레이트리밋 정리가 안 된다 |
+| `result-mails` | 5분 | 결과 안내 메일이 대기열에 쌓인 채 나가지 않는다(지원자는 결과가 나온 줄 모른다) |
 
 확인:
 ```sql
@@ -185,6 +186,19 @@ select * from cron.job_run_details order by start_time desc limit 20;  -- status
 - 호출은 되는데 401 이면 **`CRON_SECRET` 이 Supabase 쪽과 Vercel 쪽에서 서로 다르다.** 양쪽을 맞춘다
 - 발행 워커는 **할 일이 없으면 감사 기록을 남기지 않는다**(결정 63). 로그가 없는 것이 곧 고장은 아니다 —
   `cron.job_run_details` 로 확인한다
+
+**결과 안내 메일이 안 나갈 때**(`/api/cron/result-mails`):
+```sql
+select stage, status, count(*) from recruit_result_mails group by 1,2;      -- 어디서 막혔나
+select stage, attempts, last_error from recruit_result_mails
+ where status = 'failed' order by queued_at desc limit 20;                  -- 왜 실패했나
+```
+- 전부 `queued` 인데 안 줄어들면 **크론 잡이 없거나 꺼져 있다**(위 표 참조).
+- `sent` 가 최근 24시간에 400건이면 **하루 한도에 걸린 것이다.** 고장이 아니라 설계대로이며,
+  다음 날 이어서 나간다(결정 148). 급하면 `DAILY_CAP` 을 올리지 말고 Gmail 한도를 먼저 확인한다 —
+  한도를 넘기면 **로그인 인증 메일까지 같이 막힌다.**
+- `failed` 가 많고 `last_error` 에 인증·한도 문구가 보이면 SMTP 계정 쪽 문제다. 고친 뒤
+  그 행들을 `status='queued', attempts=0` 으로 되돌리면 다시 시도한다.
 
 ---
 

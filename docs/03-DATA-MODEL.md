@@ -266,6 +266,12 @@
     — 지원자별 **개인** 메모(작성자당 1개). `screen_notes` (context_key PK, content, updated_by?, updated_at)
     — 화면별 **공용** 메모지. (`recruit_mapping_presets` = CSV 매핑 프리셋. **0029 로 드롭**했다 —
     업로드 화면이 없어지면서 읽고 쓰는 코드가 사라졌고, 운영·테스트 모두 0행이었다.)
+  - `recruit_result_mails` (id, applicant_id, stage[document|interview|final], status[queued|sent|failed],
+    attempts, last_error?, queued_by?, queued_at, sent_at?) **UNIQUE(applicant_id, stage)** + INDEX(status, sent_at).
+    결과 안내 메일의 대기열 겸 이력(0033, 결정 148). UNIQUE 가 곧 중복 발송 방어다 — 버튼을 두 번 눌러도,
+    공개 스위치를 껐다 켜도 같은 안내가 두 번 가지 않는다.
+    ⚠ **이메일 주소를 여기 복사하지 않는다.** 보낼 때 지원자 행에서 읽는다 — 주소를 두면 기수 파기가
+    지운 PII 의 사본이 남는다. 지원자가 지워지면 이 행도 cascade 로 함께 사라진다.
   - **상태 자동 전환**: 면접 점수 최초 저장 시 doc_pass→interview_done, 점수 0개로 감소 시 interview_done→doc_pass
     (같은 트랜잭션). 면접불참(interview_noshow)은 **면접관(운영진)이 면접 콘솔에서 표시**하고 되돌릴 수도 있다
     (2026-07-31, 07-DECISIONS 67). 순수 함수 `nextStatusOnScoreChange` 로 분리(단위 테스트).

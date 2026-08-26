@@ -89,6 +89,23 @@ export const recruitScoreStageEnum = pgEnum('recruit_score_stage', ['document', 
 // 그 행을 어떻게 읽을지는 아무 데도 안 적혀 있어 결국 회장단이 매번 되물어야 한다.
 export const recruitReviewMarkEnum = pgEnum('recruit_review_mark', ['drop', 'move']);
 
+/**
+ * 결과 안내 메일의 단계. 채점 단계(recruit_score_stage)와 값이 겹치지만 **다른 것**이라 따로 둔다 —
+ * 채점은 서류/면접 둘뿐이고, 안내 메일은 최종 발표까지 셋이다.
+ */
+export const recruitResultMailStageEnum = pgEnum('recruit_result_mail_stage', [
+  'document', // 서류 결과 안내(합격·불합격 모두)
+  'interview', // 면접 일정 안내(배정된 사람)
+  'final', // 최종 결과 안내(합격·불합격 모두)
+]);
+
+/** 결과 안내 메일 한 통의 상태. queued → sent 또는 failed(재시도 소진). */
+export const recruitResultMailStatusEnum = pgEnum('recruit_result_mail_status', [
+  'queued',
+  'sent',
+  'failed',
+]);
+
 // ── 조직/계정 ──────────────────────────────────────────────────────────
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -620,6 +637,41 @@ export const recruitScores = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique('recruit_scores_uq').on(t.applicantId, t.scorerUserId, t.stage)]
+);
+
+/**
+ * 결과 안내 메일 발송 대기열 겸 이력.
+ *
+ * 왜 테이블이 필요한가: 메일은 **되돌릴 수 없다.** 누구에게 무엇을 보냈는지 남는 곳이 없으면
+ * 중복 발송도 실패 재시도도 판단할 수 없다. `(applicant_id, stage)` UNIQUE 가 곧 중복 방어다 —
+ * 공개 스위치를 껐다 켜도, 발송 버튼을 두 번 눌러도 같은 사람에게 같은 안내가 두 번 가지 않는다.
+ *
+ * **이메일 주소를 여기 복사하지 않는다.** 보낼 때 지원자 행에서 읽는다 — 주소를 여기 두면
+ * 기수 파기(`recruit/purge`)가 지운 PII 의 사본이 남는다. 지원자가 지워지면 이 행도 함께 사라진다.
+ */
+export const recruitResultMails = pgTable(
+  'recruit_result_mails',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    applicantId: uuid('applicant_id')
+      .notNull()
+      .references(() => recruitApplicants.id, { onDelete: 'cascade' }),
+    stage: recruitResultMailStageEnum('stage').notNull(),
+    status: recruitResultMailStatusEnum('status').notNull().default('queued'),
+    /** 시도 횟수. 최대 2회 재시도 후 failed 로 확정한다(규칙 #5). */
+    attempts: integer('attempts').notNull().default(0),
+    /** 마지막 실패 사유. 운영진이 왜 안 갔는지 볼 수 있어야 한다. */
+    lastError: text('last_error'),
+    /** 누가 발송을 걸었는가. 200명에게 나가는 행위라 사람이 남아야 한다. */
+    queuedBy: uuid('queued_by').references(() => users.id, { onDelete: 'set null' }),
+    queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('recruit_result_mails_uq').on(t.applicantId, t.stage),
+    // 크론이 매번 "보낼 것"과 "최근 24시간에 보낸 수"를 찾는다. 둘 다 status 로 시작한다.
+    index('recruit_result_mails_status_idx').on(t.status, t.sentAt),
+  ]
 );
 
 // 지원자별 개인 메모(작성자 1인당 1개). 면접 콘솔에서 질문 미리 적는 용도, 자동 저장.
