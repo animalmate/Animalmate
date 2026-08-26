@@ -17,6 +17,21 @@ describe('detectPii', () => {
     expect(detectPii('주문번호 1102345678901234').some((f) => f.kind === 'account')).toBe(false);
   });
 
+  // 이 케이스가 없으면 계좌 패턴의 `g` 플래그 회귀를 못 잡는다: `RegExp.exec` 은 `lastIndex` 를
+  // 호출 사이에 들고 있어서, **첫 호출은 잡고 두 번째 호출부터 앞쪽 계좌번호를 놓친다.**
+  // 한 번만 부르는 테스트는 전부 초록이라 버그가 그대로 남는다(pii.ts ACCOUNT_CTX_RE 주석).
+  it('연속 호출에서도 계좌번호를 매번 잡는다 (정규식 lastIndex 회귀 방지)', () => {
+    // 첫 입력은 문맥 단어가 **뒤쪽**에 있어 lastIndex 를 크게 밀어 놓는다.
+    const tail = `${'봉사 안내문을 길게 적어 둔 문단입니다. '.repeat(3)}계좌 110-234-567890 으로 입금해 주세요`;
+    // 두 번째 입력은 문맥 단어가 **맨 앞**에 있어, lastIndex 가 남아 있으면 건너뛰어진다.
+    const head = '계좌 110-234-567890 으로 입금';
+
+    for (let i = 0; i < 4; i++) {
+      expect(detectPii(tail).some((f) => f.kind === 'account'), `tail #${i}`).toBe(true);
+      expect(detectPii(head).some((f) => f.kind === 'account'), `head #${i}`).toBe(true);
+    }
+  });
+
   it('이메일을 잡는다', () => {
     expect(detectPii('문의: hong@example.com').some((f) => f.kind === 'email')).toBe(true);
   });
@@ -79,5 +94,13 @@ describe('findSensitiveIds (챗봇 질문 차단 대상)', () => {
 
   it('계좌는 문맥 단어가 있을 때만 — 숫자만 길다고 막지 않는다', () => {
     expect(findSensitiveIds('학번이 20231234567 이에요')).toEqual([]);
+  });
+
+  // 챗봇 게이트는 요청마다 이 함수를 다시 부른다. 서버리스라 인스턴스가 살아 있는 동안
+  // 정규식 상태가 남으므로, "두 번째 질문부터 새는" 형태가 실제 운영에서 나타난다.
+  it('질문을 연달아 검사해도 계좌번호를 매번 막는다 (정규식 lastIndex 회귀 방지)', () => {
+    for (let i = 0; i < 4; i++) {
+      expect(findSensitiveIds('계좌 110-234-567890 으로 입금했어요').map((f) => f.kind), `#${i}`).toContain('account');
+    }
   });
 });
