@@ -50,6 +50,22 @@ node scripts/refresh-cafe-token.mjs
 
 ## 그 밖의 운영 스크립트
 
+### `sync-rag-docs.ts` — 사이트 안내 문서를 챗봇 지식베이스에 올린다
+```bash
+npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor <userId>          # 미리보기
+npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor <userId> --apply  # 실제 저장
+```
+`docs/rag/0{1,2,3}-site-guide-*.md` 를 `documents` 에 올린다(제목이 같으면 교체 + 재임베딩).
+`/documents` 화면에 손으로 붙여넣던 일을 대신한다 — **공개 범위를 스크립트가 정한다**는 것이 요점이다.
+회장단 문서를 실수로 staff 로 올리면 운영진 전원에게 새고, 되돌려도 이미 읽힌 뒤다.
+표는 `docs/rag/README.md` 와 스크립트의 `PLAN` 두 곳에만 있다.
+
+- `--actor` 는 **회장단·시스템관리자** 계정이어야 한다(`document.modify`).
+- `--apply` 없이 돌리면 무엇이 신규/교체인지만 보여 주고 아무것도 쓰지 않는다.
+- `--conditions=react-server` 는 빼면 안 된다 — `@/rag/gemini` 의 `server-only` 가드가 걸린다.
+- PII 가 잡히면 저장이 막힌다(`PiiBlockedError`). 안내 문서에 명단·연락처를 적지 말라는 규칙의 실행부다.
+
+
 ### `recruit-scale-report.mjs` — 모집 기수 규모 점검(읽기 전용)
 ```bash
 node scripts/recruit-scale-report.mjs          # 지원자가 가장 많은 기수
