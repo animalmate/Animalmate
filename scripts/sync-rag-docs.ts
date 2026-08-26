@@ -8,6 +8,7 @@
 // 사용:
 //   npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor <userId>          (미리보기)
 //   npx tsx --conditions=react-server scripts/sync-rag-docs.ts --actor <userId> --apply  (실제 저장)
+//   ... --only 01        (파일 이름에 '01' 이 들어간 것만)
 //
 // `--conditions=react-server` 가 필요한 이유: `@/rag/gemini` 가 'server-only' 를 import 한다.
 // 이 조건이 없으면 그 패키지가 "클라이언트에서 부르지 마라" 에러를 던진다.
@@ -43,6 +44,9 @@ const argOf = (name: string) => {
 
 const actorId = argOf('--actor') ?? process.env.RAG_ACTOR_ID;
 const apply = process.argv.includes('--apply');
+// 한 문서만 올리고 싶을 때. 내용이 같으면 재임베딩은 어차피 건너뛰지만(updateDocument),
+// 손대지 않은 문서의 updated_at 과 감사 로그까지 흔들 이유는 없다.
+const only = argOf('--only');
 
 if (!actorId) {
   console.error('❌ --actor <userId> (또는 RAG_ACTOR_ID) 필요 — 회장단·시스템관리자 계정이어야 합니다.');
@@ -56,6 +60,7 @@ const actor: Actor = { userId: actorId, role: 'sysadmin', membershipActive: true
 
 try {
   for (const p of PLAN) {
+    if (only && !p.file.includes(only)) continue;
     let contentMd: string;
     try {
       contentMd = readFileSync(p.file, 'utf8');
