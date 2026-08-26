@@ -94,8 +94,10 @@ export async function DELETE(req: Request): Promise<Response> {
   }
 
   try {
-    await deleteScore(applicantId, actor.userId, stage);
-    return NextResponse.json({ success: true });
+    // 저장(POST)과 같은 모양으로 바뀐 상태를 돌려준다 — 화면이 명단 전체를 다시 받지 않고
+    // 딱지만 고칠 수 있게. 마지막 면접 점수를 지우면 '서류 합격'으로 되돌아간다.
+    const { applicantStatus } = await deleteScore(applicantId, actor.userId, stage);
+    return NextResponse.json({ success: true, applicantStatus });
   } catch (e) {
     return internalError('recruit/scores DELETE', e);
   }

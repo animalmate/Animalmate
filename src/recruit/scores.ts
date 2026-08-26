@@ -79,11 +79,21 @@ export async function recordScore(
   });
 }
 
+/**
+ * **내가 매긴** 점수 한 건을 지운다(scorerUserId 로 좁혀 남의 기록은 건드리지 못한다).
+ *
+ * 왜 필요한가: 면접 콘솔은 옆 사람 차례에 잘못 눌러 엉뚱한 지원자를 채점하기 쉬운 화면이다.
+ * 덮어쓰기(recordScore)로는 "점수를 매기지 않았다"는 원래 사실로 되돌릴 수 없다 — 0점을 넣으면
+ * 0점을 준 것이 되고, 상태도 면접 완료로 남는다. 지우는 길이 없으면 회장단이 DB 를 직접 손대야 했다.
+ *
+ * 저장과 같은 모양으로 **결과 상태를 돌려준다** — 화면이 명단을 통째로 다시 받지 않고 딱지만 고친다.
+ * 마지막 면접 점수를 지우면 nextStatusOnScoreChange 가 interview_done → doc_pass 로 되돌린다.
+ */
 export async function deleteScore(
   applicantId: string,
   scorerUserId: string,
   stage: 'document' | 'interview'
-) {
+): Promise<{ applicantStatus: RecruitStatus | null }> {
   return db.transaction(async (tx) => {
     await tx
       .delete(recruitScores)
@@ -95,36 +105,37 @@ export async function deleteScore(
         )
       );
 
-    if (stage === 'interview') {
-      const [app] = await tx
-        .select({ status: recruitApplicants.status })
-        .from(recruitApplicants)
+    if (stage !== 'interview') return { applicantStatus: null };
+
+    const [app] = await tx
+      .select({ status: recruitApplicants.status })
+      .from(recruitApplicants)
+      .where(eq(recruitApplicants.id, applicantId));
+
+    if (!app) return { applicantStatus: null };
+
+    const interviewScores = await tx
+      .select({ id: recruitScores.id })
+      .from(recruitScores)
+      .where(
+        and(
+          eq(recruitScores.applicantId, applicantId),
+          eq(recruitScores.stage, 'interview')
+        )
+      );
+
+    const newStatus = nextStatusOnScoreChange(
+      app.status as RecruitStatus,
+      interviewScores.length
+    );
+
+    if (newStatus !== app.status) {
+      await tx
+        .update(recruitApplicants)
+        .set({ status: newStatus })
         .where(eq(recruitApplicants.id, applicantId));
-
-      if (app) {
-        const interviewScores = await tx
-          .select({ id: recruitScores.id })
-          .from(recruitScores)
-          .where(
-            and(
-              eq(recruitScores.applicantId, applicantId),
-              eq(recruitScores.stage, 'interview')
-            )
-          );
-
-        const newStatus = nextStatusOnScoreChange(
-          app.status as RecruitStatus,
-          interviewScores.length
-        );
-
-        if (newStatus !== app.status) {
-          await tx
-            .update(recruitApplicants)
-            .set({ status: newStatus })
-            .where(eq(recruitApplicants.id, applicantId));
-        }
-      }
     }
+    return { applicantStatus: newStatus };
   });
 }
 

@@ -16,7 +16,7 @@ import { formatTimeKo, formatTimeRange } from '@/recruit/timetable';
 import { panelOrder } from '@/recruit/staff-timetable';
 import { groupApplicantsBySlot } from '@/recruit/interview-groups';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
-import { Button, Card, Field, Input, StatusMessage, ToolbarSelect } from '@/components/ui';
+import { Button, Card, DangerButton, Field, Input, StatusMessage, ToolbarSelect } from '@/components/ui';
 
 // 점수칸은 비워 둔 채 시작한다. 예전에는 '8.0' 이 미리 채워져 있어서, 면접관이 점수칸을 건드리지
 // 않고 저장만 눌러도 8.0 이 '면접관이 매긴 점수'로 기록되고 상태까지 면접 완료로 전이됐다.
@@ -133,6 +133,7 @@ export function RecruitInterviewConsolePanel({ role, canEditNotice }: { role: Ro
   const [personalMemo, setPersonalMemo] = useState<string>('');
   const [memoState, setMemoState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [savingScore, setSavingScore] = useState(false);
+  const [deletingScore, setDeletingScore] = useState(false);
   const [message, setMessage] = useState('');
 
   // 메모 자동 저장은 예전에 키를 누를 때마다 POST 를 던졌다. 요청이 뒤섞여 도착하면 옛 내용이
@@ -360,6 +361,56 @@ export function RecruitInterviewConsolePanel({ role, canEditNotice }: { role: Ro
   // 내 점수까지 "타 면접관"으로 섞여 있었다. 어느 게 내 기록인지 몰라 수정도 못 했다.
   const otherInterviewScores = currentInterviewScores.filter((s) => s.scorerUserId !== viewerUserId);
   const myExistingScore = currentInterviewScores.find((s) => s.scorerUserId === viewerUserId);
+
+  /**
+   * 내가 매긴 면접 점수를 지운다 — 옆 조 차례에 잘못 눌러 엉뚱한 지원자를 채점했을 때의 되돌리기.
+   *
+   * 왜 덮어쓰기로는 안 되나: 0점을 넣으면 '0점을 준 것'이 되고 상태도 면접 완료로 남는다.
+   * 채점하지 않은 것과 낮은 점수를 준 것은 다른 사실이고, 뒤섞이면 집계와 표본 부족 판정이 무너진다.
+   * 서버는 scorerUserId 로 좁혀 지우므로 다른 면접관 점수는 이 버튼으로 건드릴 수 없다.
+   */
+  const handleDeleteMyScore = async () => {
+    if (!selectedApplicantId || !myExistingScore) return;
+    const applicantId = selectedApplicantId;
+    const who = selectedApp?.name ?? '이 지원자';
+    if (
+      !confirm(
+        `${who} 님에게 매긴 내 면접 점수 ${parseFloat(myExistingScore.score).toFixed(1)}점과 총평을 지웁니다.
+` +
+          '다른 면접관 점수가 없으면 상태가 서류 합격으로 되돌아갑니다. 계속할까요?'
+      )
+    )
+      return;
+
+    setDeletingScore(true);
+    setMessage('');
+    try {
+      const res = await fetch(
+        `/api/recruit/scores?applicantId=${encodeURIComponent(applicantId)}&stage=interview`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        setMessage('🗑️ 내 면접 점수를 지웠습니다.');
+        // 저장과 같은 길 — 서버가 돌려준 상태로 딱지만 그 자리에서 고친다.
+        if (data.applicantStatus) {
+          setApplicants((prev) =>
+            prev.map((a) => (a.id === applicantId ? { ...a, status: data.applicantStatus } : a))
+          );
+        }
+        // 입력칸도 비운다. refreshScores 뒤 useEffect 가 어차피 맞춰 주지만, 지운 값이 잠깐이라도
+        // 칸에 남아 있으면 '아직 안 지워졌나' 싶어 한 번 더 누르게 된다.
+        setMyScore(NO_SCORE);
+        setMyComment('');
+        await refreshScores();
+      } else {
+        setMessage(`❌ 오류: ${data.message || data.error}`);
+      }
+    } finally {
+      setDeletingScore(false);
+    }
+  };
 
   // 면접 출결 — 면접관이 그 자리에서 본 사실을 그대로 남긴다.
   const [attendanceBusy, setAttendanceBusy] = useState(false);
@@ -1014,10 +1065,21 @@ export function RecruitInterviewConsolePanel({ role, canEditNotice }: { role: Ro
                   <span className="text-[13px] font-semibold text-ink-500">0.0 ~ 10.0점 · 0.5 단위</span>
                 </div>
 
+                {/* 이미 매긴 점수가 있을 때만 되돌리는 길을 연다. 잘못 채점한 것을 알아차리는 자리가
+                    바로 이 줄("이미 N점을 매겼습니다")이라, 지우기 버튼도 여기 붙여 둔다. */}
                 {myExistingScore && (
-                  <p className="rounded-lg bg-cream-100 px-3 py-2 text-[13px] font-semibold text-ink-700">
-                    이미 {parseFloat(myExistingScore.score).toFixed(1)}점을 매겼습니다 — 저장하면 덮어씁니다.
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-cream-100 px-3 py-2">
+                    <p className="text-[13px] font-semibold text-ink-700">
+                      이미 {parseFloat(myExistingScore.score).toFixed(1)}점을 매겼습니다 — 저장하면 덮어씁니다.
+                    </p>
+                    <DangerButton
+                      type="button"
+                      disabled={deletingScore || savingScore}
+                      onClick={handleDeleteMyScore}
+                    >
+                      {deletingScore ? '지우는 중…' : '내 점수 지우기'}
+                    </DangerButton>
+                  </div>
                 )}
 
                 <div className="grid grid-cols-5 gap-2">
