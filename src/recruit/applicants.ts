@@ -52,6 +52,9 @@ export async function listApplicantsByCohortSlim(cohortId: string) {
       interviewLink: recruitApplicants.interviewLink,
       nearStation: recruitApplicants.nearStation,
       remoteInterviewWish: recruitApplicants.remoteInterviewWish,
+      // 6번 최종 결정 화면이 합격자 명단에 함께 뽑는다(외부 단체 가입용). 한 줄짜리 값이라
+      // 축약 조회의 목적(자기소개서 본문 빼기)을 해치지 않는다.
+      englishName: recruitApplicants.englishName,
     })
     .from(recruitApplicants)
     .where(eq(recruitApplicants.cohortId, cohortId))

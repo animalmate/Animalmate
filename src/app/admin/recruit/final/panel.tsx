@@ -235,6 +235,24 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     );
 
   /**
+   * 확정이 끝난 최종 합격자 명단 — **영문 이름을 뽑는 자리**(외부 단체 가입 안내용).
+   *
+   * 위 미리보기 표와 따로 두는 이유: 미리보기는 `interview_done` 인 사람만 계산하므로 확정 버튼을
+   * 누르는 순간 텅 빈다. 정작 명단이 필요한 때는 그 다음(합격자에게 안내를 보낼 때)이라,
+   * 확정된 뒤에도 남는 자리가 하나 있어야 한다.
+   *
+   * 팀 → 이름 순으로 세운다. 팀별로 넘길 명단이라 팀이 섞여 있으면 사람이 다시 갈라야 한다.
+   */
+  const confirmedPass = applicants
+    .filter((a) => a.status === 'final_pass' && matchesTeamFilter(a, selectedTeam))
+    .sort(
+      (a, b) =>
+        (a.assignedTeam || '').localeCompare(b.assignedTeam || '', 'ko') || a.name.localeCompare(b.name, 'ko')
+    );
+  // 안 적은 사람이 있으면 명단을 넘기기 전에 알아야 한다(문항을 껐던 기수도 여기로 온다).
+  const missingEnglishName = confirmedPass.filter((a) => !a.englishName).length;
+
+  /**
    * 최종 합격 확정 — **5번 최종 검토의 표시를 그대로 확정한다**(2026-08-24 사용자 지정).
    *
    * 팀부터 맞추고 상태를 바꾼다 — 순서를 반대로 하면 "합격은 확정됐는데 팀은 아직 옛값"인
@@ -466,7 +484,14 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
                 {previewDecisions.map((d, i) => (
                   <tr key={d.applicant.id} className="transition-colors hover:bg-cream-25">
                     <td className="p-3.5 text-center font-mono font-bold text-ink-500">{i + 1}</td>
-                    <td className="p-3.5 text-sm font-bold text-ink-900">{d.applicant.name}</td>
+                    <td className="p-3.5 text-sm font-bold text-ink-900">
+                      {d.applicant.name}
+                      {d.outcome === 'pass' && d.applicant.englishName && (
+                        <span className="block text-[11px] font-normal text-ink-500">
+                          {d.applicant.englishName}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-3.5">
                       {(() => {
                         const avg = formatScore(aggregations[d.applicant.id]?.interviewScoreAvg);
@@ -495,12 +520,77 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
                   return avg !== null ? <span className="font-bold text-blue-700">{avg}점</span> : <span className="text-ink-400">-</span>;
                 })()}
               </CardField>
+              {d.outcome === 'pass' && d.applicant.englishName && (
+                <CardField label="영문 이름">{d.applicant.englishName}</CardField>
+              )}
               {d.outcome === 'pass' && <CardField label="최종 팀">{d.finalTeam || '-'}</CardField>}
               <CardField label="사유">{reasonLabel(d.applicant.reviewMark)}</CardField>
             </RowCard>
           ))}
         />
       </Card>
+
+      {/* 최종 합격자 명단 — 영문 이름은 합격자에게만 쓰는 값이라(개인정보 처리방침) 이 자리에서만 보인다.
+          확정된 사람이 없으면 통째로 감춘다: 모집 중에는 늘 비어 있을 카드다. */}
+      {confirmedPass.length > 0 && (
+        <Card className="space-y-4">
+          <div className="border-b border-cream-200 pb-3">
+            <h2 className="text-sm font-bold text-ink-900">
+              최종 합격자 명단
+              <span className="ml-2 inline-block rounded-md bg-success-100 px-2 py-0.5 text-[11px] font-bold text-success-700">
+                {confirmedPass.length}명
+              </span>
+            </h2>
+            <p className="mt-1 text-xs text-ink-500">
+              확정이 끝난 합격자입니다. <strong>영문 이름</strong>은 외부 단체(로타랙트) 가입 안내에 쓰는
+              값으로, 합격자에게만 사용합니다.
+            </p>
+          </div>
+
+          {missingEnglishName > 0 && (
+            <p className="rounded-xl bg-cream-50 px-3.5 py-2.5 text-[12px] font-semibold text-amber-700">
+              <Icon name="alert" size={12} className="mr-1 inline" />
+              영문 이름 미입력 {missingEnglishName}명 — 지원서에 안 적었거나 그 문항을 껐던 기수입니다.
+              명단을 넘기기 전에 따로 받아야 합니다.
+            </p>
+          )}
+
+          <TableCards
+            table={
+              <table className="w-full text-left text-xs">
+                <thead className="bg-cream-100 font-semibold text-ink-700">
+                  <tr>
+                    <th className="w-12 p-3.5 text-center">번호</th>
+                    <th className="p-3.5">이름</th>
+                    <th className="p-3.5">영문 이름</th>
+                    <th className="p-3.5">팀</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cream-100">
+                  {confirmedPass.map((a: any, i: number) => (
+                    <tr key={a.id} className="transition-colors hover:bg-cream-25">
+                      <td className="p-3.5 text-center font-mono font-bold text-ink-500">{i + 1}</td>
+                      <td className="p-3.5 text-sm font-bold text-ink-900">{a.name}</td>
+                      <td className="p-3.5 text-ink-700">
+                        {a.englishName || <span className="text-amber-700">미입력</span>}
+                      </td>
+                      <td className="p-3.5 text-ink-700">{a.assignedTeam || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            }
+            cards={confirmedPass.map((a: any) => (
+              <RowCard key={a.id} title={a.name}>
+                <CardField label="영문 이름">
+                  {a.englishName || <span className="text-amber-700">미입력</span>}
+                </CardField>
+                <CardField label="팀">{a.assignedTeam || '-'}</CardField>
+              </RowCard>
+            ))}
+          />
+        </Card>
+      )}
 
       {/* 되돌릴 수 없는 작업 — 공개 스위치와 떨어뜨려 화면 맨 아래에 둔다. */}
       <Card className="space-y-3 border-coral-200 bg-coral-50/30">
