@@ -66,7 +66,21 @@ jobs:
   #   정상 실행이 **16초**다(2026-07-28 실측). 시간으로 보면 앞으로 정반대로 오해한다.
   #   판별 기준은 **테스트 개수**다 — 로그에 `test/rls.security.test.ts (88 tests)` 처럼 찍힌다.
   #   시크릿이 없으면 describe.skip 이라 0개로 지나가면서 초록이 된다(가짜 초록).
+  #
+  # ⚠ **이 잡만 운영 자격증명을 들고 돈다 — 그래서 신뢰할 수 있는 코드에서만 돌린다.**
+  #   `on: pull_request` 는 **PR 이 가져온 코드**를 실행한다. 아래 스텝의 env 에는 운영
+  #   `DIRECT_URL`(Postgres 전체 연결 문자열)이 들어 있으므로, PR 이 `test/rls.security.test.ts`
+  #   나 `vitest.prod.config.ts` 를 한 줄만 고쳐 오면 그 값을 그대로 밖으로 보낼 수 있다.
+  #   포크 PR 에는 GitHub 가 시크릿을 주지 않아 지금 당장 뚫려 있진 않지만, 이 리포는 public 이라
+  #   외부 기여를 한 번 받기 시작하거나 collaborator 계정이 하나 털리면 곧바로 운영 DB 전권이 나간다.
+  #   백업 잡이 `permissions: contents: read` 까지 깎아 둔 것과 같은 이유로 여기도 막는다.
+  #
+  #   조건: push(=main 에 이미 들어온 코드) 또는 **이 리포 안의 브랜치**에서 온 PR 만.
+  #   포크 PR 은 이 잡을 건너뛴다 — 어차피 시크릿이 없어 describe.skip 으로 가짜 초록이 될 뿐이다.
   rls-prod:
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
