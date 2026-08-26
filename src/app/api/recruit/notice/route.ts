@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
 import { canEditRecruitNotice, isStaffPlus } from '@/auth/permissions';
-import { getCohortById, listCohorts } from '@/recruit/cohorts';
+import { getCohortById, getPublicNoticeCohort, listCohorts } from '@/recruit/cohorts';
 import { updateCohortNoticeAndSettings } from '@/recruit/notice';
 import { resolveApplyForm } from '@/recruit/apply-form';
 import { resolveDutyRoles } from '@/recruit/duty-rules';
@@ -28,11 +28,21 @@ export async function GET(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const cohortId = searchParams.get('cohortId');
 
-  const cohort = cohortId ? await getCohortById(cohortId) : ((await listCohorts())[0] ?? null);
-  if (!cohort) return NextResponse.json({ cohort: null }, { status: 200 });
-
   const actor = await getCurrentActor();
   const isInternal = Boolean(actor && actor.membershipActive && isStaffPlus(actor.role));
+
+  // 기수를 지정하지 않았을 때의 기본값이 **보는 사람에 따라 다르다.**
+  //  - 비로그인/부원: 공개 화면과 같은 기수(본문이 채워진 최신) — 그냥 최신을 집으면 다음 기수를
+  //    만드는 순간 진행 중이던 공고가 내려간다(getPublicNoticeCohort 주석).
+  //  - 운영진 이상: 최신 기수 그대로. 편집 화면은 **아직 본문이 없는 새 기수를 열어야** 하므로
+  //    여기까지 좁히면 방금 만든 기수를 못 연다(지금은 편집 화면이 항상 cohortId 를 넘기지만,
+  //    기본값이 그 화면을 막는 모양으로 남아 있으면 안 된다).
+  const cohort = cohortId
+    ? await getCohortById(cohortId)
+    : isInternal
+      ? ((await listCohorts())[0] ?? null)
+      : await getPublicNoticeCohort();
+  if (!cohort) return NextResponse.json({ cohort: null }, { status: 200 });
 
   const publicFields = {
     id: cohort.id,

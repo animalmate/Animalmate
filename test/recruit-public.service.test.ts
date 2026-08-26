@@ -9,6 +9,7 @@ import { RULES } from '@/http/rate-limit';
 import { lookupApplicantResult } from '@/recruit/lookup';
 import { lookupFailKey } from '@/recruit/lookup-key';
 import { findApplicantInCohort, submitApplicant } from '@/recruit/applicants';
+import { getPublicNoticeCohort } from '@/recruit/cohorts';
 import { TEST_DATABASE_URL } from './db-url';
 
 const suite = describe;
@@ -246,6 +247,55 @@ suite('공개 접수·조회 (실 DB)', () => {
       expect(o!.replaced).toBe(true);
       expect(o!.replacedEmail).toBe('first@example.invalid');
       expect((await stored()).email).toBe('attacker@example.invalid');
+    });
+  });
+
+  // ── 공개 화면이 어느 기수를 가리키는가 ────────────────────────────────
+  // 기수에는 "발행됨" 상태가 없어서 예전엔 그냥 최신 기수를 집었다. 그래서 다음 기수를 **만들기만
+  // 해도** 진행 중이던 공고가 내려가고 지원서가 새 기수로 갈아탔다(보안 QA 2026-08-26, ⑦).
+  // 공격이 아니라 준비 작업으로 터지는 자리라, "새 기수를 만든다"를 실제로 해 봐야 드러난다.
+  describe('공개 공고 기수 선택', () => {
+    const PUBLISHED = 'QA-PUBLIC-발행된기수';
+    const DRAFT = 'QA-PUBLIC-준비중기수';
+
+    afterAll(async () => {
+      const cs = await db
+        .select({ id: recruitCohorts.id })
+        .from(recruitCohorts)
+        .where(inArray(recruitCohorts.label, [PUBLISHED, DRAFT]));
+      for (const c of cs) await db.delete(recruitCohorts).where(eq(recruitCohorts.id, c.id));
+    });
+
+    it('본문이 채워진 최신 기수를 고른다 — 뒤에 만든 빈 기수가 가로채지 않는다', async () => {
+      const [published] = await db
+        .insert(recruitCohorts)
+        .values({ label: PUBLISHED, createdBy: userId, noticeContent: '33기 모집합니다' })
+        .returning();
+
+      // 아직 아무것도 안 쓴 다음 기수를 **나중에** 만든다(= createdAt 이 더 최신).
+      await db.insert(recruitCohorts).values({ label: DRAFT, createdBy: userId });
+
+      const picked = await getPublicNoticeCohort();
+      expect(picked?.id).toBe(published!.id);
+      expect(picked?.label).toBe(PUBLISHED);
+    });
+
+    it('공백만 있는 본문은 발행으로 보지 않는다', async () => {
+      await db
+        .update(recruitCohorts)
+        .set({ noticeContent: '   \n  ' })
+        .where(eq(recruitCohorts.label, DRAFT));
+
+      const picked = await getPublicNoticeCohort();
+      expect(picked?.label).toBe(PUBLISHED); // 여전히 발행된 쪽
+    });
+
+    it('마감된 기수도 고른다 — 마감 안내를 보여 줘야 한다', async () => {
+      await db.update(recruitCohorts).set({ isClosed: true }).where(eq(recruitCohorts.label, PUBLISHED));
+
+      const picked = await getPublicNoticeCohort();
+      expect(picked?.label).toBe(PUBLISHED);
+      expect(picked?.isClosed).toBe(true);
     });
   });
 

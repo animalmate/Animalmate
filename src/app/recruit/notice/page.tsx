@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { getCohortById, listCohorts } from '@/recruit/cohorts';
+import { getCohortById, getPublicNoticeCohort } from '@/recruit/cohorts';
 import { Icon } from '@/components/icon';
 import { ctaSecondary } from '@/components/ui';
 import { CursorDog } from '@/components/cursor-dog';
@@ -10,7 +10,9 @@ export const dynamic = 'force-dynamic';
 // 공개 모집 공고에서 지원자에게 보여도 되는 필드만 추린다.
 // (합격 축하 멘트·면접 장소 프리셋 같은 내부 값은 여기로 넘어오지 않는다.)
 async function loadNotice(cohortId?: string) {
-  const cohort = cohortId ? await getCohortById(cohortId) : ((await listCohorts())[0] ?? null);
+  // 기수를 지정하지 않으면 **본문이 채워진 최신 기수**를 본다(getPublicNoticeCohort 주석).
+  // 그냥 최신 기수를 집으면 다음 기수를 만드는 순간 진행 중이던 공고가 내려간다.
+  const cohort = cohortId ? await getCohortById(cohortId) : await getPublicNoticeCohort();
   if (!cohort) return null;
   return {
     label: cohort.label,
