@@ -36,7 +36,11 @@ export function isValidEmail(value: unknown): value is string {
   return EMAIL_RE.test(s);
 }
 
-/** 비교·조회용 정규화(대소문자 무시). 저장 값의 표기는 바꾸지 않는다 — 화면에 적은 그대로 보인다. */
+/**
+ * 주소 정규화(앞뒤 공백 제거 + 소문자). 비교·조회에도, **저장에도** 이 값을 쓴다
+ * — `users.email`(가입·로그인)과 지원서 `email` 이 같은 표기로 남아야 재제출이 대소문자만
+ * 바뀌었을 때 "같은 주소"라는 판정과 실제 저장 값이 어긋나지 않는다.
+ */
 export function normalizeEmail(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }

@@ -46,7 +46,10 @@ export async function getPublicNoticeCohort() {
     .select()
     .from(recruitCohorts)
     // 공백만 있는 본문은 비어 있는 것으로 본다 — 화면에서도 빈 칸으로 보이므로 발행 신호가 아니다.
-    .where(sql`btrim(coalesce(${recruitCohorts.noticeContent}, '')) <> ''`)
+    // ⚠ `btrim(x)` 는 **스페이스만** 깎는다(기본 깎을 문자가 ' ' 하나다). 그래서 줄바꿈이 섞인
+    //   본문은 이 검사를 통과해, 편집 화면에서 엔터만 몇 번 친 빈 기수가 발행된 것으로
+    //   잡혔다. 공백 문자 전체를 보려면 "공백 아닌 글자가 하나라도 있는가"로 묻는 편이 확실하다.
+    .where(sql`coalesce(${recruitCohorts.noticeContent}, '') ~ '[^[:space:]]'`)
     .orderBy(desc(recruitCohorts.createdAt))
     .limit(1);
   return found ?? null;

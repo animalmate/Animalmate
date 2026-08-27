@@ -5,6 +5,7 @@ import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 import { attendanceRevertTarget, RecruitStatus } from './status';
 import { normalizeMoveTeam, type ReviewMark } from './review-marks';
 import { shortTeamName } from './team-name';
+import { normalizeEmail } from '../lib/email';
 
 /**
  * 행에 덮어씌울 팀 이름 3종. 지원자가 고른 값에 지역이 붙어 있으면("1팀 - 강남(집결지 강남역)")
@@ -345,13 +346,18 @@ export interface SubmissionOutcome {
 export async function submitApplicant(input: ApplicantSubmission): Promise<SubmissionOutcome | null> {
   const cleanPhone = input.phone.replace(/[^0-9]/g, '');
   const cleanName = input.name.trim();
+  // 주소는 **정규화한 뒤 저장한다**(가입/로그인이 users.email 을 다루는 방식과 같다).
+  // 그러지 않으면 앞뒤 공백이 그대로 들어가 발송 직전 형식 검사에 걸려 결과 안내가 통째로
+  // 빠지고, 대소문자만 다른 재제출이 "바뀌지 않았다"로 판정되면서도 저장 값은 갈리는,
+  // 판정과 저장이 어긋난 상태가 된다. 빈 값은 null 이다(이메일 문항을 끈 기수 — 결정 146).
+  const cleanEmail = normalizeEmail(input.email) || null;
 
   const values = {
     gender: input.gender ?? null,
     birthDate: input.birthDate ?? null,
     school: input.school ?? null,
     department: input.department ?? null,
-    email: input.email ?? null,
+    email: cleanEmail,
     applyRoute: input.applyRoute ?? null,
     otherActivities: input.otherActivities ?? null,
     expectedFrequency: input.expectedFrequency ?? null,
@@ -425,16 +431,15 @@ export async function submitApplicant(input: ApplicantSubmission): Promise<Submi
     //  ② 주소가 실제로 **바뀌면** 직전 주소를 호출부에 돌려준다 → 그쪽으로 알림이 나간다.
     //     막지 못하는 자리(오타 수정과 구분할 방법이 없다)라 **본인이 즉시 알게** 만든다 —
     //     회장단 권한 변경 알림이 행위자까지 포함해 보내는 것과 같은 발상이다(auth/operators.ts).
-    const previousEmail = (existing.email ?? '').trim();
-    const nextEmail = (input.email ?? '').trim();
-    const emailChanged =
-      previousEmail !== '' && nextEmail !== '' && previousEmail.toLowerCase() !== nextEmail.toLowerCase();
+    // 예전에 저장된 행에는 정규화 이전 표기가 남아 있을 수 있어 읽을 때도 한 번 맞춘다.
+    const previousEmail = normalizeEmail(existing.email);
+    const emailChanged = previousEmail !== '' && cleanEmail !== null && previousEmail !== cleanEmail;
 
     await tx
       .update(recruitApplicants)
       .set({
         ...values,
-        ...(nextEmail ? {} : { email: existing.email ?? null }), // ① 빈 값으로 지우지 않는다
+        ...(cleanEmail ? {} : { email: existing.email ?? null }), // ① 빈 값으로 지우지 않는다
         ...(staffMovedTeam ? {} : { assignedTeam: input.wishTeam1 ?? null }),
       })
       .where(eq(recruitApplicants.id, existing.id));
