@@ -54,6 +54,10 @@ const BOARD_MENU: NavItem[] = [
   { href: '/admin/join-codes', label: '가입코드', icon: 'key' },
   { href: '/admin/boards', label: '게시판', icon: 'board' },
   { href: '/admin/chatbot', label: '챗봇설정', icon: 'info' },
+  // 감사 기록 조회(2026-08-28 신설). 사고를 조사할 때만 여는 화면이지만 **회장단이 직접 열 수
+  // 있어야** 한다 — 그전까지 읽는 수단이 `psql` 뿐이라, 규칙 #4 가 남기라고 한 기록을 정작
+  // 남긴 목적대로 쓸 사람이 못 보고 있었다. 메뉴 맨 끝에 두는 이유는 자주 쓰지 않기 때문이다.
+  { href: '/admin/audit', label: '기록', icon: 'layers' },
 ];
 
 function menuFor(role: string): NavItem[] {
@@ -77,6 +81,7 @@ function activeKey(pathname: string): string {
   if (pathname.startsWith('/admin/members')) return '/admin/members';
   if (pathname.startsWith('/admin/join-codes')) return '/admin/join-codes';
   if (pathname.startsWith('/admin/boards')) return '/admin/boards';
+  if (pathname.startsWith('/admin/audit')) return '/admin/audit';
   return '/';
 }
 
@@ -112,10 +117,19 @@ export function ConsoleNav({ role }: { role: string }) {
 
   return (
     <header className="relative border-b border-ink-200 bg-white">
-      {/* 헤더만 본문(1120)보다 넓게 쓴다. 회장단은 메뉴가 10개라 1120 안에 들어가지 않아서,
-          좁히면 마지막 메뉴(챗봇설정)가 넓은 화면에서도 잘린다. 본문과 나란히 맞추는 것보다
-          메뉴가 다 보이는 편이 낫다 — 로고·본문 시작선은 원래도 정확히 맞지 않았다. */}
-      <div className="mx-auto flex h-[60px] max-w-[1400px] items-center gap-2 px-3 sm:px-4">
+      {/* 헤더만 본문(1120)보다 넓게 쓴다. 회장단 메뉴가 많아 1120 안에 들어가지 않는다.
+          본문과 나란히 맞추는 것보다 메뉴가 다 보이는 편이 낫다 — 로고·본문 시작선은 원래도
+          정확히 맞지 않았다.
+
+          **1400 → 1560 (2026-08-28).** 옛 주석은 "메뉴가 다 보인다"고 적어 뒀지만 실측하면
+          아니었다: 메뉴 12개일 때 이미 **1920px 에서도 55px 넘쳐 `챗봇설정` 이 잘려 있었다**
+          (상한이 1400 이라 화면을 넓혀도 소용없다). 13개가 되면서 128px 로 벌어졌다.
+          상한을 1560 으로 올려 **1600px 이상에서는 13개가 전부 보인다**(실측).
+
+          ⚠ 1280·1366·1440 에서는 여전히 잘린다(넘침 248·162·88px). 뷰포트가 물리적으로 모자란
+          것이라 상한으로는 못 고친다 — 라벨이나 여백을 줄여야 한다. `overflow-x-auto` 로 스크롤은
+          되지만 스크롤바를 숨겨 놔서 눈에 띄는 신호가 없다. 메뉴를 더 늘리기 전에 여기부터 볼 것. */}
+      <div className="mx-auto flex h-[60px] max-w-[1560px] items-center gap-2 px-3 sm:px-4">
         <a href="/" className="flex items-center gap-2 no-underline shrink-0 mr-1">
           <img src="/logo.png" alt="애니멀메이트" className="h-8 w-8 rounded-full" />
           <strong className="text-[17px] font-bold text-ink-900 hidden sm:inline">애니멀메이트</strong>
