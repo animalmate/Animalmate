@@ -13,6 +13,36 @@ describe('chunkDocument', () => {
     expect(chunks[1]!.index).toBe(1);
   });
 
+  // 2026-08-28: 평가셋이 잡은 실제 결함이다. `33기 동아리 기본 정보` 가 `##` 를 제목 없는
+  // 구분선으로만 써서 문서 전체가 한 섹션이 됐고, 길이로만 잘린 982자 잡탕 조각 안에 회비가
+  // 묻혀 검색 12위까지 밀렸다("회비는 얼마예요?" 가 핸드오프됐다).
+  it('제목 없는 `##` 구분선도 섹션을 나눈다 — 항목이 서로 다른 조각에 들어간다', () => {
+    const md = `2010년에 결성된 동아리입니다.\n##\n활동 기간 :\n1년 (1년 이후 영구회원 전환 가능)\n##\n회비:\n5만원 (1년 기준)\n##\n활동 내용:\n보호소 봉사를 갑니다.`;
+    const chunks = chunkDocument('동아리 기본 정보', md);
+    expect(chunks.length).toBe(4);
+    const 회비조각 = chunks.find((c) => c.content.includes('5만원'))!;
+    expect(회비조각).toBeDefined();
+    // 핵심은 개수가 아니라 **섞이지 않는 것**이다 — 회비 조각에 활동 내용이 딸려 오면
+    // 그 조각은 다시 잡탕이 되고 "회비" 질문과의 유사도가 희석된다.
+    expect(회비조각.content).not.toContain('보호소 봉사');
+    expect(회비조각.content).not.toContain('2010년');
+  });
+
+  it('제목 없는 구분선은 헤딩 경로에 빈 칸을 만들지 않는다', () => {
+    const md = `## 회계\n들어가는 말\n##\n회비는 5만원입니다.`;
+    const chunks = chunkDocument('가이드', md);
+    const 회비조각 = chunks.find((c) => c.content.includes('5만원'))!;
+    expect(회비조각.content).toContain('[가이드 › 회계]');
+    expect(회비조각.content).not.toMatch(/›\s*›/); // "가이드 › › 회계" 같은 빈 칸
+  });
+
+  it('`#hashtag` 처럼 글자가 붙은 줄은 구분선이 아니다', () => {
+    const md = `본문 앞줄\n#해시태그\n본문 뒷줄`;
+    const chunks = chunkDocument('문서', md);
+    expect(chunks.length).toBe(1);
+    expect(chunks[0]!.content).toContain('#해시태그');
+  });
+
   it('중첩 헤딩은 경로로 이어진다(상위 › 하위)', () => {
     const md = `# 운영\n## 회계\n### 회비\n학기당 2만원.`;
     const [c] = chunkDocument('가이드', md);

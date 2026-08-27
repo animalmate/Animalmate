@@ -8,7 +8,7 @@
 // visibility(member|staff|board)는 **챗봇 검색 노출 범위**다. 편집 권한(소유권)과는 별개다:
 // 편집은 소유자(개인 본인/소속 팀) + 회장단, 검색 노출은 visibility ≤ 질문자 역할(search.ts).
 
-import { and, desc, eq, inArray, or, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { documents, docChunks } from '@/db/schema';
 import type { Actor, OwnerType } from '@/auth/permissions';
@@ -205,6 +205,49 @@ export async function updateDocument(db: Db, actor: Actor, id: string, patch: Do
     buildAuditEntry({ actorUserId: actor.userId, action: 'document.update', targetTable: 'documents', targetId: id, before: { title: before.title, visibility: before.visibility }, after: { title: doc.title, visibility: doc.visibility, reindexed: chunkRows !== null } })
   );
   return doc;
+}
+
+/**
+ * 본문은 그대로 두고 **조각만 다시 만든다**(재색인).
+ *
+ * 왜 따로 필요한가(2026-08-28): `updateDocument` 는 제목·본문이 **바뀌었을 때만** 재색인한다.
+ * 같은 내용으로 저장을 다시 눌러도 아무 일도 일어나지 않는다 — 합리적인 최적화지만, 그 때문에
+ * **청킹·임베딩 규칙을 고쳐도 이미 저장된 문서에는 영원히 닿지 않는다.** 실제로 이 자리에서
+ * 겪었다: 제목 없는 `##` 구분선을 섹션 경계로 인정하도록 청킹을 고쳤는데, 정작 그 규칙이
+ * 필요한 문서는 옛 조각을 그대로 들고 있어 챗봇 답이 하나도 달라지지 않았다.
+ *
+ * 내용을 바꾸지 않으므로 PII 재검사는 하지 않는다(저장된 본문은 이미 검사를 거친 값이다).
+ * 훑어보기가 필요하면 `scripts/sync-rag-docs.ts --audit` 이 따로 한다.
+ */
+export async function reindexDocument(
+  db: Db,
+  actor: Actor,
+  id: string
+): Promise<{ title: string; before: number; after: number }> {
+  const [doc] = await db.select().from(documents).where(eq(documents.id, id)).limit(1);
+  if (!doc) throw new Error(`document not found: ${id}`);
+  requireAuthorized(actor, { kind: 'document.modify', owner: ownershipOf(doc) });
+
+  const [beforeRow] = await db.select({ value: count() }).from(docChunks).where(eq(docChunks.documentId, id));
+  const before = beforeRow?.value ?? 0;
+
+  const rows = await embedChunks(doc.title, doc.contentMd); // 네트워크 — 트랜잭션 밖에서
+  await db.transaction(async (tx) => {
+    await writeChunks(tx, id, rows);
+  });
+
+  await recordAudit(
+    db,
+    buildAuditEntry({
+      actorUserId: actor.userId,
+      action: 'document.reindex',
+      targetTable: 'documents',
+      targetId: id,
+      before: { chunks: before },
+      after: { chunks: rows.length },
+    })
+  );
+  return { title: doc.title, before, after: rows.length };
 }
 
 export async function deleteDocument(db: Db, actor: Actor, id: string): Promise<void> {
