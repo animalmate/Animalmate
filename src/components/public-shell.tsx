@@ -29,7 +29,16 @@ export function PublicShell({
 
       <header className="border-b border-cream-200 bg-gradient-to-b from-cream-100 to-cream-25 px-4 py-12 sm:py-16">
         <div className="mx-auto max-w-2xl space-y-4 text-center">
-          <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-16 w-16 rounded-full" />
+          {/* 로고가 아니라 그림을 쓴다 — 바로 위 내비에 이미 로고가 있어서, 여기 또 얹으면
+              같은 것이 두 번 나온 것처럼 보인다(2026-08-28 사용자 지적).
+              `alt` 는 비운다: 장식이고, 이 화면의 이름은 내비와 바로 아래 제목이 이미 말한다. */}
+          <img
+            src="/mark.webp"
+            alt=""
+            width={640}
+            height={399}
+            className="mx-auto w-40 sm:w-52"
+          />
           <h1 className="text-balance text-[26px] font-bold tracking-tight text-ink-900 sm:text-[32px]">
             {title}
           </h1>
