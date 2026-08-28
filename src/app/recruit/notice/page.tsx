@@ -63,7 +63,10 @@ function NoticeHero({ notice }: { notice: Notice }) {
     <header className="border-b border-cream-200 bg-gradient-to-b from-cream-100 to-cream-25 px-4 py-12 sm:py-16">
       {/* 제목이 한 줄로 서야 해서 `xl`(576px)보다 넓게 잡는다 — 19자 제목이 그 폭에서는 접힌다. */}
       <div className="mx-auto max-w-2xl space-y-5 text-center">
-        <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-16 w-16 rounded-full" />
+        {/* 내비에 이미 로고가 있어 여기 또 얹으면 같은 것이 두 번 나온다(2026-08-28).
+            ABOUT·CONTACT 보다 작게 쓴다 — 이 화면의 주인공은 그림이 아니라 아래 제목과
+            지원 버튼이고, 그림이 커지면 그것들이 화면 밖으로 밀린다. */}
+        <img src="/mark.webp" alt="" width={640} height={399} className="mx-auto w-28 sm:w-32" />
 
         <div className="space-y-2.5">
           <span className="inline-flex items-center rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-coral-700 shadow-card">
@@ -99,7 +102,8 @@ function OffSeasonHero() {
   return (
     <header className="px-4 py-16 sm:py-24">
       <div className="mx-auto max-w-2xl space-y-4 text-center">
-        <img src="/logo.png" alt="애니멀메이트" className="mx-auto h-16 w-16 rounded-full" />
+        {/* 위 히어로와 같은 이유로 로고가 아니라 그림. 크기도 같게 맞춘다. */}
+        <img src="/mark.webp" alt="" width={640} height={399} className="mx-auto w-28 sm:w-32" />
         <h1 className="text-balance text-[24px] font-bold leading-snug tracking-tight text-ink-900 sm:text-[32px]">
           다음 모집에서 만나요
         </h1>
