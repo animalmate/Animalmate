@@ -27,3 +27,31 @@
   a:hover { @apply text-blue-700 underline; }
 }
 
+/* 스크롤에 맞춰 스르륵 나타나는 요소(모집 공고 ABOUT 의 활동 사진).
+ *
+ * 기본값은 **아무 스타일도 없음**이다 — 내용이 처음부터 보인다. 효과는 아래 두 관문을 모두
+ * 통과할 때만 얹힌다. 순서가 중요하다: 숨겨 놓고 보여 주는 방식이면 스크립트나 지원이 없는
+ * 환경에서 사진이 영영 안 보인다("내용을 애니메이션 뒤에 숨기지 말 것").
+ *   ① @supports — 스크롤 타임라인을 모르는 브라우저는 그냥 정적인 사진을 본다.
+ *   ② prefers-reduced-motion — 움직임을 줄이도록 설정한 사람에게는 걸지 않는다(WCAG 2.3.3).
+ *
+ * 자바스크립트(IntersectionObserver)를 쓰지 않는 이유: 스크롤 타임라인은 컴포지터에서 돌아
+ * 스크롤을 끊지 않고, 하이드레이트 전에 잠깐 보였다 사라지는 깜빡임도 없다.
+ * 구간을 `cover` 로 잡는 것도 이유가 있다 — `entry` 끝까지로 잡으면 화면보다 큰 사진은
+ * "완전히 들어오는" 순간이 오지 않아 반투명인 채로 멈춘다.
+ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal-on-scroll {
+      animation: reveal-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 25%;
+    }
+  }
+}
+
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: none; }
+}
+
