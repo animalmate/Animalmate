@@ -62,26 +62,9 @@ export function LoginForm() {
         <p className="mt-1 text-[13px] text-ink-500">
           {step === 'choose' ? '동아리 회원 전용 서비스예요.' : '이메일로 인증 코드를 받아 로그인해요.'}
         </p>
-        {/* 아직 동아리원이 아닌 사람이 갈 곳(모집 공고). 아래 '회원가입' 안내와 다른 사람을 위한 줄이다 —
-            가입은 **이미 동아리원인데 계정이 없는** 사람의 길이고, 이 줄은 동아리에 들어오려는 사람의 길이다.
-            첫 화면(갈림길)에만 둔다: 코드 입력 중에 나오면 하던 일과 상관없는 링크가 끼어든다.
-            링크에 **세로** 여백만 준 이유: 13px 글자 두 자라 손가락으로 누르기 좁은데, 가로 패딩을
-            주면 조사가 떨어져 "여기 를 클릭"으로 읽힌다. 세로 패딩은 줄 높이를 바꾸지 않고
-            누를 수 있는 넓이만 키운다. */}
-        {step === 'choose' ? (
-          <p className="mt-1 text-[13px] text-ink-500">
-            동아리 회원이 아니라면{' '}
-            <a
-              href="/recruit/notice"
-              className="py-2 font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
-            >
-              여기
-            </a>
-            를 클릭
-          </p>
-        ) : null}
       </div>
       {step === 'choose' ? (
+        <>
         <Card className="space-y-3">
           <Button className="w-full" onClick={() => setStep('email')}>
             로그인
@@ -100,6 +83,25 @@ export function LoginForm() {
             가입하지 않은 이메일로는 로그인할 수 없어요.
           </p>
         </Card>
+        {/* 아직 동아리원이 아닌 사람이 갈 곳(모집 공고). **카드 밖·카드 아래**에 둔다
+            (2026-08-29 사용자 지정 — 처음엔 위 인사말에 붙였다가 옮겼다).
+            카드 안은 '로그인이냐 가입이냐'를 고르는 자리이고, 이 줄은 그 갈림길 자체에
+            해당하지 않는 사람에게 하는 말이라 자리가 갈리는 편이 읽기 쉽다.
+            첫 화면(갈림길)에만 세운다: 코드 입력 중에 나오면 하던 일과 상관없는 링크가 끼어든다.
+            링크에 **세로** 여백만 준 이유: 13px 글자 두 자라 손가락으로 누르기 좁은데, 가로 패딩을
+            주면 조사가 떨어져 "여기 를 클릭"으로 읽힌다. 세로 패딩은 줄 높이를 바꾸지 않고
+            누를 수 있는 넓이만 키운다. */}
+        <p className="mt-4 text-center text-[13px] text-ink-500">
+          동아리 회원이 아니라면{' '}
+          <a
+            href="/recruit/notice"
+            className="py-2 font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
+          >
+            여기
+          </a>
+          를 클릭
+        </p>
+        </>
       ) : (
       <Card className="space-y-4">
         {step === 'email' ? (
