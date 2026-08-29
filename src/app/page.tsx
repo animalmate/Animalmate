@@ -17,8 +17,6 @@ interface Shortcut {
   label: string;
   desc: string;
   icon: string;
-  /** 브라우저 새 탭으로 연다. 콘솔 밖(공개 페이지)으로 나가는 링크에만 쓴다. */
-  newTab?: boolean;
 }
 
 // 순서 = 손이 자주 가는 순(2026-08-03 사용자 지정). 예약·템플릿이 주 업무고 일정은 그다음이다.
@@ -48,16 +46,6 @@ const RECRUIT_BOARD: Shortcut = {
   desc: '공고부터 최종 발표까지',
   icon: 'userPlus',
 };
-// 지원자에게 실제로 보이는 공개 공고. 운영진·회장단 모두 "지금 뭐가 나가 있나"를 확인할 일이 잦아
-// 홈에서 바로 열 수 있게 둔다(2026-07-31 사용자 요청). 로그인 없이도 열리는 페이지다.
-// 콘솔 밖으로 나가는 링크라 **새 탭**으로 연다 — 보던 화면을 잃지 않게.
-const RECRUIT_NOTICE_PUBLIC: Shortcut = {
-  href: '/recruit/notice',
-  label: '모집 공고 보기',
-  desc: '모집 공고 확인',
-  icon: 'external',
-  newTab: true,
-};
 const BOARD_SHORTCUTS: Shortcut[] = [
   { href: '/documents', label: '문서', desc: '챗봇 안내 문서 관리', icon: 'layers' },
   { href: '/admin/members', label: '회원·팀 관리', desc: '역할·팀·직함 지정', icon: 'users' },
@@ -68,7 +56,7 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 
 // 외부 바로가기(새 탭). staffOnly 는 서버에서 걸러 부원의 HTML 에 URL 자체가 나가지 않는다(규칙 #6).
 interface ExternalLink extends Shortcut {
-  tone: 'cafe' | 'drive';
+  tone: 'cafe' | 'drive' | 'recruit';
   staffOnly?: boolean;
 }
 // 카페 주소는 동아리와 함께 고정이라 코드에 둔다. **드라이브는 기수마다 바뀌므로** 설정값으로
@@ -89,10 +77,22 @@ const driveLink = (href: string): ExternalLink => ({
   tone: 'drive',
   staffOnly: true, // 부원 비공개
 });
-// 톤별 색(브랜드 팔레트). 카페=초록(네이버), 드라이브=앰버 — 내부 파랑 바로가기와 시각적으로 구분.
+// 지원자에게 보이는 것과 같은 공개 공고. **부원·운영진 모두** 볼 수 있다 — 지원자 안내·공유용으로
+// 자주 열어 본다(2026-08-28 사용자 요청). 예전엔 운영진 전용 상단 바로가기로만 있었는데,
+// 전원에게 보여야 하는 값이라 이 줄로 옮겼다(2026-08-29). staffOnly 를 달지 않는 이유다.
+const RECRUIT_NOTICE_LINK: ExternalLink = {
+  href: '/recruit/notice',
+  label: '모집 공고',
+  desc: '모집 공고 확인',
+  icon: 'userPlus',
+  tone: 'recruit',
+};
+// 톤별 색(브랜드 팔레트). 카페=초록(네이버), 드라이브=앰버, 모집공고=파랑(내부 라우트라 콘솔과 같은 색) —
+// 서로 시각적으로 구분.
 const TONE: Record<ExternalLink['tone'], { chip: string; hover: string }> = {
   cafe: { chip: 'bg-success-100 text-success', hover: 'hover:border-success' },
   drive: { chip: 'bg-amber-50 text-amber-600', hover: 'hover:border-amber-300' },
+  recruit: { chip: 'bg-blue-50 text-blue-600', hover: 'hover:border-blue-300' },
 };
 
 export default async function HomePage() {
@@ -101,12 +101,17 @@ export default async function HomePage() {
   const board = isPrivileged(actor.role);
   const shortcuts = [
     ...(staff ? STAFF_SHORTCUTS : MEMBER_SHORTCUTS),
-    ...(staff ? [board ? RECRUIT_BOARD : RECRUIT_STAFF, RECRUIT_NOTICE_PUBLIC] : []),
+    // 공개 공고 보기는 여기 없다 — 아래 "바로가기"의 모집 공고 카드가 같은 곳으로 간다(2026-08-29).
+    // 예전엔 운영진에게만 상단에도 두었는데, 부원까지 보이는 카드가 생기면서 한 화면에 같은
+    // 주소가 두 번 서게 됐다(어느 쪽이 진짜인지 헷갈린다).
+    ...(staff ? [board ? RECRUIT_BOARD : RECRUIT_STAFF] : []),
     ...(board ? BOARD_SHORTCUTS : []),
   ];
   // 드라이브는 **운영진 이상 + 주소가 설정돼 있을 때만** 조회한다(부원에겐 조회조차 하지 않는다).
   const driveUrl = staff ? await getDriveUrl(db) : null;
-  const externals = [CAFE_LINK, ...(driveUrl ? [driveLink(driveUrl)] : [])].filter((l) => !l.staffOnly || staff);
+  const externals = [CAFE_LINK, ...(driveUrl ? [driveLink(driveUrl)] : []), RECRUIT_NOTICE_LINK].filter(
+    (l) => !l.staffOnly || staff,
+  );
   const name = actor.name?.trim() || '회원'; // loadActor 가 이미 읽어 온 값 — users 재조회 없음
 
   return (
@@ -152,7 +157,6 @@ export default async function HomePage() {
               <a
                 key={s.href}
                 href={s.href}
-                {...(s.newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                 className="no-underline"
               >
                 <Card className="flex min-h-[92px] items-center gap-3.5 transition-colors hover:border-blue-300">
