@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Icon } from './icon';
+import { CAFE_VOLUNTEER_BOARD, isMobileUserAgent } from '@/boards/cafe-url';
 
 /**
  * 공개 화면(모집 공고 · ABOUT · CONTACT) 공통 상단 메뉴.
@@ -17,7 +18,6 @@ import { Icon } from './icon';
 /** 공개 화면의 첫 문. 로고를 누르면 여기로 돌아온다. */
 export const PUBLIC_HOME = '/recruit/notice';
 
-const CAFE_VOLUNTEER_URL = 'https://cafe.naver.com/f-e/cafes/29850342/menus/21';
 const INSTAGRAM_URL = 'https://www.instagram.com/animalmate_/';
 
 const PAGE_LINKS = [
@@ -25,8 +25,16 @@ const PAGE_LINKS = [
   { href: '/contact', label: 'CONTACT' },
 ];
 
-const PHOTO_LINKS = [
-  { href: CAFE_VOLUNTEER_URL, label: '봉사 기록', hint: '네이버 카페' },
+/**
+ * 봉사 기록만 기기에 따라 주소가 갈린다(카페 PC 경로는 휴대폰에서도 PC 화면으로 뜬다 —
+ * `CAFE_VOLUNTEER_BOARD` 주석). 인스타그램은 자기가 알아서 기기에 맞춰 준다.
+ */
+const photoLinks = (mobile: boolean) => [
+  {
+    href: mobile ? CAFE_VOLUNTEER_BOARD.mobile : CAFE_VOLUNTEER_BOARD.pc,
+    label: '봉사 기록',
+    hint: '네이버 카페',
+  },
   { href: INSTAGRAM_URL, label: '행사 기록', hint: '인스타그램' },
 ];
 
@@ -41,6 +49,16 @@ export function PublicNav() {
   const pathname = usePathname();
   const [openPhotos, setOpenPhotos] = useState(false);
   const photosRef = useRef<HTMLDivElement>(null);
+  /**
+   * 기기 판정은 **그리고 나서** 한다. 서버에는 navigator 가 없으니 첫 렌더는 무조건 PC 주소이고,
+   * 브라우저에서 한 번 더 그리며 휴대폰이면 모바일 주소로 바꾼다. 처음부터 판정하려 들면
+   * 서버가 그린 HTML 과 어긋나 hydration 이 깨진다(그러면 이 메뉴의 JS 가 통째로 죽는다).
+   * 클릭 시점이 아니라 마운트 시점에 바꾸는 이유: 길게 눌러 '주소 복사'를 해도 맞는 주소가 나온다.
+   */
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    setMobile(isMobileUserAgent(navigator.userAgent));
+  }, []);
 
   // 바깥을 누르거나 Esc 를 누르면 닫는다. 드롭다운을 열어 둔 채로 페이지를 스크롤하면
   // 메뉴만 화면에 떠 있어 무엇에 딸린 메뉴인지 알 수 없다.
@@ -116,9 +134,9 @@ export function PublicNav() {
                 role="menu"
                 className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-2xl border border-cream-200 bg-white p-1.5 shadow-raised"
               >
-                {PHOTO_LINKS.map((l) => (
+                {photoLinks(mobile).map((l) => (
                   <a
-                    key={l.href}
+                    key={l.label}
                     role="menuitem"
                     href={l.href}
                     target="_blank"
