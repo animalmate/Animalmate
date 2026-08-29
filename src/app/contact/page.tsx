@@ -34,14 +34,11 @@ export default async function ContactPage() {
         <ChannelsCard />
       </div>
 
-      {/* 제작자 크레딧 — /login 과 같은 문구·개인 연락처(2026-08-28). CONTACT_EMAIL(위 운영진 문의)과는
-          다른, 사이트를 만든 사람 개인 이메일이라 하드코딩한다. */}
-      <p className="pt-8 text-center text-[11px] leading-relaxed text-ink-400">
-        사이트제작 한채훈{' '}
-        <a href="mailto:sweetkid01@naver.com" className="underline underline-offset-2 hover:text-ink-500">
-          sweetkid01@naver.com
-        </a>
-      </p>
+      {/* 제작자 크레딧 — 이름만 적는다. **여기엔 이메일을 두지 않는다**(2026-08-29 사용자 지정):
+          이 화면은 지원자·외부인이 문의처를 찾으러 오는 곳이라, 만든 사람 개인 주소가 함께 서면
+          그리로 문의가 간다. 문의 창구는 위 인스타그램·카카오톡 채널이다.
+          개인 연락처가 필요한 회원용 경로는 /login 크레딧에 남겨 둔다. */}
+      <p className="pt-8 text-center text-[11px] leading-relaxed text-ink-400">사이트제작 한채훈</p>
     </PublicShell>
   );
 }
