@@ -24,6 +24,26 @@ export function docSampleState(scorerCount: number): DocSampleState {
   return 'ok';
 }
 
+/**
+ * 한 지원자를 채점하는 면접관 정원. 검토 화면에서 이 수를 벗어난 줄을 눈에 띄게 하려고 쓴다.
+ * 서류의 '표본 3명' 기준(docSampleState)과 같은 수지만 근거가 달라 상수를 따로 둔다 —
+ * 서류는 통계 표본이고, 면접은 한 조에 들어가는 면접관 수다(2026-08-29 사용자 지정).
+ */
+export const INTERVIEW_SCORER_TARGET = 3;
+
+/**
+ * 면접 채점 인원이 정원(3명)과 어긋났는가.
+ *
+ * **모자란 쪽만 보지 않는다.** 4명은 다른 조 면접관이 남의 지원자를 잘못 채점했다는 뜻이라
+ * 2명만큼이나 손을 봐야 한다 — 평균이 엉뚱한 표본으로 계산된다. 그래서 `< 3` 이 아니라
+ * `!== 3` 이다(2026-08-29 사용자 지정).
+ *
+ * 0명(= 아무도 채점 안 함)은 화면이 이미 '미채점'으로 따로 알리므로 여기까지 오지 않는다.
+ */
+export function isInterviewScorerCountOff(scorerCount: number): boolean {
+  return scorerCount !== INTERVIEW_SCORER_TARGET;
+}
+
 export interface SlotLike {
   venue?: string | null;
   link?: string | null;

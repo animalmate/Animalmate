@@ -21,6 +21,7 @@ import {
   type ReviewMark,
 } from '@/recruit/review-marks';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
+import { INTERVIEW_SCORER_TARGET, isInterviewScorerCountOff } from '@/recruit/display';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { formatScore } from '@/recruit/display';
 import { formatPhone } from '@/lib/phone';
@@ -93,6 +94,24 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+/**
+ * 채점 인원 표시. 정원(3명)과 어긋나면 **빨갛게** 세운다(2026-08-29 사용자 지정).
+ *
+ * 회의는 이 표를 위에서 아래로 훑는다 — 인원이 회색으로 조용히 적혀 있으면 2명짜리 평균과
+ * 3명짜리 평균이 같은 무게로 읽힌다. 색만으로 뜻을 전하지 않도록 `title` 로 사유도 적는다.
+ */
+function ScorerCount({ count }: { count: number }) {
+  const off = isInterviewScorerCountOff(count);
+  return (
+    <span
+      className={`text-[11px] font-semibold ${off ? 'text-error-700' : 'text-ink-400'}`}
+      title={off ? `면접관 ${INTERVIEW_SCORER_TARGET}명 기준과 다릅니다` : undefined}
+    >
+      {count}명
+    </span>
+  );
+}
+
 /** 점수 한 칸. 미채점은 숫자 자리를 비우지 않고 그렇게 적는다 — 0점으로 읽히면 안 된다. */
 function ScoreCell({ avg, scorerCount }: { avg: string | null; scorerCount: number }) {
   if (avg === null) {
@@ -101,7 +120,7 @@ function ScoreCell({ avg, scorerCount }: { avg: string | null; scorerCount: numb
   return (
     <span className="inline-flex items-baseline gap-1.5">
       <span className="text-sm font-bold text-blue-700">{avg}점</span>
-      <span className="text-[11px] font-semibold text-ink-400">{scorerCount}명</span>
+      <ScorerCount count={scorerCount} />
     </span>
   );
 }
@@ -127,7 +146,7 @@ function InterviewScoreRow({ avg, scorerCount }: { avg: string | null; scorerCou
     <p className="mt-2.5 flex items-baseline gap-2 rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2">
       <span className="text-[11px] font-semibold text-ink-400">면접 점수</span>
       <span className="text-[22px] font-bold leading-tight text-blue-700">{avg}</span>
-      <span className="text-[11px] font-semibold text-ink-400">{scorerCount}명</span>
+      <ScorerCount count={scorerCount} />
     </p>
   );
 }

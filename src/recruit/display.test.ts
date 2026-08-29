@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatScore, docSampleState, slotPlaceLabel, slotPanelNumbers, slotPanelSuffix, slotPanelLabel, suggestNextPanelName } from './display';
+import { formatScore, docSampleState, isInterviewScorerCountOff, INTERVIEW_SCORER_TARGET, slotPlaceLabel, slotPanelNumbers, slotPanelSuffix, slotPanelLabel, suggestNextPanelName } from './display';
 
 describe('점수 표기', () => {
   it('정수 평균도 소수 첫째 자리까지 쓴다', () => {
@@ -28,6 +28,21 @@ describe('서류 채점 표본 상태', () => {
     expect(docSampleState(2)).toBe('deficient');
     expect(docSampleState(3)).toBe('ok');
     expect(docSampleState(5)).toBe('ok');
+  });
+});
+
+describe('면접 채점 인원 정원', () => {
+  it('정원(3명)일 때만 정상으로 본다', () => {
+    expect(isInterviewScorerCountOff(3)).toBe(false);
+    expect(INTERVIEW_SCORER_TARGET).toBe(3);
+  });
+
+  it('모자란 쪽도 넘치는 쪽도 어긋난 것으로 본다', () => {
+    // `< 3` 으로 두면 4명(= 다른 조 면접관이 남의 지원자를 채점)이 조용히 지나간다.
+    expect(isInterviewScorerCountOff(0)).toBe(true);
+    expect(isInterviewScorerCountOff(2)).toBe(true);
+    expect(isInterviewScorerCountOff(4)).toBe(true);
+    expect(isInterviewScorerCountOff(7)).toBe(true);
   });
 });
 
