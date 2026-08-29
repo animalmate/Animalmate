@@ -33,6 +33,15 @@ export default async function ContactPage() {
         {contacts.length > 0 ? <PeopleCard groups={contacts} /> : null}
         <ChannelsCard />
       </div>
+
+      {/* 제작자 크레딧 — /login 과 같은 문구·개인 연락처(2026-08-28). CONTACT_EMAIL(위 운영진 문의)과는
+          다른, 사이트를 만든 사람 개인 이메일이라 하드코딩한다. */}
+      <p className="pt-8 text-center text-[11px] leading-relaxed text-ink-400">
+        사이트제작 한채훈{' '}
+        <a href="mailto:sweetkid01@naver.com" className="underline underline-offset-2 hover:text-ink-500">
+          sweetkid01@naver.com
+        </a>
+      </p>
     </PublicShell>
   );
 }

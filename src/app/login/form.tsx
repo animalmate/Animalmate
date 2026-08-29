@@ -6,7 +6,7 @@ import { useCooldown } from '@/lib/use-cooldown';
 import { Button, Card, ErrorText, Field, InfoText, Input, SecondaryButton } from '@/components/ui';
 import { CursorDog } from '@/components/cursor-dog';
 
-export function LoginForm({ contact }: { contact: string | null }) {
+export function LoginForm() {
   const router = useRouter();
   // 첫 화면은 **이메일 칸이 아니라 갈림길**이다(2026-08-03). 예전에는 들어오자마자 이메일 입력칸이
   // 보여서, 가입한 적 없는 사람도 "여기 적으면 되는구나" 하고 코드를 기다리다 막혔다. 가입 안내를
@@ -144,17 +144,13 @@ export function LoginForm({ contact }: { contact: string | null }) {
       )}
       </div>
       {/* 제작자 크레딧 — 로그인 화면에만 둔다(로그인 뒤 화면은 운영 도구라 자리를 차지할 이유가 없다).
-          연락처는 /privacy 와 같은 CONTACT_EMAIL 을 쓴다. 값이 없으면 주소를 지어내지 않고 이름만 남긴다. */}
+          여기 이메일은 만든 사람 개인 연락처다 — /privacy 의 CONTACT_EMAIL(동아리 공용, 회장단이
+          바뀌면 같이 바뀜)과는 다른 값이라 하드코딩한다(2026-08-28). */}
       <p className="pt-6 text-center text-[11px] leading-relaxed text-ink-400">
-        사이트제작 한채훈
-        {contact ? (
-          <>
-            {' '}
-            <a href={`mailto:${contact}`} className="underline underline-offset-2 hover:text-ink-500">
-              {contact}
-            </a>
-          </>
-        ) : null}
+        사이트제작 한채훈{' '}
+        <a href="mailto:sweetkid01@naver.com" className="underline underline-offset-2 hover:text-ink-500">
+          sweetkid01@naver.com
+        </a>
       </p>
       </main>
     </>
