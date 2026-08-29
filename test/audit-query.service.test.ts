@@ -47,9 +47,11 @@ describe('감사 기록 조회 (실 DB)', () => {
     actorB = created[1]!.id;
 
     await db.insert(auditLogs).values([
-      // 같은 시각 3건 — 커서가 (시각, id) 순서쌍이 아니면 여기서 빠지거나 겹친다.
+      // 같은 시각 4건 — 커서가 (시각, id) 순서쌍이 아니면 여기서 빠지거나 겹친다.
+      // 이어보기 확인은 actorA 것 3건(-1·-2·-7)으로 한다(아래 주석 참고).
       { actorUserId: actorA, action: 'document.update', targetTable: 'documents', targetId: `${TARGET}-1`, createdAt: SAME_MOMENT, afterJson: { title: '가' } },
       { actorUserId: actorA, action: 'document.delete', targetTable: 'documents', targetId: `${TARGET}-2`, createdAt: SAME_MOMENT },
+      { actorUserId: actorA, action: 'membership.update', targetTable: 'memberships', targetId: `${TARGET}-7`, createdAt: SAME_MOMENT },
       { actorUserId: actorB, action: 'membership.set_role [high]', targetTable: 'memberships', targetId: `${TARGET}-3`, createdAt: SAME_MOMENT, beforeJson: { role: 'staff' }, afterJson: { role: 'board' } },
       // 자동 작업 — 기본 목록에서 빠져야 한다.
       { actorUserId: null, action: 'cron.publish', targetTable: 'scheduled_posts', targetId: `${TARGET}-4`, createdAt: SAME_MOMENT },
@@ -98,7 +100,7 @@ describe('감사 기록 조회 (실 DB)', () => {
   it('한 사람으로 좁힌다', async () => {
     const page = await listAuditLogs(db, { actorUserId: actorA, limit: 200 });
     const ids = mine(page.rows).map((r) => r.targetId).sort();
-    expect(ids).toEqual([`${TARGET}-1`, `${TARGET}-2`]);
+    expect(ids).toEqual([`${TARGET}-1`, `${TARGET}-2`, `${TARGET}-7`]);
   });
 
   // 행위자로 좁혀서 본다 — 기간만 걸면 테스트 DB 의 다른 기록이 200칸을 먼저 채워서
@@ -111,23 +113,28 @@ describe('감사 기록 조회 (실 DB)', () => {
   });
 
   // 커서가 시각만 봤다면 같은 시각 3건에서 겹치거나 빠진다.
+  // 행위자로 좁혀서 걷는다 — 테스트 DB 에는 지난 실행이 남긴 최신 감사 기록이 수백 건 쌓여 있어서
+  // (2026-08-29 기준 SAME_MOMENT 이후 사람 기록만 114건), 필터 없이 한 칸씩 걸으면 그 남은 것들만
+  // 스무 칸 읽고 우리 행에 닿지 못한다. 코드가 아니라 픽스처가 만드는 실패다 — CI 가 이걸로 죽었다.
   it('같은 시각 기록도 이어보기에서 겹치거나 빠지지 않는다', async () => {
     const seen: string[] = [];
     let cursor: string | null = null;
     for (let i = 0; i < 20; i++) {
-      const page: Awaited<ReturnType<typeof listAuditLogs>> = await listAuditLogs(db, { limit: 1, cursor });
+      const page: Awaited<ReturnType<typeof listAuditLogs>> = await listAuditLogs(db, { actorUserId: actorA, limit: 1, cursor });
       seen.push(...page.rows.map((r) => r.targetId ?? ''));
       cursor = page.nextCursor;
       if (!cursor) break;
     }
     const ours = seen.filter((t) => t.startsWith(TARGET));
     expect(new Set(ours).size).toBe(ours.length); // 겹치지 않는다
-    expect(ours).toEqual(expect.arrayContaining([`${TARGET}-1`, `${TARGET}-2`, `${TARGET}-3`]));
+    expect(ours).toEqual(expect.arrayContaining([`${TARGET}-1`, `${TARGET}-2`, `${TARGET}-7`]));
   });
 
+  // 여기도 행위자로 좁힌다 — 두 번 세는 사이에 다른 테스트가 기록을 남기면 숫자가 흔들린다.
   it('전체 건수는 이어봐도 줄지 않는다', async () => {
-    const first = await listAuditLogs(db, { limit: 1 });
-    const second = await listAuditLogs(db, { limit: 1, cursor: first.nextCursor });
+    const first = await listAuditLogs(db, { actorUserId: actorA, limit: 1 });
+    const second = await listAuditLogs(db, { actorUserId: actorA, limit: 1, cursor: first.nextCursor });
+    expect(first.total).toBe(3);
     expect(second.total).toBe(first.total);
   });
 
