@@ -838,6 +838,18 @@ export const flashMeetups = pgTable(
     details: text('details'), // 세부 내용(회비·준비물·방탈출 테마 목록 등 자유 서술)
     /** 정원. **null = 인원 제한 없음**(0 이 아니다 — 0 은 "아무도 못 온다"는 뜻이 돼 버린다). */
     capacity: integer('capacity'),
+    /**
+     * **신청을 받기 시작하는 순간**(0037). null = 글이 올라간 때부터 바로 받는다.
+     *
+     * 왜 필요한가(2026-09-04 사용자 요청): 인기 있는 번개는 올리자마자 자리가 차서, 글을 언제
+     * 올렸는지를 아는 사람만 들어간다. 시작 시각을 미리 못 박아 두면 **모두가 같은 출발선**에 선다
+     * ("9월 30일 오후 3시부터").
+     *
+     * `timestamptz` 인 이유: 이 값은 날짜가 아니라 **순간**이다. date+time 두 칸으로 쪼개면
+     * 비교할 때마다 시간대를 조립해야 하고, 그 조립이 한 번만 틀려도 9시간 어긋난다.
+     * 화면이 준 KST 벽시계는 `kstLocalToInstant` 한 곳에서만 순간으로 바꾼다.
+     */
+    signupOpenAt: timestamp('signup_open_at', { withTimezone: true }),
     status: flashStatusEnum('status').notNull().default('pending'),
     /** 개최 신청을 낸 사람. 공동 개최자 전원은 flash_hosts 에 따로 있고 이 사람도 거기 들어간다. */
     createdBy: uuid('created_by')

@@ -196,9 +196,19 @@
 > 옮긴 이유는 **순서가 어디에도 안 남기 때문**이다 — 개인톡은 누가 먼저 말했는지 개최자
 > 머릿속에만 있고, 정원이 찼을 때 근거가 없다.
 
-- `flash_meetups` (id, title, meet_date, meet_time?, place?, details?, capacity?, status,
+- `flash_meetups` (id, title, meet_date, meet_time?, place?, details?, capacity?, **signup_open_at?**, status,
   created_by, decided_by?, decided_at?, decision_note?, created_at, updated_at, INDEX(meet_date))
   - `capacity` = **null 이면 인원 제한 없음**(0 이 아니다 — 0 은 "아무도 못 온다"가 돼 버린다).
+  - `signup_open_at`(0037) = **신청을 받기 시작하는 순간**. null = 올라간 때부터 바로 받는다.
+    인기 있는 번개는 올리자마자 자리가 차서 글을 언제 올렸는지 아는 사람만 들어간다 —
+    시각을 못 박으면 모두가 같은 출발선에 선다(07-DECISIONS 163).
+    - **`timestamptz` 다.** 이 값은 날짜가 아니라 순간이다. date+time 두 칸으로 쪼개면 비교할 때마다
+      시간대를 조립해야 하고 한 번만 틀려도 9시간 어긋난다. 화면이 준 KST 벽시계를 순간으로 바꾸는
+      곳은 `normalizeSignupOpenAt` → `kstLocalToInstant` **한 곳뿐**이다(브라우저 시간대에 맡기지 않는다).
+    - 신청 가능 여부는 **상태가 아니라 파생값**이다(`signupWindow`): 시각이 지나면 저절로 풀리므로
+      DB 에 상태로 박으면 그것을 풀어 줄 크론이 필요하고, 크론이 1분 늦으면 오픈런이 1분 밀린다.
+    - 창을 여는 판단은 **서버 한 곳**(`signUpToFlash`)이다. 화면의 카운트다운은 그 판단을 따라갈 뿐이라,
+      시계를 앞당긴 기기가 먼저 들어가지 못한다.
     입력에서 빈 칸과 0 이하는 전부 null 로 접는다(`normalizeCapacity`).
   - `decision_note` 는 거절 사유와 취소 사유를 함께 쓴다. 거절은 사유가 **필수** —
     이유 없이 돌려보내면 낸 사람이 다시 낼 방법을 모른다.
@@ -398,6 +408,8 @@
 - **flash_meetups(번개)**: `pending`(부원이 낸 개최 신청) → `open` | `rejected`,
   `open` ⇄ `closed`(신청만 닫기), 어느 쪽에서든 → `canceled`.
   운영진 이상이 연 번개는 `pending` 을 건너뛰고 `open` 으로 시작한다.
+  - **`신청 예정` 은 상태가 아니다.** `open` 이면서 `signup_open_at` 이 아직 안 지난 것을 화면이
+    그렇게 부를 뿐이다(`signupWindow` = `not_yet`). 시각이 지나면 아무도 아무것도 안 해도 열린다.
   - **지난 번개는 상태가 아니다** — `meet_date` 가 오늘보다 앞서면 지난 것으로 본다.
     상태로 두면 아무도 안 바꿔 줘서 "모집 중"인 작년 번개가 남는다.
 

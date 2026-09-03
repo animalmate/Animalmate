@@ -14,6 +14,8 @@ import {
   assignSeats,
   acceptsSignups,
   isPublicFlash,
+  normalizeSignupOpenAt,
+  signupWindow,
   FlashInputError,
   type FlashInput,
   type SeatRow,
@@ -49,6 +51,52 @@ describe('normalizeFlashInput', () => {
 
   it('너무 긴 세부 내용은 거절한다(잘라서 저장하지 않는다)', () => {
     expect(() => normalizeFlashInput({ ...base, details: 'ㄱ'.repeat(4001) })).toThrow(FlashInputError);
+  });
+});
+
+describe('normalizeSignupOpenAt — 9시간 어긋나면 오픈런이 통째로 거짓이 된다', () => {
+  it('화면이 준 벽시계를 **KST 로 못 박아** 읽는다(브라우저 시간대와 무관)', () => {
+    expect(normalizeSignupOpenAt('2030-09-30T15:00')!.toISOString()).toBe('2030-09-30T06:00:00.000Z');
+  });
+
+  it('빈 칸은 null — 올라간 때부터 바로 받는다는 뜻이다', () => {
+    expect(normalizeSignupOpenAt('')).toBeNull();
+    expect(normalizeSignupOpenAt(null)).toBeNull();
+    expect(normalizeSignupOpenAt('   ')).toBeNull();
+  });
+
+  it('DB 왕복값(ISO)도 받아 준다 — 수정 화면이 받은 값을 그대로 되돌려 보낸다', () => {
+    expect(normalizeSignupOpenAt('2030-09-30T06:00:00.000Z')!.toISOString()).toBe('2030-09-30T06:00:00.000Z');
+  });
+
+  it('말이 안 되는 값은 거절한다(조용히 null 로 접지 않는다 — 그러면 즉시 열려 버린다)', () => {
+    expect(() => normalizeSignupOpenAt('내일 3시')).toThrow(FlashInputError);
+  });
+});
+
+describe('signupWindow', () => {
+  const AT = new Date('2030-09-30T06:00:00Z'); // KST 15:00
+
+  it('시작 시각이 없으면 모집 중일 때 바로 열린다', () => {
+    expect(signupWindow('open', null, new Date('2030-01-01T00:00:00Z'))).toBe('open');
+  });
+
+  it('시작 전이면 not_yet, 지나면 open', () => {
+    expect(signupWindow('open', AT, new Date('2030-09-30T05:59:59Z'))).toBe('not_yet');
+    expect(signupWindow('open', AT, new Date('2030-09-30T06:00:00Z'))).toBe('open'); // 정각은 열린 것
+    expect(signupWindow('open', AT, new Date('2030-09-30T06:00:01Z'))).toBe('open');
+  });
+
+  it('마감했으면 시작 시각과 무관하게 closed', () => {
+    expect(signupWindow('closed', AT, new Date('2030-01-01T00:00:00Z'))).toBe('closed');
+    expect(signupWindow('closed', null, new Date('2031-01-01T00:00:00Z'))).toBe('closed');
+  });
+
+  it('승인 전·거절·취소는 신청이라는 개념 자체가 없다', () => {
+    for (const st of ['pending', 'rejected', 'canceled'] as const) {
+      expect(signupWindow(st, null, new Date())).toBe('unavailable');
+      expect(signupWindow(st, AT, new Date('2031-01-01T00:00:00Z'))).toBe('unavailable');
+    }
   });
 });
 

@@ -28,6 +28,7 @@ import {
   listFlashMeetups,
   countFlashUnread,
   countPendingFlash,
+  broadcastFlashMessage,
   FlashInputError,
 } from '@/flash/flash';
 import { executeTool } from '@/rag/tools';
@@ -357,6 +358,91 @@ describe('번개 — 선착순·대기·쪽지', () => {
     ]);
   });
 
+  // ── 신청 시작 시각(오픈런) ───────────────────────────────────────────
+
+  it('신청 시작 전에는 **서버가** 거부한다 — 화면이 열어 주더라도 자리는 안 준다', async () => {
+    const m = await createFlashMeetup(db, staff, {
+      title: `${PREFIX}오픈런`,
+      meetDate: DATE,
+      capacity: 5,
+      signupOpenAt: '2030-05-10T15:00', // KST → 06:00Z
+    });
+    const before = new Date('2030-05-10T05:59:59Z');
+    const after = new Date('2030-05-10T06:00:00Z'); // 정각은 열린 것
+
+    await expect(signUpToFlash(db, a, m.id, '가요', before)).rejects.toBeInstanceOf(FlashInputError);
+    expect(await signUpToFlash(db, a, m.id, '가요', after)).toMatchObject({ status: 'confirmed', order: 1 });
+  });
+
+  it('신청 시작 시각은 KST 벽시계로 저장된다(9시간 밀리지 않는다)', async () => {
+    const m = await createFlashMeetup(db, staff, {
+      title: `${PREFIX}시각저장`,
+      meetDate: DATE,
+      signupOpenAt: '2030-05-10T15:00',
+    });
+    const [row] = await db.select().from(flashMeetups).where(eq(flashMeetups.id, m.id));
+    expect(row!.signupOpenAt!.toISOString()).toBe('2030-05-10T06:00:00.000Z');
+  });
+
+  it('화면이 보는 값도 서버 시각 기준이다(not_yet → open)', async () => {
+    const m = await createFlashMeetup(db, staff, {
+      title: `${PREFIX}창상태`,
+      meetDate: DATE,
+      signupOpenAt: '2030-05-10T15:00',
+    });
+    expect((await getFlashDetail(db, a, m.id, new Date('2030-05-10T05:00:00Z')))!.signupWindow).toBe('not_yet');
+    expect((await getFlashDetail(db, a, m.id, new Date('2030-05-10T07:00:00Z')))!.signupWindow).toBe('open');
+    const list = await listFlashMeetups(db, a, { now: new Date('2030-05-10T05:00:00Z') });
+    expect(list.find((f) => f.id === m.id)!.signupWindow).toBe('not_yet');
+  });
+
+  it('시작 시각을 비우면 곧바로 받는다(기존 번개가 잠기지 않는다)', async () => {
+    const m = await openMeetup('시각없음', 5);
+    expect(await signUpToFlash(db, a, m.id, '가요')).toMatchObject({ status: 'confirmed' });
+  });
+
+  it('시작 시각을 나중에 붙이거나 뗄 수 있다', async () => {
+    const m = await openMeetup('시각수정', 5);
+    const base = { title: `${PREFIX}시각수정`, meetDate: DATE, capacity: 5 };
+    await updateFlashMeetup(db, staff, m.id, { ...base, signupOpenAt: '2030-05-10T15:00' });
+    await expect(signUpToFlash(db, a, m.id, '가요', new Date('2030-05-10T05:00:00Z'))).rejects.toBeInstanceOf(
+      FlashInputError
+    );
+    await updateFlashMeetup(db, staff, m.id, { ...base, signupOpenAt: null });
+    expect(await signUpToFlash(db, a, m.id, '가요', new Date('2030-05-10T05:00:00Z'))).toMatchObject({
+      status: 'confirmed',
+    });
+  });
+
+  // ── 전체 안내 ────────────────────────────────────────────────────────
+
+  it('전체 안내는 신청자 **각자의 방**에 한 줄씩 들어간다(취소한 사람은 뺀다)', async () => {
+    const m = await openMeetup('전체안내', 5);
+    const sa = await signUpToFlash(db, a, m.id, 'a 가요');
+    await signUpToFlash(db, b, m.id, 'b 가요');
+    await signUpToFlash(db, c, m.id, 'c 가요');
+    await cancelFlashSignup(db, c, (await getFlashDetail(db, staff, m.id))!.threads!.find((t) => t.name === '신청자다')!.signupId);
+
+    expect(await broadcastFlashMessage(db, staff, m.id, '장소가 3번 출구로 바뀌었어요')).toBe(2);
+
+    const detail = await getFlashDetail(db, staff, m.id);
+    const bodies = (id: string) => detail!.threads!.find((t) => t.signupId === id)!.messages.map((x) => x.body);
+    expect(bodies(sa.signupId)).toEqual(['a 가요', '장소가 3번 출구로 바뀌었어요']);
+    // 취소한 사람 방에는 안 들어간다.
+    const gone = detail!.threads!.find((t) => t.status === 'canceled')!;
+    expect(gone.messages.map((x) => x.body)).toEqual(['c 가요']);
+    // 받는 사람 쪽에서는 개최자 말로 보인다.
+    expect((await getFlashDetail(db, a, m.id))!.mine!.messages.at(-1)).toMatchObject({ fromHost: true });
+  });
+
+  it('전체 안내는 개최자만 보낸다 — 회장단 override 도 막는다', async () => {
+    const m = await openMeetup('안내권한', 5);
+    await signUpToFlash(db, a, m.id, '가요');
+    await expect(broadcastFlashMessage(db, a, m.id, '끼어들기')).rejects.toBeInstanceOf(PermissionError);
+    // 회장단은 authorize 는 통과하지만(override) 서비스가 개최자가 아니라고 되돌려보낸다.
+    await expect(broadcastFlashMessage(db, board, m.id, '회장단 공지')).rejects.toBeInstanceOf(FlashInputError);
+  });
+
   // ── 챗봇 tool ────────────────────────────────────────────────────────
 
   it('챗봇 tool 은 공개된 번개만 주고, **이름은 싣지 않는다**', async () => {
@@ -376,6 +462,22 @@ describe('번개 — 선착순·대기·쪽지', () => {
     // 결과 어디에도 회원 이름이 없어야 한다 — 있으면 챗봇이 "누가 신청했어?"에 답해 버린다.
     expect(JSON.stringify(rows)).not.toContain('신청자가');
     expect(JSON.stringify(rows)).not.toContain('운영진');
+  });
+
+  it('챗봇 tool 이 신청 시작 시각을 알려 준다("언제부터 신청해?")', async () => {
+    await createFlashMeetup(db, staff, {
+      title: `${PREFIX}오픈런안내`,
+      meetDate: DATE,
+      capacity: 5,
+      signupOpenAt: '2030-05-10T15:00',
+    });
+    const rows = await executeTool(db, a, 'list_flash_meetups', { from: DATE }, new Date('2030-05-01T00:00:00Z'));
+    const one = (rows.flash as { title: string; signupOpensAt: string | null; signupNotYet: boolean; acceptingSignups: boolean }[]).find(
+      (f) => f.title === `${PREFIX}오픈런안내`
+    )!;
+    expect(one.signupNotYet).toBe(true);
+    expect(one.acceptingSignups).toBe(false); // 아직은 못 보낸다
+    expect(one.signupOpensAt).toBe('5월 10일(금) 오후 3:00');
   });
 
   it('챗봇 tool 은 번개가 없으면 게시판으로 안내할 근거를 함께 준다', async () => {

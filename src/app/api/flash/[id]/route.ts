@@ -35,6 +35,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       place: b.place == null ? null : String(b.place),
       details: b.details == null ? null : String(b.details),
       capacity: b.capacity == null || b.capacity === '' ? null : Number(b.capacity),
+      signupOpenAt: b.signupOpenAt == null ? null : String(b.signupOpenAt),
       // `undefined` 면 공동 개최자를 건드리지 않는다(부분 수정). 빈 배열은 "전부 빼라"는 뜻이다.
       coHostIds: Array.isArray(b.coHostIds) ? b.coHostIds.map((v: unknown) => String(v)) : undefined,
     });

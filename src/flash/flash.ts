@@ -20,7 +20,7 @@ import type { Actor, Role } from '@/auth/permissions';
 import { isStaffPlus, isPrivileged } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
-import { kstToday, weekdayOf } from '@/lib/kst-date';
+import { kstToday, weekdayOf, kstLocalToInstant, kstDateTimeLabel } from '@/lib/kst-date';
 
 /** 시스템 계정(발행 워커 등)은 사람이 아니라 공동 개최자 후보에 뜨면 안 된다. */
 const SYSTEM_EMAIL = 'system@animalmate.local';
@@ -59,6 +59,11 @@ export interface FlashInput {
   place?: string | null;
   details?: string | null;
   capacity?: number | null; // null = 인원 제한 없음
+  /**
+   * 신청을 받기 시작하는 순간. **KST 벽시계 문자열**('YYYY-MM-DDTHH:MM') 또는 ISO 문자열.
+   * 비우면 곧바로 받는다.
+   */
+  signupOpenAt?: string | null;
   /** 공동 개최자로 함께 넣을 회원 id. 개최 신청자 본인은 서비스가 자동으로 넣는다. */
   coHostIds?: string[];
 }
@@ -70,6 +75,7 @@ export interface NormalizedFlash {
   place: string | null;
   details: string | null;
   capacity: number | null;
+  signupOpenAt: Date | null;
 }
 
 function trimOrNull(v: string | null | undefined): string | null {
@@ -105,7 +111,26 @@ export function normalizeFlashInput(input: FlashInput): NormalizedFlash {
   if (details && details.length > DETAILS_MAX) throw new FlashInputError('세부 내용이 너무 길어요.');
 
   const capacity = normalizeCapacity(input.capacity);
-  return { title, meetDate, meetTime, place, details, capacity };
+  const signupOpenAt = normalizeSignupOpenAt(input.signupOpenAt);
+  return { title, meetDate, meetTime, place, details, capacity, signupOpenAt };
+}
+
+/**
+ * 신청 시작 시각 정리 — 빈 칸은 null(바로 받는다).
+ *
+ * 화면이 주는 `datetime-local` 값은 **KST 벽시계**로 읽는다(`kstLocalToInstant`).
+ * 브라우저 시간대에 맡기면 여행 중이거나 시계가 틀어진 기기 하나에서 9시간 밀린 값이 저장되고,
+ * 그 순간이 곧 오픈런이라 기능이 통째로 거짓이 된다.
+ * DB 왕복값(ISO 문자열)도 받아 준다 — 수정 화면이 받은 값을 그대로 되돌려 보내는 경로가 있다.
+ */
+export function normalizeSignupOpenAt(v: string | null | undefined): Date | null {
+  const s = (v ?? '').trim();
+  if (!s) return null;
+  const kst = kstLocalToInstant(s);
+  if (kst) return kst;
+  const iso = new Date(s);
+  if (Number.isNaN(iso.getTime())) throw new FlashInputError('신청 시작 시각 형식이 올바르지 않아요.');
+  return iso;
 }
 
 /** 정원 칸 정리 — 빈 칸·0 이하는 전부 "제한 없음"(null)이다. */
@@ -180,6 +205,26 @@ export function acceptsSignups(status: FlashStatus): boolean {
   return status === 'open';
 }
 
+/**
+ * 지금 이 번개에 신청할 수 있는가 — 상태와 **신청 시작 시각**을 함께 본다.
+ *
+ *  - `open`      : 지금 보내면 된다.
+ *  - `not_yet`   : 모집 중이지만 아직 시작 전이다(시작 시각을 알려 주고 기다리게 한다).
+ *  - `closed`    : 개최자가 신청을 닫았다.
+ *  - `unavailable`: 승인 전·거절·취소 — 신청이라는 개념이 아직/이미 없다.
+ *
+ * 상태를 하나 더 만들지 않고 파생값으로 두는 이유: `not_yet` 은 **시각이 지나면 저절로 풀린다.**
+ * DB 에 상태로 박으면 그것을 풀어 줄 크론이 필요하고, 크론이 1분 늦으면 오픈런이 1분 밀린다.
+ */
+export type SignupWindow = 'open' | 'not_yet' | 'closed' | 'unavailable';
+
+export function signupWindow(status: FlashStatus, signupOpenAt: Date | null, now: Date = new Date()): SignupWindow {
+  if (status === 'closed') return 'closed';
+  if (!acceptsSignups(status)) return 'unavailable';
+  if (signupOpenAt && now.getTime() < signupOpenAt.getTime()) return 'not_yet';
+  return 'open';
+}
+
 /** 게시판에 공개되는 상태인가(부원 목록에 보이는 조건). */
 export function isPublicFlash(status: FlashStatus): boolean {
   return status === 'open' || status === 'closed';
@@ -221,6 +266,10 @@ export interface FlashListItem {
   place: string | null;
   capacity: number | null;
   status: FlashStatus;
+  /** 신청을 받기 시작하는 순간(ISO). null = 바로 받는다. */
+  signupOpenAt: string | null;
+  /** 지금 신청할 수 있는지 — 서버 시각 기준. 화면은 이 값으로 버튼을 정한다. */
+  signupWindow: SignupWindow;
   hosts: PersonView[];
   counts: FlashCounts;
   /** 로그인한 본인의 신청 상태(신청 안 했으면 null). 목록에서 "신청함"을 바로 보여 준다. */
@@ -297,6 +346,7 @@ export async function listFlashMeetups(db: Db, actor: Actor, opts: ListFlashOpti
     mySignupStatuses(db, actor, ids),
     unreadByFlash(db, actor, ids),
   ]);
+  const now = opts.now ?? new Date();
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -306,6 +356,8 @@ export async function listFlashMeetups(db: Db, actor: Actor, opts: ListFlashOpti
     place: r.place,
     capacity: r.capacity,
     status: r.status,
+    signupOpenAt: r.signupOpenAt?.toISOString() ?? null,
+    signupWindow: signupWindow(r.status, r.signupOpenAt, now),
     hosts: hosts.get(r.id) ?? [],
     counts: counts.get(r.id) ?? { confirmed: 0, waiting: 0 },
     mySignupStatus: mine.get(r.id) ?? null,
@@ -435,6 +487,14 @@ export interface FlashDetail extends FlashListItem {
   details: string | null;
   decisionNote: string | null;
   createdBy: string;
+  /**
+   * 이 응답을 만든 **서버 시각**(ISO). 화면이 카운트다운에 쓴다.
+   *
+   * 왜 필요한가: 신청 시작까지 남은 시간을 브라우저 시계로 세면 그 기기가 몇 분 틀어져 있을 때
+   * "0초" 인데 서버는 아직 거부하거나, 반대로 이미 열렸는데 화면이 잠겨 있다. 오픈런에서는
+   * 그 몇 초가 자리를 가른다 — 화면은 서버 시각과의 차이를 재서 그 위에 센다.
+   */
+  serverNow: string;
   /** 확정·대기 명단(이름·순번). 연락처는 절대 싣지 않는다 — 누가 함께 가는지만 알면 된다. */
   roster: RosterEntry[];
   /** 내 신청 한 건(쪽지 포함). 신청 안 했으면 null. */
@@ -463,7 +523,7 @@ function toMessageView(
 /**
  * 번개 상세. **볼 수 없으면 없는 것과 같다**(존재 여부도 알려주지 않는다 — 일정과 같은 규칙).
  */
-export async function getFlashDetail(db: Db, actor: Actor, id: string): Promise<FlashDetail | null> {
+export async function getFlashDetail(db: Db, actor: Actor, id: string, now: Date = new Date()): Promise<FlashDetail | null> {
   const [row] = await db
     .select()
     .from(flashMeetups)
@@ -557,6 +617,9 @@ export async function getFlashDetail(db: Db, actor: Actor, id: string): Promise<
     place: row.place,
     capacity: row.capacity,
     status: row.status,
+    signupOpenAt: row.signupOpenAt?.toISOString() ?? null,
+    signupWindow: signupWindow(row.status, row.signupOpenAt, now),
+    serverNow: now.toISOString(),
     details: row.details,
     decisionNote: row.decisionNote,
     createdBy: row.createdBy,
@@ -831,7 +894,13 @@ export interface SignupResult {
  * 같은 순간에 신청했을 때 둘 다 같은 seq 를 받고, 하필 그 자리가 정원 경계면 누가 확정인지가
  * 뒤집힌다 — 선착순의 근거를 남기려고 이 기능을 만든 것이라 여기서 흔들리면 의미가 없다.
  */
-export async function signUpToFlash(db: Db, actor: Actor, flashId: string, message: string): Promise<SignupResult> {
+export async function signUpToFlash(
+  db: Db,
+  actor: Actor,
+  flashId: string,
+  message: string,
+  now: Date = new Date()
+): Promise<SignupResult> {
   requireAuthorized(actor, { kind: 'flash.signup' });
   const body = normalizeMessage(message);
 
@@ -843,10 +912,14 @@ export async function signUpToFlash(db: Db, actor: Actor, flashId: string, messa
       .for('update')
       .limit(1);
     if (!meetup) throw new FlashInputError('없는 번개예요. 목록을 새로고침해 주세요.');
-    if (!acceptsSignups(meetup.status)) {
-      throw new FlashInputError(
-        meetup.status === 'closed' ? '신청이 마감된 번개예요.' : '지금은 신청할 수 없는 번개예요.'
-      );
+    // 신청 창은 **서버 시각으로** 연다. 화면이 카운트다운으로 버튼을 풀어 주더라도, 실제로
+    // 자리를 주는 판단은 여기 한 곳뿐이다 — 시계를 앞당긴 기기가 먼저 들어가면 선착순이 아니다.
+    const win = signupWindow(meetup.status, meetup.signupOpenAt, now);
+    if (win === 'not_yet') {
+      throw new FlashInputError(`아직 신청 시작 전이에요. ${kstDateTimeLabel(meetup.signupOpenAt!)}부터 신청할 수 있어요.`);
+    }
+    if (win !== 'open') {
+      throw new FlashInputError(win === 'closed' ? '신청이 마감된 번개예요.' : '지금은 신청할 수 없는 번개예요.');
     }
     const hosts = await hostIdsOf(tx, flashId);
     if (hosts.includes(actor.userId)) throw new FlashInputError('내가 여는 번개에는 신청하지 않아도 돼요.');
@@ -943,6 +1016,36 @@ export async function postFlashMessage(db: Db, actor: Actor, signupId: string, m
     body,
     createdAt: row!.createdAt.toISOString(),
   };
+}
+
+/**
+ * 개최자가 **신청자 전원에게 같은 안내**를 보낸다(각자의 1:1 방에 한 줄씩 들어간다).
+ *
+ * 왜 필요한가: 장소가 바뀌거나 준비물이 생기면 개최자는 같은 문장을 방마다 다시 써야 했다.
+ * 정원 10명이면 열 번이다 — 그러면 안 쓰게 되고, 알림이 사이트 안에만 있는 구조에서
+ * 안 쓰이는 안내는 없는 것과 같다.
+ *
+ * **방을 합치지 않는다.** 공지판을 따로 만들면 답이 어디로 가야 하는지 애매해지고, 받는 사람은
+ * 자기 사정(늦어요·못 가요)을 그 자리에 쓰게 된다. 각자의 방에 넣으면 답장이 원래 자리로 돌아온다.
+ *
+ * 취소한 사람에게는 보내지 않는다 — 이미 안 가는 사람이다.
+ */
+export async function broadcastFlashMessage(db: Db, actor: Actor, flashId: string, message: string): Promise<number> {
+  const body = normalizeMessage(message);
+  const hosts = await hostIdsOf(db, flashId);
+  requireAuthorized(actor, { kind: 'flash.manage', hosts });
+  // 회장단 override 로 남의 번개에 전체 안내를 보내는 길은 막는다 — 관리 권한은 글을 다루라는
+  // 것이지 그 번개 사람들에게 개최자인 척 말하라는 것이 아니다.
+  if (!hosts.includes(actor.userId)) throw new FlashInputError('이 번개의 개최자만 전체 안내를 보낼 수 있어요.');
+
+  const targets = await db
+    .select({ id: flashSignups.id })
+    .from(flashSignups)
+    .where(and(eq(flashSignups.flashId, flashId), ne(flashSignups.status, 'canceled')));
+  if (targets.length === 0) return 0;
+  await db.insert(flashMessages).values(targets.map((t) => ({ signupId: t.id, senderId: actor.userId, body })));
+  await markFlashRead(db, actor, flashId); // 내가 쓴 것이 나에게 안 읽은 것으로 남지 않게
+  return targets.length;
 }
 
 /**

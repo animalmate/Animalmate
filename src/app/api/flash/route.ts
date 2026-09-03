@@ -37,6 +37,7 @@ export async function POST(req: Request): Promise<Response> {
       place: b.place == null ? null : String(b.place),
       details: b.details == null ? null : String(b.details),
       capacity: b.capacity == null || b.capacity === '' ? null : Number(b.capacity),
+      signupOpenAt: b.signupOpenAt == null ? null : String(b.signupOpenAt),
       coHostIds: Array.isArray(b.coHostIds) ? b.coHostIds.map((v: unknown) => String(v)) : [],
     });
     // 부원에게는 "승인 대기" 라는 사실이 결과의 전부다 — 화면이 그 문구를 그리려면 상태가 필요하다.

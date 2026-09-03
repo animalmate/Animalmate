@@ -3,8 +3,10 @@
 //
 // 한 파일에 모아 둔 이유: 상태 딱지 색과 문구가 목록과 상세에서 달라지면 같은 번개가
 // 화면마다 다른 상태로 보인다. 딱지는 한 곳에서만 정의한다.
-import type { FlashStatus, FlashSignupStatus } from '@/flash/flash';
+import { useEffect, useRef, useState } from 'react';
+import type { FlashStatus, FlashSignupStatus, SignupWindow } from '@/flash/flash';
 import { Icon } from '@/components/icon';
+import { kstDateTimeLabel, weekdayOf } from '@/lib/kst-date';
 
 const FLASH_STATUS: Record<FlashStatus, { label: string; cls: string }> = {
   pending: { label: '승인 대기', cls: 'bg-amber-50 text-amber-700' },
@@ -14,8 +16,16 @@ const FLASH_STATUS: Record<FlashStatus, { label: string; cls: string }> = {
   rejected: { label: '거절됨', cls: 'bg-coral-50 text-coral-700' },
 };
 
-export function FlashStatusBadge({ status }: { status: FlashStatus }) {
-  const s = FLASH_STATUS[status];
+/**
+ * @param window 있으면 **신청 창까지 반영**한다. `모집 중` 인데 아직 시작 전이면 `신청 예정` 으로
+ *   바꿔 그린다 — 같은 화면에 "모집 중" 과 "아직 신청할 수 없어요" 가 나란히 서면, 읽는 사람은
+ *   둘 중 어느 쪽이 사실인지 확인하러 들어가 본다(QA 캡처에서 실제로 그렇게 보였다).
+ */
+export function FlashStatusBadge({ status, window }: { status: FlashStatus; window?: SignupWindow }) {
+  const s =
+    status === 'open' && window === 'not_yet'
+      ? { label: '신청 예정', cls: 'bg-amber-50 text-amber-700' }
+      : FLASH_STATUS[status];
   return (
     <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${s.cls}`}>
       {s.label}
@@ -80,5 +90,90 @@ export function SeatSummary({
       </span>
       {waiting > 0 ? <span className="text-amber-700">· 대기 {waiting}명</span> : null}
     </span>
+  );
+}
+
+/** 'YYYY-MM-DD' → 오늘·내일이면 그 말로, 아니면 '9월 12일(토)'. 목록에서 눈이 먼저 가는 값이다. */
+export function relativeDayLabel(date: string, weekday: string, todayIso: string): string {
+  if (date === todayIso) return '오늘';
+  const tomorrow = new Date(`${todayIso}T00:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  if (date === tomorrow.toISOString().slice(0, 10)) return '내일';
+  return dayLabel(date, weekday || weekdayOf(date));
+}
+
+/**
+ * 목록 딱지에 쓰는 짧은 신청 시작 문구. `9/30(수) 오후 3:00 시작`
+ * 카드 한 줄에 딱지가 서너 개 서므로 여기서는 `월`·`일` 글자를 뺀다.
+ */
+export function signupOpenShort(iso: string): string {
+  const full = kstDateTimeLabel(new Date(iso)); // '9월 30일(수) 오후 3:00'
+  return `${full.replace(/(\d+)월 (\d+)일/, '$1/$2')} 시작`;
+}
+
+/** 남은 시간 → `2일 3시간` / `12분 07초`. 1분 미만은 초까지 센다(그 순간이 오픈런이다). */
+export function remainLabel(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  if (d > 0) return `${d}일 ${h}시간`;
+  if (h > 0) return `${h}시간 ${m}분`;
+  return `${m}분 ${String(sec).padStart(2, '0')}초`;
+}
+
+/**
+ * 신청 시작까지 남은 시간을 센다. 0 이 되면 `onOpen` 을 한 번 부른다.
+ *
+ * **브라우저 시계를 그대로 쓰지 않는다.** 서버가 준 시각(`serverNow`)과의 차이를 한 번 재고
+ * 그 위에 센다 — 기기 시계가 몇 분 틀어져 있으면 "0초" 인데 서버는 아직 거부하거나, 반대로
+ * 이미 열렸는데 화면만 잠겨 있다. 오픈런에서는 그 몇 초가 자리를 가른다.
+ *
+ * 0 이 됐을 때 폼을 곧바로 풀지 않고 **다시 불러오는** 이유도 같다. 자리를 주는 판단은 서버
+ * 한 곳뿐이고(`signUpToFlash`), 화면은 그 판단을 따라가기만 하면 된다.
+ */
+export function SignupCountdown({
+  openAt,
+  serverNow,
+  onOpen,
+}: {
+  openAt: string;
+  serverNow: string;
+  onOpen: () => void;
+}) {
+  const offset = useRef(Date.parse(serverNow) - Date.now());
+  const fired = useRef(false);
+  const [left, setLeft] = useState(() => Date.parse(openAt) - (Date.now() + offset.current));
+
+  useEffect(() => {
+    offset.current = Date.parse(serverNow) - Date.now();
+    fired.current = false;
+    const tick = () => {
+      const ms = Date.parse(openAt) - (Date.now() + offset.current);
+      setLeft(ms);
+      if (ms <= 0 && !fired.current) {
+        fired.current = true;
+        onOpen();
+      }
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+    // onOpen 은 호출부에서 인라인으로 오는 경우가 많아 의존성에 두면 매 렌더마다 타이머가 다시 선다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openAt, serverNow]);
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5">
+      <p className="flex items-center gap-1.5 text-[13px] font-semibold text-amber-700">
+        <Icon name="clock" size={15} />
+        {kstDateTimeLabel(new Date(openAt))} 부터 신청할 수 있어요
+      </p>
+      <p className="mt-1 text-[22px] font-bold tabular-nums text-amber-800" aria-live="off">
+        {left > 0 ? remainLabel(left) : '곧 열려요…'}
+      </p>
+      <p className="mt-1 text-[13px] text-amber-700">시간이 되면 이 자리에 신청 칸이 저절로 나타나요.</p>
+    </div>
   );
 }

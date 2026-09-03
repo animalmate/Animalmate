@@ -3,7 +3,7 @@
 //
 // 첫 줄이 신청 메시지다(사용자 결정: "메시지 자체가 신청"). 그래서 이 대화는 언제나
 // 신청자가 먼저 말한 상태로 시작하고, 빈 대화는 존재하지 않는다.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiPost, errorMessage, waitMessage } from '@/lib/api';
 import { Button, Textarea, ErrorText } from '@/components/ui';
 import { Icon } from '@/components/icon';
@@ -30,6 +30,14 @@ export function MessageThread({
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // 새 쪽지는 아래에 붙는다 — 열자마자 **마지막 줄**이 보여야 방금 온 말을 읽는다.
+  // 위가 보이면 처음 신청 메시지를 다시 읽게 되고, 정작 새 말은 스크롤 밖에 있다.
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [thread.messages.length]);
 
   async function send() {
     const body = text.trim();
@@ -48,12 +56,14 @@ export function MessageThread({
 
   return (
     <div className="space-y-2.5">
-      <ul className="space-y-2">
+      {/* 대화가 길어져도 카드가 끝없이 늘어나지 않게 상자를 정해 둔다 — 그러지 않으면 아래에
+          붙은 신청 취소·내보내기 버튼이 화면 밖으로 밀려 찾을 수 없게 된다. */}
+      <ul ref={listRef} className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
         {thread.messages.map((m) => {
           const mine = m.senderId === me;
           return (
             <li key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] min-w-0 ${mine ? 'text-right' : ''}`}>
+              <div className={`min-w-0 max-w-[85%] ${mine ? 'text-right' : ''}`}>
                 <p className="mb-0.5 text-[11px] text-ink-400">
                   {mine ? '나' : m.senderName}
                   {!mine && m.fromHost ? ' · 개최자' : ''} · {stamp(m.createdAt)}
@@ -77,6 +87,8 @@ export function MessageThread({
             rows={2}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            // Enter 로 보내지 않는다 — 한글은 조합 중에 Enter 가 확정 키라, 가로채면
+            // 쓰다 만 문장이 그대로 나간다. 줄바꿈이 자유로운 편이 대화에도 맞다.
             maxLength={1000}
             placeholder="메시지 입력…"
             aria-label="메시지 입력"

@@ -9,7 +9,8 @@ import { Card, Button, Banner, InfoText } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { HelpButton } from '@/components/help-button';
 import type { FlashListItem } from '@/flash/flash';
-import { FlashStatusBadge, MySignupBadge, UnreadDot, SeatSummary, dayLabel } from './shared';
+import { kstToday } from '@/lib/kst-date';
+import { FlashStatusBadge, MySignupBadge, UnreadDot, SeatSummary, relativeDayLabel, signupOpenShort } from './shared';
 import { FlashForm, emptyDraft } from './flash-form';
 
 type Scope = 'upcoming' | 'past';
@@ -21,6 +22,7 @@ export function FlashBoard({ canApprove }: { canApprove: boolean }) {
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [opened, setOpened] = useState<string>(''); // 개최 직후 안내 문구
+  const today = kstToday();
 
   const load = useCallback(async (s: Scope) => {
     setLoading(true);
@@ -103,7 +105,7 @@ export function FlashBoard({ canApprove }: { canApprove: boolean }) {
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <strong className="text-[17px] font-bold text-ink-900">{f.title}</strong>
-                        <FlashStatusBadge status={f.status} />
+                        <FlashStatusBadge status={f.status} window={f.signupWindow} />
                         {f.mySignupStatus && f.mySignupStatus !== 'canceled' ? (
                           <MySignupBadge status={f.mySignupStatus} />
                         ) : null}
@@ -112,12 +114,20 @@ export function FlashBoard({ canApprove }: { canApprove: boolean }) {
                             내가 여는 번개
                           </span>
                         ) : null}
+                        {/* 아직 신청 시작 전이면 그 사실이 **모집 중**보다 중요한 정보다 —
+                            들어가서 신청 칸을 찾다가 없다고 오해하지 않게 목록에서 먼저 말한다. */}
+                        {f.signupWindow === 'not_yet' && f.signupOpenAt ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                            <Icon name="clock" size={12} />
+                            {signupOpenShort(f.signupOpenAt)}
+                          </span>
+                        ) : null}
                         <UnreadDot count={f.unread} />
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-500">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-ink-700">
                           <Icon name="calendar" size={14} />
-                          {dayLabel(f.meetDate, f.weekday)}
+                          {relativeDayLabel(f.meetDate, f.weekday, today)}
                           {f.meetTime ? ` ${f.meetTime}` : ''}
                         </span>
                         {f.place ? (

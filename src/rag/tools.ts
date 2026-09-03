@@ -9,7 +9,7 @@ import type { Db } from '@/db/types';
 import { events, teams, scheduledPosts, teamGuidebooks, documents, flashMeetups, flashSignups } from '@/db/schema';
 import type { GeminiTool } from './gemini';
 import type { Actor } from '@/auth/permissions';
-import { kstToday, weekdayOf } from '@/lib/kst-date';
+import { kstToday, weekdayOf, kstDateTimeLabel } from '@/lib/kst-date';
 import { listSchedules } from '@/schedules/schedules';
 import { toChatbotView } from '@/schedules/view';
 import { getVolunteerFallback } from './volunteer-fallback';
@@ -258,6 +258,13 @@ export interface FlashChatView {
   full: boolean;
   /** 신청을 아직 받는가(마감했으면 false). */
   acceptingSignups: boolean;
+  /**
+   * 신청을 받기 시작하는 순간(KST 표기). null = 이미 받고 있다.
+   * "언제부터 신청해?" 는 이 값을 묻는 질문이다.
+   */
+  signupOpensAt: string | null;
+  /** 아직 신청 시작 전인가. */
+  signupNotYet: boolean;
   details: string | null;
 }
 
@@ -285,6 +292,7 @@ export async function listFlashMeetupsForChatbot(
       capacity: flashMeetups.capacity,
       details: flashMeetups.details,
       status: flashMeetups.status,
+      signupOpenAt: flashMeetups.signupOpenAt,
     })
     .from(flashMeetups)
     .where(and(...conds))
@@ -306,8 +314,10 @@ export async function listFlashMeetupsForChatbot(
     counts.set(c.flashId, cur);
   }
 
+  const now = opts.now ?? new Date();
   return rows.map((r) => {
     const c = counts.get(r.id) ?? { confirmed: 0, waiting: 0 };
+    const notYet = r.signupOpenAt != null && now.getTime() < r.signupOpenAt.getTime();
     return {
       title: r.title,
       date: r.date,
@@ -318,7 +328,9 @@ export async function listFlashMeetupsForChatbot(
       confirmed: c.confirmed,
       waiting: c.waiting,
       full: r.capacity != null && c.confirmed >= r.capacity,
-      acceptingSignups: r.status === 'open',
+      acceptingSignups: r.status === 'open' && !notYet,
+      signupOpensAt: r.signupOpenAt ? kstDateTimeLabel(r.signupOpenAt) : null,
+      signupNotYet: notYet,
       details: r.details ? r.details.slice(0, FLASH_DETAILS_MAX_CHARS) : null,
     };
   });
@@ -375,7 +387,9 @@ export const CHATBOT_TOOLS: GeminiTool[] = [
       '기본은 오늘 이후지만 from 에 과거 날짜를 넣으면 **지난 개최 내역**이 된다("저번 달 번개 뭐 했어?"). ' +
       '각 번개에는 날짜(date)·요일(weekday)·집합 시각(time)·장소(place)·정원(capacity)·확정 인원(confirmed)·' +
       '대기 인원(waiting)·세부 내용(details)이 들어 있다. ' +
-      'full 이 true 면 정원이 차서 지금 신청하면 대기로 들어간다. acceptingSignups 가 false 면 신청이 마감된 것이다. ' +
+      'full 이 true 면 정원이 차서 지금 신청하면 대기로 들어간다. ' +
+      '**signupNotYet 이 true 면 아직 신청 시작 전이고, signupOpensAt 이 그 시각이다** — "언제부터 신청해?" 는 이 값으로 답한다. ' +
+      'acceptingSignups 가 false 인데 signupNotYet 도 false 면 신청이 마감된 것이다. ' +
       '**개최자와 신청자 이름은 결과에 없다**(개인정보). 누가 여는지 물으면 지어내지 말고 번개 게시판을 안내한다. ' +
       '봉사 회차나 동아리 공식 일정(총회·MT)과 섞지 않는다 — 그건 각각 다른 tool 이다.',
     parameters: {

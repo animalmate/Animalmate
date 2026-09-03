@@ -14,11 +14,13 @@ export interface FlashDraft {
   place: string;
   details: string;
   capacity: string; // 빈 칸 = 인원 제한 없음
+  /** 'YYYY-MM-DDTHH:MM'(KST 벽시계). 빈 칸 = 올라간 때부터 바로 신청을 받는다. */
+  signupOpenAt: string;
   coHosts: CoHost[];
 }
 
 export function emptyDraft(): FlashDraft {
-  return { title: '', meetDate: '', meetTime: '', place: '', details: '', capacity: '', coHosts: [] };
+  return { title: '', meetDate: '', meetTime: '', place: '', details: '', capacity: '', signupOpenAt: '', coHosts: [] };
 }
 
 /**
@@ -59,6 +61,9 @@ export function FlashForm({
       place: draft.place || null,
       details: draft.details || null,
       capacity: draft.capacity === '' ? null : Number(draft.capacity),
+      // 화면이 준 벽시계를 그대로 넘긴다 — KST 로 못 박아 읽는 것은 서버 한 곳뿐이다
+      // (`normalizeSignupOpenAt`). 여기서 ISO 로 바꾸면 브라우저 시간대가 끼어든다.
+      signupOpenAt: draft.signupOpenAt || null,
       coHostIds: draft.coHosts.map((c) => c.userId),
     };
     const r = id ? await apiPost(`/api/flash/${id}`, body, 'PATCH') : await apiPost<{ status: string }>('/api/flash', body);
@@ -118,6 +123,17 @@ export function FlashForm({
         </Field>
       </div>
 
+      <Field
+        label="신청 시작"
+        hint="비워 두면 올리는 즉시 신청을 받아요. 시각을 정하면 그때까지 아무도 못 보냅니다."
+      >
+        <Input
+          type="datetime-local"
+          value={draft.signupOpenAt}
+          onChange={(e) => set('signupOpenAt', e.target.value)}
+        />
+      </Field>
+
       <Field label="세부 내용" hint="회비·준비물·고를 것(방탈출 테마 등)을 적어 두면 신청할 때 물어볼 일이 줄어요">
         <Textarea
           rows={5}
@@ -135,6 +151,7 @@ export function FlashForm({
       {!id ? (
         <InfoText>
           정원이 차도 신청은 계속 받아요 — 뒤에 온 사람은 대기 번호를 받고, 앞사람이 취소하면 자동으로 올라갑니다.
+          자리가 금방 찰 것 같으면 <strong>신청 시작</strong>을 정해 두세요. 모두가 같은 시각에 출발합니다.
         </InfoText>
       ) : null}
 

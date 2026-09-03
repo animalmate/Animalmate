@@ -260,6 +260,13 @@
       "when": 1788453089825,
       "tag": "0036_little_boom_boom",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788455004042,
+      "tag": "0037_youthful_firestar",
+      "breakpoints": true
     }
   ]
 }

@@ -20,3 +20,49 @@ export function weekdayOf(dateStr: string): string {
 export function kstToday(now: Date = new Date()): string {
   return new Date(now.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
+
+// ── KST 벽시계 ↔ 순간(Date) ────────────────────────────────────────────
+//
+// 왜 필요한가: 화면의 `datetime-local` 은 **브라우저 시간대**의 벽시계 문자열을 준다.
+// 그대로 `new Date(local)` 하면 그 브라우저가 어느 시간대인지에 따라 다른 순간이 된다 —
+// 이 동아리는 전원 KST 라 대개 맞지만, 여행 중이거나 시간대가 틀어진 기기 하나면 **9시간**
+// 어긋난다. 번개 신청 시작 시각은 그 순간이 곧 오픈런이라, 9시간 밀리면 기능이 통째로 거짓이 된다.
+//
+// 그래서 화면이 준 값을 **언제나 KST 벽시계로 못 박아** 해석한다(`+09:00` 을 붙인다).
+// 반대 방향(표시)도 같은 규칙으로 되돌린다. 한국 표준시는 서머타임이 없어 고정 +9 로 충분하다.
+
+const KST_OFFSET_MS = 9 * 3600 * 1000;
+const LOCAL_RE = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * 'YYYY-MM-DDTHH:MM'(KST 벽시계) → 그 순간. 형식이 틀리면 null.
+ * 브라우저 시간대와 무관하다 — 문자열을 KST 로 읽는 것이 정의다.
+ */
+export function kstLocalToInstant(local: string | null | undefined): Date | null {
+  const s = (local ?? '').trim();
+  if (!LOCAL_RE.test(s)) return null;
+  const d = new Date(`${s}:00+09:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** 순간 → 'YYYY-MM-DDTHH:MM'(KST 벽시계). `datetime-local` 에 되돌려 넣는 값. */
+export function instantToKstLocal(d: Date): string {
+  return new Date(d.getTime() + KST_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/**
+ * 순간 → 사람이 읽는 KST 표기. `9월 30일(월) 오후 3:00`.
+ *
+ * `toLocaleString('ko-KR')` 을 쓰지 않는 이유: 서버(Vercel, UTC)와 브라우저가 서로 다른
+ * 시간대·로케일 데이터를 갖고 있어 같은 값이 화면마다 다르게 찍힌다. 규칙을 코드에 둔다.
+ */
+export function kstDateTimeLabel(d: Date): string {
+  const k = new Date(d.getTime() + KST_OFFSET_MS);
+  const iso = k.toISOString();
+  const day = weekdayOf(iso.slice(0, 10));
+  const h24 = k.getUTCHours();
+  const min = k.getUTCMinutes();
+  const ampm = h24 < 12 ? '오전' : '오후';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${k.getUTCMonth() + 1}월 ${k.getUTCDate()}일(${day}) ${ampm} ${h12}:${String(min).padStart(2, '0')}`;
+}
