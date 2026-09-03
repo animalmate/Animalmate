@@ -253,6 +253,13 @@
       "when": 1788435424429,
       "tag": "0035_strange_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788453089825,
+      "tag": "0036_little_boom_boom",
+      "breakpoints": true
     }
   ]
 }

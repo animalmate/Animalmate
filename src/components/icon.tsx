@@ -148,6 +148,9 @@ const P: Record<string, ReactElement> = {
       <path d="m20 20-3.5-3.5M11 8v6M8 11h6" />
     </>
   ),
+  // 번개(즉흥 소모임). 다른 아이콘과 달리 **채워서** 그린다 — 선으로만 그린 번개는 24px 에서
+  // 갈래가 뭉개져 무슨 모양인지 안 보인다.
+  zap: <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="currentColor" strokeWidth="1.2" />,
 };
 
 export type IconName = keyof typeof P;

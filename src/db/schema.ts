@@ -805,3 +805,126 @@ export const clubGuidebooks = pgTable(
   // 모르는 제약으로 보고 지워 버리지 않게 하기 위해서다.
   (t) => [check('club_guidebooks_singleton', sql`${t.id} = 'club'`)]
 );
+
+// ── 번개(즉흥 소모임) ──────────────────────────────────────────────────
+// 카톡 공지 → 개최자에게 개인톡, 으로 굴러가던 것을 게시판으로 옮긴다. 옮기는 이유는 "글이
+// 예뻐서"가 아니라 **순서가 남지 않기 때문이다**: 카톡 개인톡은 누가 먼저 말했는지 개최자
+// 머릿속에만 있고, 나중에 다투면 근거가 없다. 신청을 행으로 받으면 선착순이 DB 가 아는 사실이 된다.
+//
+// 일정(schedules)과 갈라 둔 이유: 일정은 회장단이 공표하는 **동아리 공식 일정**이고 신청이 없다.
+// 번개는 부원 아무나 열자고 손들 수 있고(운영진 승인), 정원·대기·쪽지가 붙는다. 한 테이블에
+// 얹으면 schedules 의 절반이 늘 비어 있게 되고, 캘린더 화면이 신청 상태를 몰라 잘못 그린다.
+//
+// 봉사 회차(events)와도 다르다 — events 는 카페 공지 발행 파이프라인에 묶여 있다.
+// 번개는 카페에 나가지 않는다(규칙 #2: 카페는 수정·삭제가 안 되는데 번개는 자주 바뀐다).
+export const flashStatusEnum = pgEnum('flash_status', [
+  'pending', // 부원이 낸 개최 신청 — 운영진 승인 대기(게시판에 아직 안 보인다)
+  'open', // 모집 중
+  'closed', // 개최자가 신청을 닫음(번개 자체는 열린다)
+  'canceled', // 번개가 취소됨
+  'rejected', // 개최 신청이 거절됨
+]);
+// 선착순이라 "승인" 단계가 없다 — 신청하는 순간 자리가 있으면 확정, 없으면 대기다.
+export const flashSignupStatusEnum = pgEnum('flash_signup_status', ['confirmed', 'waitlisted', 'canceled']);
+
+export const flashMeetups = pgTable(
+  'flash_meetups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: text('title').notNull(),
+    meetDate: date('meet_date').notNull(),
+    meetTime: time('meet_time'), // null = 시간 미정
+    place: text('place'),
+    details: text('details'), // 세부 내용(회비·준비물·방탈출 테마 목록 등 자유 서술)
+    /** 정원. **null = 인원 제한 없음**(0 이 아니다 — 0 은 "아무도 못 온다"는 뜻이 돼 버린다). */
+    capacity: integer('capacity'),
+    status: flashStatusEnum('status').notNull().default('pending'),
+    /** 개최 신청을 낸 사람. 공동 개최자 전원은 flash_hosts 에 따로 있고 이 사람도 거기 들어간다. */
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    // 승인·거절한 운영진과 그 사유. 거절을 사유 없이 돌려보내면 다시 낼 방법을 모른다.
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decisionNote: text('decision_note'), // 거절 사유 / 취소 사유
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('flash_meetups_date_idx').on(t.meetDate)]
+);
+
+/**
+ * 공동 개최자. 번개는 여럿이 함께 여는 일이 흔해서(사용자 요청) 개최자를 컬럼 하나로 두지 않는다.
+ *
+ * `read_at` 이 여기 붙어 있는 이유: 홈의 "새 신청 N건" 배지는 **개최자마다 따로** 세어야 한다.
+ * 번개 행에 읽음 시각을 하나만 두면 공동 개최자 중 한 명이 열어 본 순간 나머지 배지가 같이
+ * 꺼져, 다른 개최자는 새 신청이 온 줄 모른다.
+ */
+export const flashHosts = pgTable(
+  'flash_hosts',
+  {
+    flashId: uuid('flash_id')
+      .notNull()
+      .references(() => flashMeetups.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** 이 개최자가 이 번개의 신청·쪽지를 마지막으로 훑어본 시각. null = 아직 한 번도 안 봄. */
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (t) => [unique('flash_hosts_uq').on(t.flashId, t.userId)]
+);
+
+/**
+ * 번개 신청. **메시지가 곧 신청이다**(사용자 결정) — "테마 1 참가하고 싶습니다!" 처럼 쓴 첫 쪽지가
+ * 신청 행을 만든다. 빈 신청 버튼을 따로 두지 않는 이유는, 개최자가 실제로 알고 싶어 하는 것이
+ * "몇 명"이 아니라 "누가 무엇을 하겠다고 했는가"이기 때문이다.
+ *
+ * `seq` = 그 번개 안에서의 신청 순번(1부터). 선착순·대기 승격의 유일한 근거다.
+ * created_at 으로 대신하지 않는 이유: 같은 밀리초에 두 건이 들어오면 순서가 흔들리고, 그 순간이
+ * 하필 정원 경계면 누가 확정인지 뒤집힌다. 채번은 번개 행을 잠근 트랜잭션 안에서만 한다.
+ *
+ * 취소했다가 다시 신청하면 **새 번호를 받는다**(행은 재사용, seq 만 새로 채번). 옛 번호를
+ * 그대로 살리면 한 번 빠졌던 사람이 대기 줄 앞자리를 계속 쥐게 된다.
+ */
+export const flashSignups = pgTable(
+  'flash_signups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    flashId: uuid('flash_id')
+      .notNull()
+      .references(() => flashMeetups.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: flashSignupStatusEnum('status').notNull().default('confirmed'),
+    seq: integer('seq').notNull(),
+    /** 신청자가 이 대화를 마지막으로 본 시각(개최자 답장 배지용). */
+    applicantReadAt: timestamp('applicant_read_at', { withTimezone: true }),
+    canceledAt: timestamp('canceled_at', { withTimezone: true }),
+    /** 취소를 누른 사람. 본인이면 자진 취소, 개최자면 내보내기 — 화면 문구가 갈린다. */
+    canceledBy: uuid('canceled_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('flash_signups_uq').on(t.flashId, t.userId), // 한 번개에 한 사람 한 자리
+    index('flash_signups_order_idx').on(t.flashId, t.seq),
+  ]
+);
+
+/** 신청 건마다 붙는 1:1 대화(신청자 ↔ 개최자 전원). 첫 줄이 신청 메시지다. */
+export const flashMessages = pgTable(
+  'flash_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    signupId: uuid('signup_id')
+      .notNull()
+      .references(() => flashSignups.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => users.id),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('flash_messages_thread_idx').on(t.signupId, t.createdAt)]
+);

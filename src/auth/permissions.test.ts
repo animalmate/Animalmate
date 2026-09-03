@@ -315,3 +315,62 @@ describe('guard — 예외 매핑 + audit 기록', () => {
     expect(inserted).toHaveLength(0);
   });
 });
+
+describe('authorize — 번개(즉흥 소모임)', () => {
+  it('부원도 번개 개최를 낼 수 있다 — 막는 것은 권한이 아니라 첫 상태(pending)다', () => {
+    expect(authorize(actor('member'), { kind: 'flash.create' })).toMatchObject({ allowed: true });
+  });
+
+  it('부원도 번개에 신청할 수 있다', () => {
+    expect(authorize(actor('member'), { kind: 'flash.signup' })).toMatchObject({ allowed: true });
+  });
+
+  it('멤버십이 만료되면 개최도 신청도 막힌다', () => {
+    const gone = actor('member', { membershipActive: false });
+    expect(authorize(gone, { kind: 'flash.create' })).toMatchObject({ reason: 'membership_inactive' });
+    expect(authorize(gone, { kind: 'flash.signup' })).toMatchObject({ reason: 'membership_inactive' });
+  });
+
+  it('개최 승인·거절은 운영진 이상 — 부원은 거부', () => {
+    expect(authorize(actor('member'), { kind: 'flash.approve' })).toMatchObject({
+      allowed: false,
+      reason: 'role_insufficient',
+    });
+    expect(authorize(actor('staff'), { kind: 'flash.approve' })).toMatchObject({ allowed: true });
+    expect(authorize(actor('board'), { kind: 'flash.approve' })).toMatchObject({ allowed: true });
+  });
+
+  it('번개 글 관리는 개최자 본인 — 부원 개최자도 자기 번개를 다룰 수 있다', () => {
+    expect(authorize(actor('member'), { kind: 'flash.manage', hosts: ['u-self'] })).toMatchObject({
+      allowed: true,
+      override: false,
+    });
+  });
+
+  it('공동 개최자면 누구든 관리할 수 있다', () => {
+    expect(authorize(actor('member'), { kind: 'flash.manage', hosts: ['u-other', 'u-self'] })).toMatchObject({
+      allowed: true,
+    });
+  });
+
+  it('남의 번개는 운영진이라도 못 다룬다(개최자가 아니면 not_owner)', () => {
+    expect(authorize(actor('staff'), { kind: 'flash.manage', hosts: ['u-other'] })).toMatchObject({
+      allowed: false,
+      reason: 'not_owner',
+    });
+  });
+
+  it('회장단은 남의 번개도 다룰 수 있고 override 로 기록된다', () => {
+    expect(authorize(actor('board'), { kind: 'flash.manage', hosts: ['u-other'] })).toMatchObject({
+      allowed: true,
+      override: true,
+    });
+  });
+
+  it('회장단이 자기 번개를 다루는 것은 override 가 아니다', () => {
+    expect(authorize(actor('board'), { kind: 'flash.manage', hosts: ['u-self'] })).toMatchObject({
+      allowed: true,
+      override: false,
+    });
+  });
+});

@@ -26,6 +26,8 @@ const COMMON_MENU: NavItem[] = [{ href: '/chatbot', label: '챗봇', icon: 'chat
 // 운영진·회장단 메뉴 순서가 예약·템플릿 다음이어야 하기 때문이다(홈 카드 순서와 맞춘다).
 const MEMBER_MENU: NavItem[] = [
   ...COMMON_MENU,
+  // 번개는 부원이 실제로 **하는** 일이라(신청·개최) 챗봇 바로 다음에 둔다.
+  { href: '/flash', label: '번개', icon: 'zap' },
   { href: '/calendar', label: '캘린더', icon: 'calendar' },
   // 가이드북은 부원이 **보는 쪽**이 주 용도라 부원 메뉴에도 둔다(올리는 것은 팀장단·회장단).
   { href: '/guidebooks', label: '가이드북', icon: 'heart' },
@@ -37,6 +39,7 @@ const STAFF_MENU: NavItem[] = [
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/calendar', label: '캘린더', icon: 'calendar' },
+  { href: '/flash', label: '번개', icon: 'zap' },
   { href: '/guidebooks', label: '가이드북', icon: 'heart' },
   { href: '/admin/recruit/screening', label: '신입모집', icon: 'userPlus', match: '/admin/recruit' },
 ];
@@ -47,6 +50,7 @@ const BOARD_MENU: NavItem[] = [
   { href: '/reservations', label: '예약', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', icon: 'doc' },
   { href: '/calendar', label: '캘린더', icon: 'calendar' },
+  { href: '/flash', label: '번개', icon: 'zap' },
   { href: '/guidebooks', label: '가이드북', icon: 'heart' },
   { href: '/documents', label: '문서', icon: 'layers' },
   { href: '/admin/members', label: '회원', icon: 'users' },
@@ -71,6 +75,7 @@ function activeKey(pathname: string): string {
   if (pathname.startsWith('/chatbot')) return '/chatbot';
   if (pathname.startsWith('/guides')) return '/guides';
   if (pathname.startsWith('/calendar')) return '/calendar';
+  if (pathname.startsWith('/flash')) return '/flash';
   if (pathname.startsWith('/guidebooks')) return '/guidebooks';
   if (pathname.startsWith('/documents')) return '/documents';
   if (pathname.startsWith('/reservations')) return '/reservations';

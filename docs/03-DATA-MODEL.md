@@ -14,6 +14,13 @@
   - `updated_at` 이 점유의 임차 시각. `PUBLISH_LEASE_MS`(10분)를 넘긴 `publishing` 은 워커가 죽은 것으로
     보고 회수한다. 결과 반영(`applyPublishResult`)도 `status='publishing'` 일 때만 적용해,
     임차가 만료돼 회수된 뒤 뒤늦게 끝난 워커가 남의 결과를 덮어쓰지 못하게 한다.
+- `flash_status`: pending | open | closed | canceled | rejected   ← 번개(즉흥 소모임) 글 상태, 0036
+  - `pending` = 부원이 낸 개최 신청(운영진 승인 대기, 게시판에 아직 안 보인다).
+    운영진 이상이 연 것은 이 단계를 건너뛰고 곧바로 `open` 이다(`initialFlashStatus`).
+  - `closed` = 개최자가 신청만 닫은 것(번개 자체는 열린다). `canceled` = 번개가 취소됨.
+  - 지난 번개는 상태가 아니라 **날짜로** 가른다(`meet_date < 오늘`) — 상태로 두면 사람이 바꿔 줘야 한다.
+- `flash_signup_status`: confirmed | waitlisted | canceled   ← 번개 신청, 0036
+  - **선착순이라 "승인" 단계가 없다.** 신청하는 순간 자리가 있으면 확정, 없으면 대기다.
 - `event_status`: draft → published → done | canceled   ← 공지 발행 회차 상태(신청 제거로 단순화, 마이그레이션 0002 적용)
   - ⚠ **enum 에는 4개가 있지만 코드가 실제로 쓰는 값은 `draft`(생성)와 `canceled`(예약 취소)뿐이다**
     (2026-07-28 확인). `published`·`done` 으로 전이시키는 코드가 없다. 챗봇 노출 판정도 status 가 아니라
@@ -184,6 +191,47 @@
   - 권한: 등록·수정·삭제 = 회장단·시스템관리자(`schedule.manage`), 조회 = 운영진 이상
     (부원은 화면 대신 챗봇으로 묻는다). 조회 범위도 visibility 가 WHERE 로 가른다.
 
+### 번개(즉흥 소모임)   ← 0036
+> 카톡 공지 → 개최자에게 개인톡, 으로 굴러가던 것을 게시판으로 옮긴 것(07-DECISIONS 162).
+> 옮긴 이유는 **순서가 어디에도 안 남기 때문**이다 — 개인톡은 누가 먼저 말했는지 개최자
+> 머릿속에만 있고, 정원이 찼을 때 근거가 없다.
+
+- `flash_meetups` (id, title, meet_date, meet_time?, place?, details?, capacity?, status,
+  created_by, decided_by?, decided_at?, decision_note?, created_at, updated_at, INDEX(meet_date))
+  - `capacity` = **null 이면 인원 제한 없음**(0 이 아니다 — 0 은 "아무도 못 온다"가 돼 버린다).
+    입력에서 빈 칸과 0 이하는 전부 null 로 접는다(`normalizeCapacity`).
+  - `decision_note` 는 거절 사유와 취소 사유를 함께 쓴다. 거절은 사유가 **필수** —
+    이유 없이 돌려보내면 낸 사람이 다시 낼 방법을 모른다.
+  - 일정(`schedules`)과 갈라 둔 이유: 일정은 회장단이 공표하는 공식 일정이고 신청이 없다.
+    번개는 부원 아무나 열자고 손들 수 있고(운영진 승인) 정원·대기·쪽지가 붙는다.
+    한 테이블에 얹으면 `schedules` 의 절반이 늘 비고, 캘린더가 신청 상태를 몰라 잘못 그린다.
+  - **카페에 나가지 않는다**(규칙 #2: 카페는 수정·삭제가 안 되는데 번개는 자주 바뀐다).
+- `flash_hosts` (flash_id, user_id, read_at?, UNIQUE(flash_id, user_id))
+  - 공동 개최자. 번개는 여럿이 함께 여는 일이 흔해 개최자를 컬럼 하나로 두지 않는다.
+    개최 신청자(`created_by`)도 여기 한 행으로 들어간다 — "내가 개최자인 번개" 조회가 한 곳에서 끝난다.
+  - `read_at` 이 **개최자마다** 있는 이유: 홈 배지를 번개 행에 하나만 두면 공동 개최자 중 한 명이
+    열어 본 순간 나머지 배지가 같이 꺼져, 다른 개최자는 새 신청이 온 줄 모른다.
+- `flash_signups` (id, flash_id, user_id, status, seq, applicant_read_at?, canceled_at?, canceled_by?,
+  created_at, UNIQUE(flash_id, user_id), INDEX(flash_id, seq))
+  - **메시지가 곧 신청이다**(사용자 결정) — "테마 1 참가하고 싶습니다!" 같은 첫 쪽지가 이 행을 만든다.
+  - `seq` = 그 번개 안에서의 신청 순번(1부터). **선착순·대기 승격의 유일한 근거.**
+    `created_at` 으로 대신하지 않는 이유: 같은 밀리초에 두 건이 들어오면 순서가 흔들리고, 그 순간이
+    하필 정원 경계면 누가 확정인지 뒤집힌다. 채번은 번개 행을 `FOR UPDATE` 로 잠근 트랜잭션 안에서만 한다.
+  - 취소했다가 다시 신청하면 **새 번호**를 받는다(행은 재사용, seq 만 새로 채번).
+    옛 번호를 살리면 한 번 빠졌던 사람이 대기 줄 앞자리를 계속 쥔다.
+  - 자리 배정은 `assignSeats`(순수 함수)가 seq 순서로 **처음부터 다시** 계산하고, `resyncSeats` 가
+    바뀐 행만 UPDATE 한다. "맨 앞 대기자 한 명을 올린다" 식 증분 수정을 쓰지 않는 이유는
+    한 번 어긋나면 어긋난 채로 계속 굴러가기 때문이다(정원 축소도 같은 경로로 처리된다).
+- `flash_messages` (id, signup_id, sender_id, body, created_at, INDEX(signup_id, created_at))
+  - 신청 건별 1:1 대화(신청자 ↔ 개최자 전원). 첫 줄이 신청 메시지다.
+  - **회장단이라도 남의 대화는 읽지도 쓰지도 못한다.** `flash.manage` 는 번개 **글**에 대한
+    권한이고, 이 표는 그 권한을 보지 않는다(`getFlashDetail` 은 개최자에게만 `threads` 를 싣고,
+    `postFlashMessage` 는 개최자·당사자만 통과시킨다).
+  - 권한 정리: 개최 = `flash.create`(부원 이상, 부원 것은 pending) / 승인·거절 = `flash.approve`(운영진 이상) /
+    글 수정·마감·취소 = `flash.manage`(개최자 본인, 회장단 override) / 신청·쪽지 = `flash.signup`(부원 이상).
+  - 챗봇은 `list_flash_meetups` tool 로 읽는다. **개최자·신청자 이름은 tool 결과에 넣지 않는다**(인원 수만) —
+    챗봇이 명단·개인정보에 답하지 않는다는 규칙(#5, 시스템 프롬프트 3)과 부딪히기 때문이다.
+
 ### 운영 공통
 - `audit_logs` (id, actor_user_id, action, target_table, target_id,
   before_json?, after_json?, created_at)
@@ -346,6 +394,17 @@
   - 챗봇 노출 판정도 status 가 아니라 **"취소 아님 + 장소(place) 있음"** 으로 한다(07-DECISIONS 24).
     발행(카페 업로드)과 챗봇 안내는 별개 관심사라는 판단이었다.
   - 신청/확정 상태 없음(신청은 카페 댓글).
+
+- **flash_meetups(번개)**: `pending`(부원이 낸 개최 신청) → `open` | `rejected`,
+  `open` ⇄ `closed`(신청만 닫기), 어느 쪽에서든 → `canceled`.
+  운영진 이상이 연 번개는 `pending` 을 건너뛰고 `open` 으로 시작한다.
+  - **지난 번개는 상태가 아니다** — `meet_date` 가 오늘보다 앞서면 지난 것으로 본다.
+    상태로 두면 아무도 안 바꿔 줘서 "모집 중"인 작년 번개가 남는다.
+
+- **flash_signups(번개 신청)**: `confirmed` ⇄ `waitlisted`(정원과 seq 로 매번 재계산) → `canceled`.
+  - 전이를 명령으로 만들지 않는다. 취소·정원 변경이 나면 `resyncSeats` 가 seq 순서로 전부 다시
+    계산해 **바뀐 행만** UPDATE 한다 — 그래서 확정자가 취소하면 맨 앞 대기자가 별도 코드 없이 올라간다.
+  - `canceled` → 다시 신청하면 같은 행을 되살리되 **seq 를 새로 딴다**(대기 줄 맨 뒤).
 
 - **memberships**: `active` → `expired`. 전이 경로 3개 —
   ① **미접속 만료(자동)**: 일일 크론이 `coalesce(users.last_seen_at, users.created_at)` 가

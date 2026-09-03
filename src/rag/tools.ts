@@ -4,9 +4,9 @@
 // **지금 DB 상태**를 물을 때 쓴다. 모델이 스스로 판단해 호출한다(function calling).
 // 봉사 정보(일시·장소·정원)는 부원 이상 전원 공개라 역할 필터 없이 조회한다.
 
-import { and, asc, gte, eq, ne, isNotNull, inArray } from 'drizzle-orm';
+import { and, asc, gte, lte, eq, ne, isNotNull, inArray, sql } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { events, teams, scheduledPosts, teamGuidebooks, documents } from '@/db/schema';
+import { events, teams, scheduledPosts, teamGuidebooks, documents, flashMeetups, flashSignups } from '@/db/schema';
 import type { GeminiTool } from './gemini';
 import type { Actor } from '@/auth/permissions';
 import { kstToday, weekdayOf } from '@/lib/kst-date';
@@ -225,6 +225,105 @@ export async function actorTeamNames(db: Db, actor: Actor): Promise<string[]> {
   return rows.map((r) => r.name);
 }
 
+// ── 번개(즉흥 소모임) ──────────────────────────────────────────────────
+//
+// 왜 문서가 아니라 tool 인가: 일정(결정 86)과 같은 이유다. 번개는 며칠 단위로 생겼다 사라지는
+// 것이라 문서로 적어 두면 적는 순간 낡는다. 표를 읽으면 사람이 손대지 않아도 답이 늘 지금 값이다.
+//
+// **이름을 싣지 않는다.** 개최자도 신청자도 아니다 — 챗봇은 회원 명단·개인정보 요청에 응하지
+// 않는다는 규칙(시스템 프롬프트 3, CLAUDE.md 규칙 #5)이 있고, 여기서 이름을 흘리면 "누가 신청했어?"
+// 라는 질문에 챗봇이 답해 버린다. 인원 **수**는 집계라 그 규칙에 걸리지 않고, 갈지 말지를
+// 정하는 데 실제로 쓰인다. 누가 여는지는 게시판을 열면 나온다.
+
+/** 번개 세부 내용을 tool 결과에 실을 때의 상한. 답변 근거로 쓰기에 충분하고, 통째로 흘리지 않는다. */
+const FLASH_DETAILS_MAX_CHARS = 500;
+
+/** 챗봇이 안내할 수 있는 번개 = 승인이 끝나 게시판에 떠 있는 것(모집 중·마감)뿐이다. */
+const CHATBOT_FLASH_STATUSES = ['open', 'closed'] as const;
+
+/** 번개 게시판 화면 주소. 서명 URL 이 아니라 화면 주소라 늙지 않는다(가이드북과 같은 이유). */
+export const FLASH_PAGE_PATH = '/flash';
+
+export interface FlashChatView {
+  title: string;
+  date: string; // YYYY-MM-DD
+  weekday: string;
+  time: string | null; // 집합 시각 HH:MM. null = 아직 안 정함
+  place: string | null;
+  /** null = 인원 제한 없음. */
+  capacity: number | null;
+  confirmed: number;
+  waiting: number;
+  /** 정원이 차서 지금 신청하면 대기로 들어가는가. */
+  full: boolean;
+  /** 신청을 아직 받는가(마감했으면 false). */
+  acceptingSignups: boolean;
+  details: string | null;
+}
+
+/**
+ * 번개 목록(기본은 오늘 이후). `from` 에 과거 날짜를 주면 **개최 내역**이 된다 —
+ * "지난달에 번개 뭐 했어?" 같은 질문이 그 경로다.
+ *
+ * 승인 대기·거절·취소 건은 뺀다. 대기·거절은 아직 열린 적이 없는 글이고, 취소된 것을 목록에
+ * 섞으면 모델이 "있다"고 답한다 — 취소는 없는 것과 같게 다루는 편이 안전하다.
+ */
+export async function listFlashMeetupsForChatbot(
+  db: Db,
+  opts: { from?: string; to?: string; limit?: number; now?: Date } = {}
+): Promise<FlashChatView[]> {
+  const from = opts.from ?? kstToday(opts.now ?? new Date());
+  const conds = [inArray(flashMeetups.status, [...CHATBOT_FLASH_STATUSES]), gte(flashMeetups.meetDate, from)];
+  if (opts.to) conds.push(lte(flashMeetups.meetDate, opts.to));
+  const rows = await db
+    .select({
+      id: flashMeetups.id,
+      title: flashMeetups.title,
+      date: flashMeetups.meetDate,
+      time: flashMeetups.meetTime,
+      place: flashMeetups.place,
+      capacity: flashMeetups.capacity,
+      details: flashMeetups.details,
+      status: flashMeetups.status,
+    })
+    .from(flashMeetups)
+    .where(and(...conds))
+    .orderBy(asc(flashMeetups.meetDate), asc(flashMeetups.meetTime))
+    .limit(Math.min(opts.limit ?? 10, 30));
+  if (rows.length === 0) return [];
+
+  // 확정·대기 인원은 신청 표에서 센다(취소한 사람은 빠진다).
+  const counts = new Map<string, { confirmed: number; waiting: number }>();
+  const countRows = await db
+    .select({ flashId: flashSignups.flashId, status: flashSignups.status, n: sql<number>`count(*)::int` })
+    .from(flashSignups)
+    .where(and(inArray(flashSignups.flashId, rows.map((r) => r.id)), ne(flashSignups.status, 'canceled')))
+    .groupBy(flashSignups.flashId, flashSignups.status);
+  for (const c of countRows) {
+    const cur = counts.get(c.flashId) ?? { confirmed: 0, waiting: 0 };
+    if (c.status === 'confirmed') cur.confirmed = c.n;
+    else cur.waiting = c.n;
+    counts.set(c.flashId, cur);
+  }
+
+  return rows.map((r) => {
+    const c = counts.get(r.id) ?? { confirmed: 0, waiting: 0 };
+    return {
+      title: r.title,
+      date: r.date,
+      weekday: weekdayOf(r.date),
+      time: r.time ? r.time.slice(0, 5) : null,
+      place: r.place,
+      capacity: r.capacity,
+      confirmed: c.confirmed,
+      waiting: c.waiting,
+      full: r.capacity != null && c.confirmed >= r.capacity,
+      acceptingSignups: r.status === 'open',
+      details: r.details ? r.details.slice(0, FLASH_DETAILS_MAX_CHARS) : null,
+    };
+  });
+}
+
 // ── Gemini function declarations ───────────────────────────────────────
 export const CHATBOT_TOOLS: GeminiTool[] = [
   {
@@ -265,6 +364,26 @@ export const CHATBOT_TOOLS: GeminiTool[] = [
       type: 'object',
       properties: {
         team: { type: 'string', description: '팀 이름(예: "2팀"). 생략하면 질문자가 속한 팀' },
+      },
+    },
+  },
+  {
+    name: 'list_flash_meetups',
+    description:
+      '**번개**(부원끼리 즉흥으로 여는 소모임 — 밥·카페·방탈출·산책 등) 목록을 가져온다. ' +
+      '"번개 뭐 있어?", "이번 주 번개", "번개 신청 어떻게 해" 같은 질문에 쓴다. ' +
+      '기본은 오늘 이후지만 from 에 과거 날짜를 넣으면 **지난 개최 내역**이 된다("저번 달 번개 뭐 했어?"). ' +
+      '각 번개에는 날짜(date)·요일(weekday)·집합 시각(time)·장소(place)·정원(capacity)·확정 인원(confirmed)·' +
+      '대기 인원(waiting)·세부 내용(details)이 들어 있다. ' +
+      'full 이 true 면 정원이 차서 지금 신청하면 대기로 들어간다. acceptingSignups 가 false 면 신청이 마감된 것이다. ' +
+      '**개최자와 신청자 이름은 결과에 없다**(개인정보). 누가 여는지 물으면 지어내지 말고 번개 게시판을 안내한다. ' +
+      '봉사 회차나 동아리 공식 일정(총회·MT)과 섞지 않는다 — 그건 각각 다른 tool 이다.',
+    parameters: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: '조회 시작일 YYYY-MM-DD(기본: 오늘)' },
+        to: { type: 'string', description: '조회 종료일 YYYY-MM-DD(생략 가능)' },
+        limit: { type: 'integer', description: '가져올 최대 번개 수(기본 10)' },
       },
     },
   },
@@ -356,6 +475,24 @@ export async function executeTool(
       ...out,
       guidebookLink: files.includes(team) ? GUIDEBOOK_PAGE_PATH : null,
       teamsWithGuidebook: await teamsWithGuidebook(db),
+    };
+  }
+  if (name === 'list_flash_meetups') {
+    const from = asDate(args.from) ?? kstToday(now); // 기본은 오늘 이후 — 지난 것을 묻지 않는 한 소용없다
+    const to = asDate(args.to);
+    const limit = typeof args.limit === 'number' ? args.limit : undefined;
+    const flash = await listFlashMeetupsForChatbot(db, { from, to, limit, now });
+    return {
+      from,
+      to: to ?? null,
+      flash,
+      count: flash.length,
+      flashLink: FLASH_PAGE_PATH,
+      // 이 문장은 우리 서버가 만든 것이지 사용자가 넣은 값이 아니다(인젝션 경계 밖).
+      // 비어 있을 때만 붙인다 — 있을 때도 붙이면 정확한 답까지 변명처럼 들린다(봉사 tool 과 같은 판단).
+      ...(flash.length === 0
+        ? { note: '해당 기간에 올라온 번개가 없다. 없다고 답하되, 번개는 부원 누구나 열 수 있고 게시판(flashLink)에서 개최를 낼 수 있다고 덧붙여라.' }
+        : {}),
     };
   }
   if (name === 'list_club_schedules') {

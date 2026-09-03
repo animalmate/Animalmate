@@ -63,7 +63,11 @@ export type Action =
   | { kind: 'joincode.manage' } // 학기 가입코드 발급/재발급
   | { kind: 'recruit.score' } // F9 신입 모집: 채점·개인메모·공용메모지(운영진 이상)
   | { kind: 'recruit.notice' } // F9 신입 모집: 공고·안내문구·마감/공개 스위치·기수 생성(회장단 + 공고 편집 팀)
-  | { kind: 'recruit.manage' }; // F9 신입 모집: 확정·배정·공개·폐기·export(회장단 전용)
+  | { kind: 'recruit.manage' } // F9 신입 모집: 확정·배정·공개·폐기·export(회장단 전용)
+  | { kind: 'flash.create' } // 번개 개최 — 부원도 낼 수 있다(부원 건은 pending 으로 들어간다)
+  | { kind: 'flash.approve' } // 번개 개최 승인·거절(운영진 이상)
+  | { kind: 'flash.manage'; hosts: string[] } // 번개 글 수정·마감·취소 — 개최자 본인(공동 포함)
+  | { kind: 'flash.signup' }; // 번개 신청·쪽지(부원 이상)
 
 export type DenyReason = 'membership_inactive' | 'role_insufficient' | 'not_owner';
 
@@ -137,9 +141,32 @@ export function authorize(actor: Actor, action: Action): Decision {
 
   switch (action.kind) {
     // 부원 이상 누구나(활성 멤버).
+    //
+    // 번개 개최(flash.create)가 여기 있는 것은 실수가 아니다 — 부원도 "이런 번개 열고 싶다"를
+    // 낼 수 있어야 한다(사용자 요청). 부원과 운영진의 차이는 **여기서 막느냐**가 아니라
+    // 들어간 글의 첫 상태다: 부원 것은 pending(승인 대기), 운영진 이상은 곧바로 open.
+    // 그 판단은 `initialFlashStatus`(src/flash/flash.ts)가 하고, 승인은 flash.approve 가 잠근다.
+    // 여기서 부원을 거부해 버리면 "개최 신청" 이라는 기능 자체가 존재할 수 없다.
     case 'chatbot.ask':
     case 'application.create':
+    case 'flash.create':
+    case 'flash.signup':
       return ALLOW;
+
+    // 번개 개최 승인·거절: 운영진 이상. 회장단 전용으로 좁히지 않는 이유는 번개가 동아리
+    // 공식 일정이 아니라서다 — 회장 3인에게 몰아 두면 주말 번개가 월요일에 열린다.
+    case 'flash.approve':
+      return isStaffPlus(actor.role) ? ALLOW : deny('role_insufficient');
+
+    // 번개 글 수정·마감·취소: **개최자 본인**(공동 개최자 포함). 회장단은 우회(override 기록).
+    //
+    // 다른 리소스와 달리 Ownership(personal|team) 을 안 쓴다. 번개는 여러 명이 함께 열고
+    // (사용자 요청) 그 목록은 flash_hosts 라는 별도 표에 있어, owner_id 한 칸으로는 표현이 안 된다.
+    // 운영진 여부를 묻지 않는 것도 의도한 것이다 — 부원이 승인받아 연 번개는 그 부원이 주인이다.
+    case 'flash.manage': {
+      if (action.hosts.includes(actor.userId)) return ALLOW;
+      return isPrivileged(actor.role) ? ALLOW_OVERRIDE : deny('not_owner');
+    }
 
     // 게시물·예약 생성, F9 채점/메모: 운영진 이상(부원 불가).
     // 채점은 운영진, 결정은 회장단 — recruit.score 는 여기(staff+), recruit.manage 는 아래(board only).

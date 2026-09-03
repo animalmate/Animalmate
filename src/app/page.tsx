@@ -6,6 +6,7 @@ import { CursorDog } from '@/components/cursor-dog';
 import { ChatDog } from '@/components/chat-dog';
 import { isStaffPlus, isPrivileged } from '@/auth/permissions';
 import { getHomeLinks } from '@/org/links';
+import { countFlashUnread, countPendingFlash } from '@/flash/flash';
 import { db } from '@/db/client';
 
 export const dynamic = 'force-dynamic';
@@ -17,18 +18,35 @@ interface Shortcut {
   label: string;
   desc: string;
   icon: string;
+  /**
+   * 카드 오른쪽 빨간 숫자. 번개 게시판처럼 **나를 기다리는 것이 있는** 칸에만 붙인다.
+   * 알림을 메일로 보내지 않기로 했으므로(2026-09-04 결정) 새 신청·새 답장을 알 방법이 여기뿐이다.
+   * 0 이면 그리지 않는다 — 빈 동그라미는 이미 읽은 것처럼 보인다.
+   */
+  badge?: number;
 }
 
 // 순서 = 손이 자주 가는 순(2026-08-03 사용자 지정). 예약·템플릿이 주 업무고 일정은 그다음이다.
+// 번개는 **부원·운영진 양쪽에 같은 모양으로** 있다(2026-09-04). 신청하는 사람도 여는 사람도
+// 전원이라 역할로 가를 이유가 없는 유일한 칸이다. 순서만 목록마다 다르다 — 부원에게는 손이
+// 가장 자주 가는 칸이고, 운영진에게는 예약·템플릿 다음이다.
+const FLASH_SHORTCUT: Shortcut = {
+  href: '/flash',
+  label: '번개 게시판',
+  desc: '부원끼리 여는 소모임',
+  icon: 'zap',
+};
 const STAFF_SHORTCUTS: Shortcut[] = [
   { href: '/reservations', label: '예약', desc: '공지 예약 관리', icon: 'megaphone' },
   { href: '/templates', label: '템플릿', desc: '자주 쓰는 양식 저장', icon: 'doc' },
   { href: '/calendar', label: '캘린더', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
+  FLASH_SHORTCUT,
   { href: '/guidebooks', label: '가이드북', desc: '팀별 활동 안내', icon: 'heart' },
 ];
 // 부원 바로가기 — 캘린더 하나뿐이다(2026-08-04, 결정 89). 부원이 보는 것은 부원 공개 일정만이고,
 // 그 필터는 서버 SQL 이 건다. 메뉴에만 두면 홈에서 한 번 더 들어가야 해 실제로 안 쓰인다.
 const MEMBER_SHORTCUTS: Shortcut[] = [
+  FLASH_SHORTCUT, // 부원이 실제로 무언가를 **하는** 유일한 칸이라 맨 앞이다
   { href: '/calendar', label: '캘린더', desc: '총회·MT 등 동아리 일정', icon: 'calendar' },
   // 부원이 가장 자주 여는 자료라 홈에 둔다(메뉴에만 두면 한 번 더 들어가야 해 안 쓰인다).
   { href: '/guidebooks', label: '가이드북', desc: '팀별 활동 안내', icon: 'heart' },
@@ -131,6 +149,17 @@ export default async function HomePage() {
   // 건의함·신고함은 전원이 보므로 항상 읽는다. **드라이브 주소는 운영진 이상에게만 실린다** —
   // 아래 staffOnly 필터가 카드를 걸러 내므로 부원의 HTML 에는 주소 자체가 나가지 않는다(규칙 #6).
   const links = await getHomeLinks(db);
+  // 번개는 알림을 메일로 보내지 않기로 했다(2026-09-04 결정) — 새 신청·새 답장을 알 수 있는
+  // 자리가 이 배지뿐이라, 홈에서 한 번에 읽어 카드에 얹는다. 두 값을 하나의 칸에 겹쳐 쓰되
+  // **안 읽은 쪽지를 먼저** 보여 준다: 승인은 며칠 미뤄도 되지만 답을 기다리는 사람은 오늘 있다.
+  // `countPendingFlash` 는 운영진이 아니면 서버에서 0 을 돌려주므로 여기서 역할을 묻지 않는다.
+  const [flashUnread, flashPending] = await Promise.all([countFlashUnread(db, actor), countPendingFlash(db, actor)]);
+  const withFlashBadge = (s: Shortcut): Shortcut => {
+    if (s.href !== '/flash') return s;
+    if (flashUnread > 0) return { ...s, desc: `안 읽은 메시지 ${flashUnread}건`, badge: flashUnread };
+    if (flashPending > 0) return { ...s, desc: `승인 기다리는 개최 ${flashPending}건`, badge: flashPending };
+    return s;
+  };
   const externals = [
     CAFE_LINK,
     ...(links.driveUrl ? [driveLink(links.driveUrl)] : []),
@@ -179,7 +208,7 @@ export default async function HomePage() {
 
         {shortcuts.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {shortcuts.map((s) => (
+            {shortcuts.map(withFlashBadge).map((s) => (
               <a
                 key={s.href}
                 href={s.href}
@@ -191,9 +220,18 @@ export default async function HomePage() {
                   </span>
                   <span className="min-w-0">
                     <strong className="block text-base font-semibold text-ink-900">{s.label}</strong>
-                    <span className="text-[13px] text-ink-500">{s.desc}</span>
+                    <span className={`text-[13px] ${s.badge ? 'font-semibold text-coral-600' : 'text-ink-500'}`}>{s.desc}</span>
                   </span>
-                  <Icon name="chevronRight" size={18} className="ml-auto text-ink-300" />
+                  {s.badge ? (
+                    <span
+                      className="ml-auto inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-coral-500 px-1.5 text-[12px] font-bold text-white"
+                      aria-label={`확인할 것 ${s.badge}건`}
+                    >
+                      {s.badge > 99 ? '99+' : s.badge}
+                    </span>
+                  ) : (
+                    <Icon name="chevronRight" size={18} className="ml-auto text-ink-300" />
+                  )}
                 </Card>
               </a>
             ))}

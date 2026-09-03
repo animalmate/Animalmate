@@ -128,6 +128,17 @@ export const RULES = {
    * 발표 직후 한 공인 IP 뒤 수십 명이 서로의 예산을 깎지도 않는다.
    */
   recruitLookupFail: { bucket: 'recruit_lookup_fail', windowSeconds: 3600, max: 10 },
+  /**
+   * 번개 신청·쪽지 — **IP 가 아니라 회원 id 로 센다.**
+   *
+   * 이 경로는 로그인해야만 닿으므로 주체를 정확히 알 수 있다. IP 로 세면 한자리에 모여 쓰는
+   * 이 동아리에서(같은 WiFi) 옆 사람이 내 예산을 깎는다 — 다른 통들이 값을 인원수에 맞춰
+   * 넓혀야 했던 바로 그 문제인데, 여기서는 애초에 겪을 이유가 없다.
+   *
+   * 값(분당 20)은 사람이 대화하는 속도의 한참 위다. 막으려는 것은 대화가 아니라 스크립트로
+   * 쪽지 표를 부풀리는 일뿐이고, 그것 말고는 이 표에 행을 만들 방법이 없다.
+   */
+  flashMessage: { bucket: 'flash_message', windowSeconds: 60, max: 20 },
 } as const satisfies Record<string, LimitRule>;
 
 /** 고정 윈도의 시작 시각(윈도 길이로 내림). */
