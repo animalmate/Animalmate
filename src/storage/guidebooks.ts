@@ -97,18 +97,28 @@ export async function createGuidebookUploadUrl(path: string): Promise<SignedUplo
  * 보기용 서명 URL. 만료가 있으므로 화면을 열 때마다 새로 발급한다(DB 에 저장하지 않는다).
  * 저장해 두면 만료된 주소가 화면에 남아 "가이드북이 안 열린다"가 된다.
  */
-export async function createGuidebookViewUrl(path: string): Promise<string> {
+export async function createGuidebookViewUrl(path: string): Promise<string | null> {
   const { base, key } = storageBase();
   const res = await fetch(`${base}/storage/v1/object/sign/${GUIDEBOOK_BUCKET}/${path}`, {
     method: 'POST',
     headers: { ...authHeaders(key), 'Content-Type': 'application/json' },
     body: JSON.stringify({ expiresIn: VIEW_URL_TTL_SEC }),
   });
-  if (!res.ok) throw new Error(`서명 보기 URL 발급 실패: ${res.status} ${await res.text()}`);
+  // **던지지 않는다.** 목록은 여러 팀을 한 번에 그리는데, 파일 하나가 없다고 예외를 올리면
+  // 그 한 줄 때문에 화면 전체가 500 이 된다 — 2026-09-03 에 실제로 그렇게 죽었다
+  // (행은 남아 있는데 스토리지의 파일만 사라진 상태였다). 없으면 null 을 주고
+  // 화면이 "파일을 찾을 수 없다, 다시 올려 달라"고 말하게 한다.
+  if (!res.ok) {
+    console.error(`[storage] 서명 보기 URL 발급 실패 path=${path} status=${res.status}`);
+    return null;
+  }
 
-  const body = (await res.json()) as { signedURL?: string; signedUrl?: string };
+  const body = (await res.json().catch(() => ({}))) as { signedURL?: string; signedUrl?: string };
   const signed = body.signedURL ?? body.signedUrl;
-  if (!signed) throw new Error('서명 보기 URL 응답에 signedURL 이 없습니다.');
+  if (!signed) {
+    console.error(`[storage] 서명 보기 URL 응답에 signedURL 이 없습니다 path=${path}`);
+    return null;
+  }
   return `${base}/storage/v1${signed}`;
 }
 

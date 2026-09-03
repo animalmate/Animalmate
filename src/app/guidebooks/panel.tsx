@@ -19,11 +19,15 @@ interface GuidebookInfo {
   fileBytes: number;
   status: 'extracting' | 'extracted' | 'ready' | 'failed';
   inChatbot: boolean;
+  /** 확인 전 본문. 확인을 마치면 null 이 된다. */
   pendingText: string | null;
+  /** 챗봇이 지금 읽고 있는 본문. 확인을 마친 뒤 `내용 확인` 이 여는 것이 이것이다. */
+  confirmedText: string | null;
   failReason: string | null;
   uploadedByName: string | null;
   updatedAt: string;
-  viewUrl: string;
+  /** null = 스토리지에 파일이 없다(행만 남은 상태). 보기 버튼 대신 다시 올려 달라고 말한다. */
+  viewUrl: string | null;
 }
 interface TeamRow {
   teamId: string;
@@ -38,7 +42,8 @@ interface ClubRow {
   fileBytes: number;
   uploadedByName: string | null;
   updatedAt: string;
-  viewUrl: string;
+  /** null = 스토리지에 파일이 없다(행만 남은 상태). */
+  viewUrl: string | null;
 }
 
 /**
@@ -46,6 +51,13 @@ interface ClubRow {
  * 사용자의 시간을 아끼기 위해서이고, 진짜 검문은 서버가 업로드된 파일을 보고 다시 한다.
  */
 const MAX_BYTES = 50 * 1024 * 1024;
+
+/**
+ * 상한을 넘겼을 때 하는 말. 서버(`src/guidebooks/guidebooks.ts`)와 **같은 문장**이어야 한다 —
+ * 브라우저에서 걸리든 서버에서 걸리든 사용자가 볼 화면은 하나다.
+ * 무엇이 잘못됐는지가 아니라 **다음에 할 일**을 먼저 말한다.
+ */
+const TOO_BIG = `파일이 너무 큽니다. pdf를 압축 후 올려주세요. (최대 ${MAX_BYTES / 1024 / 1024}MB)`;
 
 function sizeLabel(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`;
@@ -57,7 +69,7 @@ function dateLabel(iso: string): string {
 /** 고를 때 바로 걸러 낼 것. 통과했다고 안전한 것은 아니다(서버가 다시 본다). */
 function rejectReason(file: File): string | null {
   if (file.type !== 'application/pdf') return 'PDF 파일만 올릴 수 있습니다. 파워포인트는 PDF 로 저장해 주세요.';
-  if (file.size > MAX_BYTES) return `파일이 너무 큽니다(최대 ${MAX_BYTES / 1024 / 1024}MB).`;
+  if (file.size > MAX_BYTES) return TOO_BIG;
   return null;
 }
 
@@ -96,7 +108,7 @@ export function GuidebooksPanel() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [viewing, setViewing] = useState<{ title: string; url: string } | null>(null);
-  const [review, setReview] = useState<{ team: TeamRow; text: string } | null>(null);
+  const [review, setReview] = useState<{ team: TeamRow; text: string; reflected: boolean } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,7 +150,7 @@ export function GuidebooksPanel() {
         <ClubCard
           club={club}
           canManage={canManageClub}
-          onView={() => club && setViewing({ title: CLUB_TITLE, url: club.viewUrl })}
+          onView={() => club?.viewUrl && setViewing({ title: CLUB_TITLE, url: club.viewUrl })}
           onChanged={(msg) => {
             setToast(msg);
             void load();
@@ -153,9 +165,10 @@ export function GuidebooksPanel() {
             key={row.teamId}
             row={row}
             onView={() =>
-              row.guidebook && setViewing({ title: `${row.teamName} 가이드북`, url: row.guidebook.viewUrl })
+              row.guidebook?.viewUrl &&
+              setViewing({ title: `${row.teamName} 가이드북`, url: row.guidebook.viewUrl })
             }
-            onReview={(text) => setReview({ team: row, text })}
+            onReview={(text, reflected) => setReview({ team: row, text, reflected })}
             onChanged={(msg) => {
               setToast(msg);
               void load();
@@ -178,6 +191,7 @@ export function GuidebooksPanel() {
           teamName={review.team.teamName}
           teamId={review.team.teamId}
           initialText={review.text}
+          reflected={review.reflected}
           onClose={() => setReview(null)}
           onSaved={() => {
             setReview(null);
@@ -194,6 +208,18 @@ export function GuidebooksPanel() {
 
 /** 화면에 보이는 이름. 고정값이다 — 서비스의 CLUB_GUIDEBOOK_TITLE 과 같은 말이어야 한다. */
 const CLUB_TITLE = '전체 부원 가이드북';
+
+/**
+ * 행은 남아 있는데 스토리지의 파일이 없을 때. 화면 전체를 죽이는 대신 이 줄을 보여 준다
+ * (2026-09-03: 파일이 사라진 행 하나 때문에 `/guidebooks` 가 통째로 500 이었다).
+ */
+function MissingFile() {
+  return (
+    <div className="rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
+      파일을 찾을 수 없어요. 다시 올려 주세요.
+    </div>
+  );
+}
 
 /**
  * 동아리 전체 가이드북 한 칸. 팀 칸과 다른 점 셋:
@@ -269,7 +295,7 @@ function ClubCard({
         )}
       </div>
 
-      {club ? (
+      {club?.viewUrl ? (
         <SecondaryButton onClick={onView} className="w-full">
           <span className="inline-flex items-center gap-1.5">
             <Icon name="doc" className="h-4 w-4" />
@@ -277,6 +303,7 @@ function ClubCard({
           </span>
         </SecondaryButton>
       ) : null}
+      {club && !club.viewUrl ? <MissingFile /> : null}
 
       {canManage ? (
         <div className="space-y-2 border-t border-ink-100 pt-3">
@@ -329,7 +356,8 @@ function TeamCard({
 }: {
   row: TeamRow;
   onView: () => void;
-  onReview: (text: string) => void;
+  /** `reflected` = 이미 챗봇에 반영된 본문을 여는 것인가(상자 안내 문구가 갈린다). */
+  onReview: (text: string, reflected: boolean) => void;
   onChanged: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -350,7 +378,7 @@ function TeamCard({
         {gb ? <ChatbotBadge gb={gb} /> : null}
       </div>
 
-      {gb ? (
+      {gb?.viewUrl ? (
         <SecondaryButton onClick={onView} className="w-full">
           <span className="inline-flex items-center gap-1.5">
             <Icon name="doc" className="h-4 w-4" />
@@ -358,6 +386,7 @@ function TeamCard({
           </span>
         </SecondaryButton>
       ) : null}
+      {gb && !gb.viewUrl ? <MissingFile /> : null}
 
       {row.canManage ? (
         <ManageRow row={row} onReview={onReview} onChanged={onChanged} onError={onError} />
@@ -393,7 +422,8 @@ function ManageRow({
   onError,
 }: {
   row: TeamRow;
-  onReview: (text: string) => void;
+  /** `reflected` = 이미 챗봇에 반영된 본문을 여는 것인가(상자 안내 문구가 갈린다). */
+  onReview: (text: string, reflected: boolean) => void;
   onChanged: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -431,7 +461,7 @@ function ManageRow({
       // 추출이 됐으면 곧바로 검수 상자를 연다 — 여기서 확인해야 챗봇이 읽는다.
       if (reg.data.pendingText) {
         onChanged('가이드북을 올렸습니다.');
-        onReview(reg.data.pendingText);
+        onReview(reg.data.pendingText, false);
       } else {
         onChanged('가이드북을 올렸습니다. 봉사 운영 정보는 찾지 못했어요.');
       }
@@ -475,7 +505,12 @@ function ManageRow({
 
         {gb ? (
           <>
-            <SecondaryButton disabled={busy !== ''} onClick={() => onReview(gb.pendingText ?? '')}>
+            {/* 확인 전이면 뽑아 둔 본문을, 확인을 마쳤으면 **챗봇이 지금 읽는 본문**을 연다.
+                후자를 안 실으면 `챗봇 반영됨` 인데 상자가 비어 나온다(2026-09-03 신고). */}
+            <SecondaryButton
+              disabled={busy !== ''}
+              onClick={() => onReview(gb.pendingText ?? gb.confirmedText ?? '', gb.pendingText === null && gb.inChatbot)}
+            >
               내용 확인
             </SecondaryButton>
             <DangerButton disabled={busy !== ''} onClick={() => setConfirmDelete(true)}>
@@ -512,12 +547,15 @@ function ReviewModal({
   teamName,
   teamId,
   initialText,
+  reflected,
   onClose,
   onSaved,
 }: {
   teamName: string;
   teamId: string;
   initialText: string;
+  /** 이미 챗봇에 반영된 본문인가. 안내 문구가 갈린다 — "확인해 주세요" 와 "지금 읽고 있는 것"은 다른 말이다. */
+  reflected: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -550,8 +588,16 @@ function ReviewModal({
     <Modal title={`${teamName} — 챗봇이 읽을 내용`} onClose={onClose} size="lg">
       <div className="space-y-3">
         <InfoText>
-          가이드북에서 <b>봉사 운영 정보만</b> 뽑아낸 것입니다. 틀린 곳이 있으면 고쳐 주세요.
-          저장해야 챗봇이 읽습니다. 비어 있으면 직접 적어 넣어도 됩니다.
+          {reflected ? (
+            <>
+              <b>챗봇이 지금 읽고 있는 내용</b>입니다. 고쳐서 저장하면 그대로 바뀝니다.
+            </>
+          ) : (
+            <>
+              가이드북에서 <b>봉사 운영 정보만</b> 뽑아낸 것입니다. 틀린 곳이 있으면 고쳐 주세요. 저장해야 챗봇이
+              읽습니다. 비어 있으면 직접 적어 넣어도 됩니다.
+            </>
+          )}
         </InfoText>
 
         <Textarea
@@ -583,7 +629,7 @@ function ReviewModal({
         <div className="flex justify-end gap-2">
           <SecondaryButton onClick={onClose}>닫기</SecondaryButton>
           <Button disabled={saving || text.trim().length < 20} onClick={() => void save(false)}>
-            {saving ? '저장 중…' : '챗봇에 반영'}
+            {saving ? '저장 중…' : reflected ? '고친 내용 저장' : '챗봇에 반영'}
           </Button>
         </div>
       </div>

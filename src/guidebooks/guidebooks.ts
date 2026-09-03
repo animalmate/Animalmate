@@ -45,6 +45,13 @@ export class GuidebookRejectedError extends Error {
 const owner = (teamId: string) => ({ ownerType: 'team' as const, ownerId: teamId });
 
 /**
+ * 상한을 넘겼을 때 하는 말. 화면(`src/app/guidebooks/panel.tsx`)의 `TOO_BIG` 과 **같은 문장**이다 —
+ * 브라우저에서 걸리든(고르는 순간) 서버에서 걸리든(업로드 뒤 검문) 사용자가 볼 화면은 하나다.
+ * 무엇이 잘못됐는지보다 **다음에 할 일**을 먼저 말한다.
+ */
+const TOO_BIG_MESSAGE = `파일이 너무 큽니다. pdf를 압축 후 올려주세요. (최대 ${Math.floor(MAX_GUIDEBOOK_BYTES / 1024 / 1024)}MB)`;
+
+/**
  * 형식·크기 검문. 팀 것이든 전체 것이든 같은 규칙이라 한 자리에 둔다 — 두 벌로 두면
  * 상한을 올릴 때 한쪽만 고쳐 놓고 "왜 여기서는 되는데 저기서는 안 되지"가 된다.
  *
@@ -58,9 +65,7 @@ function assertUploadable(contentType: string, fileBytes: number): void {
   if (!Number.isFinite(fileBytes) || fileBytes <= 0) {
     throw new GuidebookRejectedError('파일 크기를 읽지 못했습니다.');
   }
-  if (fileBytes > MAX_GUIDEBOOK_BYTES) {
-    throw new GuidebookRejectedError(`파일이 너무 큽니다(최대 ${Math.floor(MAX_GUIDEBOOK_BYTES / 1024 / 1024)}MB).`);
-  }
+  if (fileBytes > MAX_GUIDEBOOK_BYTES) throw new GuidebookRejectedError(TOO_BIG_MESSAGE);
 }
 
 /** 업로드된 파일이 진짜 있고 규칙에 맞는지 서버가 직접 본다. 어긋나면 지우고 거절한다. */
@@ -69,7 +74,7 @@ async function verifyUploaded(path: string): Promise<{ bytes: number }> {
   if (!head.ok) throw new GuidebookRejectedError('업로드된 파일을 찾지 못했습니다. 다시 올려 주세요.');
   if (head.bytes > MAX_GUIDEBOOK_BYTES) {
     await deleteGuidebook(path);
-    throw new GuidebookRejectedError(`파일이 너무 큽니다(최대 ${Math.floor(MAX_GUIDEBOOK_BYTES / 1024 / 1024)}MB).`);
+    throw new GuidebookRejectedError(TOO_BIG_MESSAGE);
   }
   if (head.contentType && !head.contentType.startsWith('application/pdf')) {
     await deleteGuidebook(path);
@@ -88,9 +93,9 @@ export function guidebookTitle(teamName: string): string {
 /**
  * 브라우저가 파일을 직접 올릴 서명 URL 을 발급한다.
  *
- * 크기·형식을 **여기서 먼저** 막는 이유: 20MB 를 다 올린 뒤에 "안 됩니다"라고 하면 사용자가
- * 그 시간을 버린다. 물론 이것만으로는 방어가 아니다 — 업로드가 끝난 뒤 서버가 실제 파일을
- * 다시 확인한다(`registerUpload`). 클라이언트가 보낸 숫자는 신뢰하지 않는다.
+ * 크기·형식은 `assertUploadable` 이 **여기서 먼저** 막는다 — 50MB 를 다 올린 뒤에 "안 됩니다"라고
+ * 하면 사용자가 그 시간을 버린다. 물론 이것만으로는 방어가 아니다 — 업로드가 끝난 뒤 서버가
+ * 실제 파일을 다시 확인한다(`registerUpload`). 클라이언트가 보낸 숫자는 신뢰하지 않는다.
  */
 export async function createUploadTicket(
   db: Db,
@@ -292,12 +297,24 @@ export interface GuidebookView {
     status: Guidebook['status'];
     /** 챗봇이 읽고 있는가. status==='ready' 와 같지만 화면 문구가 이 값을 직접 쓴다. */
     inChatbot: boolean;
+    /** 뽑아 놓고 **아직 확인받지 않은** 본문. 확인을 마치면 비워진다. */
     pendingText: string | null;
+    /**
+     * 확인을 마쳐 **챗봇이 지금 읽고 있는** 본문(`documents.content_md`).
+     *
+     * 이것을 함께 싣지 않으면 `내용 확인` 이 빈 상자를 연다 — 확인하는 순간 `pending_text` 가
+     * 비워지기 때문이다. 화면에는 `챗봇 반영됨` 이라고 떠 있는데 열어 보면 아무것도 없어서
+     * 내용이 날아간 것처럼 보인다(2026-09-03 사용자 신고). 고치러 다시 여는 것이 정상 경로다.
+     */
+    confirmedText: string | null;
     failReason: string | null;
     uploadedByName: string | null;
     updatedAt: string;
-    /** 서명된 보기 주소(만료 있음). 목록을 열 때마다 새로 발급한다. */
-    viewUrl: string;
+    /**
+     * 서명된 보기 주소(만료 있음). 목록을 열 때마다 새로 발급한다.
+     * **null = 스토리지에 파일이 없다**(행만 남은 상태). 화면이 "다시 올려 달라"고 말한다.
+     */
+    viewUrl: string | null;
   } | null;
   /** 이 사람이 이 팀 가이드북을 올리고 지울 수 있는가(서버 판정 — 화면은 이 값으로 버튼을 그린다). */
   canManage: boolean;
@@ -316,10 +333,13 @@ export async function listGuidebooks(db: Db, actor: Actor): Promise<GuidebookVie
       teamName: teams.name,
       gb: teamGuidebooks,
       uploaderName: users.name,
+      // 확인을 마친 본문은 `documents` 에 있다. 여기서 함께 읽어야 `내용 확인` 이 빈 상자를 열지 않는다.
+      confirmedText: documents.contentMd,
     })
     .from(teams)
     .leftJoin(teamGuidebooks, eq(teamGuidebooks.teamId, teams.id))
     .leftJoin(users, eq(users.id, teamGuidebooks.uploadedBy))
+    .leftJoin(documents, eq(documents.id, teamGuidebooks.documentId))
     .where(and(eq(teams.isActive, true), eq(teams.kind, 'activity')));
 
   const out: GuidebookView[] = [];
@@ -333,6 +353,7 @@ export async function listGuidebooks(db: Db, actor: Actor): Promise<GuidebookVie
         status: r.gb.status,
         inChatbot: r.gb.status === 'ready',
         pendingText: canManage ? r.gb.pendingText : null,
+        confirmedText: canManage ? r.confirmedText : null,
         failReason: canManage ? r.gb.failReason : null,
         uploadedByName: r.uploaderName ?? null,
         updatedAt: r.gb.updatedAt.toISOString(),
@@ -444,8 +465,8 @@ export interface ClubGuidebookView {
   fileBytes: number;
   uploadedByName: string | null;
   updatedAt: string;
-  /** 서명된 보기 주소(만료 있음). 화면을 열 때마다 새로 발급한다. */
-  viewUrl: string;
+  /** 서명된 보기 주소(만료 있음). **null = 스토리지에 파일이 없다**(행만 남은 상태). */
+  viewUrl: string | null;
 }
 
 /**
