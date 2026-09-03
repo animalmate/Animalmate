@@ -5,7 +5,7 @@ import { Icon } from '@/components/icon';
 import { CursorDog } from '@/components/cursor-dog';
 import { ChatDog } from '@/components/chat-dog';
 import { isStaffPlus, isPrivileged } from '@/auth/permissions';
-import { getDriveUrl } from '@/org/links';
+import { getHomeLinks } from '@/org/links';
 import { db } from '@/db/client';
 
 export const dynamic = 'force-dynamic';
@@ -56,7 +56,7 @@ const BOARD_SHORTCUTS: Shortcut[] = [
 
 // 외부 바로가기(새 탭). staffOnly 는 서버에서 걸러 부원의 HTML 에 URL 자체가 나가지 않는다(규칙 #6).
 interface ExternalLink extends Shortcut {
-  tone: 'cafe' | 'drive' | 'recruit';
+  tone: 'cafe' | 'drive' | 'recruit' | 'suggest' | 'report';
   staffOnly?: boolean;
 }
 // 카페 주소는 동아리와 함께 고정이라 코드에 둔다. **드라이브는 기수마다 바뀌므로** 설정값으로
@@ -87,12 +87,33 @@ const RECRUIT_NOTICE_LINK: ExternalLink = {
   icon: 'userPlus',
   tone: 'recruit',
 };
+// 건의함·신고함(구글 폼). **부원 포함 전원**에게 보인다 — 의견을 내고 신고하는 사람이 부원이다
+// (2026-09-03 사용자 요청). 드라이브와 달리 staffOnly 를 달지 않는 이유가 이것이다.
+// 주소는 기수마다 새 폼을 만들므로 설정값으로 뺐다(회장단 체크리스트 화면에서 지정).
+const suggestLink = (href: string): ExternalLink => ({
+  href,
+  label: '건의함',
+  desc: '동아리에 하고 싶은 말',
+  icon: 'chat',
+  tone: 'suggest',
+});
+const reportLink = (href: string): ExternalLink => ({
+  href,
+  label: '신고함',
+  desc: '불편했던 일 알리기',
+  icon: 'alert',
+  tone: 'report',
+});
 // 톤별 색(브랜드 팔레트). 카페=초록(네이버), 드라이브=앰버, 모집공고=파랑(내부 라우트라 콘솔과 같은 색) —
 // 서로 시각적으로 구분.
 const TONE: Record<ExternalLink['tone'], { chip: string; hover: string }> = {
   cafe: { chip: 'bg-success-100 text-success', hover: 'hover:border-success' },
   drive: { chip: 'bg-amber-50 text-amber-600', hover: 'hover:border-amber-300' },
   recruit: { chip: 'bg-blue-50 text-blue-600', hover: 'hover:border-blue-300' },
+  // 건의함은 브랜드 산호색, 신고함은 중립색. **신고함을 빨강으로 두지 않는다** — 카드가
+  // 경고처럼 보이면 눌러야 할 사람이 망설인다(신고는 겁주는 기능이 아니다).
+  suggest: { chip: 'bg-coral-50 text-coral-600', hover: 'hover:border-coral-300' },
+  report: { chip: 'bg-ink-100 text-ink-700', hover: 'hover:border-ink-300' },
 };
 
 export default async function HomePage() {
@@ -107,11 +128,16 @@ export default async function HomePage() {
     ...(staff ? [board ? RECRUIT_BOARD : RECRUIT_STAFF] : []),
     ...(board ? BOARD_SHORTCUTS : []),
   ];
-  // 드라이브는 **운영진 이상 + 주소가 설정돼 있을 때만** 조회한다(부원에겐 조회조차 하지 않는다).
-  const driveUrl = staff ? await getDriveUrl(db) : null;
-  const externals = [CAFE_LINK, ...(driveUrl ? [driveLink(driveUrl)] : []), RECRUIT_NOTICE_LINK].filter(
-    (l) => !l.staffOnly || staff,
-  );
+  // 건의함·신고함은 전원이 보므로 항상 읽는다. **드라이브 주소는 운영진 이상에게만 실린다** —
+  // 아래 staffOnly 필터가 카드를 걸러 내므로 부원의 HTML 에는 주소 자체가 나가지 않는다(규칙 #6).
+  const links = await getHomeLinks(db);
+  const externals = [
+    CAFE_LINK,
+    ...(links.driveUrl ? [driveLink(links.driveUrl)] : []),
+    RECRUIT_NOTICE_LINK,
+    ...(links.suggestUrl ? [suggestLink(links.suggestUrl)] : []),
+    ...(links.reportUrl ? [reportLink(links.reportUrl)] : []),
+  ].filter((l) => !l.staffOnly || staff);
   const name = actor.name?.trim() || '회원'; // loadActor 가 이미 읽어 온 값 — users 재조회 없음
 
   return (

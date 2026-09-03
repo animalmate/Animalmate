@@ -14,7 +14,11 @@ import { HelpButton } from '@/components/help-button';
 import { Toast } from '@/components/toast';
 import { Icon } from '@/components/icon';
 
-interface GuidebookInfo {
+/**
+ * 올리고 고치는 사람에게만 실리는 값들. **부원 응답에는 통째로 없다**(서버가 안 보낸다) —
+ * 부원이 이 화면에서 할 일은 여는 것 하나라, 파일 이름·용량·날짜·챗봇 상태는 읽을 것만 늘린다.
+ */
+interface GuidebookAdmin {
   fileName: string;
   fileBytes: number;
   status: 'extracting' | 'extracted' | 'ready' | 'failed';
@@ -26,8 +30,11 @@ interface GuidebookInfo {
   failReason: string | null;
   uploadedByName: string | null;
   updatedAt: string;
+}
+interface GuidebookInfo {
   /** null = 스토리지에 파일이 없다(행만 남은 상태). 보기 버튼 대신 다시 올려 달라고 말한다. */
   viewUrl: string | null;
+  admin: GuidebookAdmin | null;
 }
 interface TeamRow {
   teamId: string;
@@ -38,12 +45,9 @@ interface TeamRow {
 /** 동아리 전체 가이드북 한 건. 챗봇이 읽지 않으므로 상태·검수 칸이 없다.
  *  이름 칸도 없다 — 칸이 하나뿐이라 늘 `전체 부원 가이드북` 이다. */
 interface ClubRow {
-  fileName: string;
-  fileBytes: number;
-  uploadedByName: string | null;
-  updatedAt: string;
   /** null = 스토리지에 파일이 없다(행만 남은 상태). */
   viewUrl: string | null;
+  admin: { fileName: string; fileBytes: number; uploadedByName: string | null; updatedAt: string } | null;
 }
 
 /**
@@ -286,13 +290,15 @@ function ClubCard({
           <Icon name="doc" className="h-4 w-4 shrink-0 text-ink-500" />
           <div className="truncate text-[15px] font-bold text-ink-900">{CLUB_TITLE}</div>
         </div>
-        {club ? (
+        {/* 파일 이름·용량·날짜는 **올릴 수 있는 사람에게만** 온다(부원 응답에는 admin 이 없다). */}
+        {club?.admin ? (
           <div className="truncate pl-6 text-[12px] text-ink-500">
-            {club.fileName} · {sizeLabel(club.fileBytes)} · {dateLabel(club.updatedAt)}
+            {club.admin.fileName} · {sizeLabel(club.admin.fileBytes)} · {dateLabel(club.admin.updatedAt)}
           </div>
-        ) : (
+        ) : null}
+        {!club && canManage ? (
           <div className="pl-6 text-[12px] text-ink-500">동아리 전체가 함께 보는 가이드북을 올리는 자리입니다</div>
-        )}
+        ) : null}
       </div>
 
       {club?.viewUrl ? (
@@ -367,15 +373,16 @@ function TeamCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[15px] font-bold text-ink-900">{row.teamName}</div>
-          {gb ? (
+          {/* 파일 이름·용량·날짜와 챗봇 딱지는 **올릴 수 있는 사람에게만** 온다. 부원에게는
+              "없어요"만 남는다 — 있으면 열면 되고, 없으면 팀장단에게 요청하면 되기 때문이다. */}
+          {gb?.admin ? (
             <div className="truncate text-[12px] text-ink-500">
-              {gb.fileName} · {sizeLabel(gb.fileBytes)} · {dateLabel(gb.updatedAt)}
+              {gb.admin.fileName} · {sizeLabel(gb.admin.fileBytes)} · {dateLabel(gb.admin.updatedAt)}
             </div>
-          ) : (
-            <div className="text-[12px] text-ink-500">아직 올라온 가이드북이 없어요</div>
-          )}
+          ) : null}
+          {!gb ? <div className="text-[12px] text-ink-500">아직 올라온 가이드북이 없어요</div> : null}
         </div>
-        {gb ? <ChatbotBadge gb={gb} /> : null}
+        {gb?.admin ? <ChatbotBadge gb={gb.admin} /> : null}
       </div>
 
       {gb?.viewUrl ? (
@@ -399,7 +406,7 @@ function TeamCard({
  * 챗봇이 이 가이드북을 읽고 있는지. **부원에게도 보인다** — "챗봇이 답 못 하는 이유"가 여기 있다.
  * 상태 이름을 그대로 쓰지 않고 사람이 읽는 말로 바꾼다(`extracted` 는 화면에서 아무 뜻이 없다).
  */
-function ChatbotBadge({ gb }: { gb: GuidebookInfo }) {
+function ChatbotBadge({ gb }: { gb: GuidebookAdmin }) {
   if (gb.inChatbot) {
     return <span className="shrink-0 rounded-full bg-success-100 px-2 py-0.5 text-[11px] text-success">챗봇 반영됨</span>;
   }
@@ -482,9 +489,9 @@ function ManageRow({
 
   return (
     <div className="space-y-2 border-t border-ink-100 pt-3">
-      {gb?.failReason ? (
+      {gb?.admin?.failReason ? (
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-          {gb.failReason} 아래 <b>내용 확인</b>에서 직접 적어 넣으면 챗봇이 답할 수 있어요.
+          {gb.admin.failReason} 아래 <b>내용 확인</b>에서 직접 적어 넣으면 챗봇이 답할 수 있어요.
         </div>
       ) : null}
 
@@ -503,13 +510,18 @@ function ManageRow({
           {busy || (gb ? '새 파일로 바꾸기' : 'PDF 올리기')}
         </SecondaryButton>
 
-        {gb ? (
+        {gb?.admin ? (
           <>
             {/* 확인 전이면 뽑아 둔 본문을, 확인을 마쳤으면 **챗봇이 지금 읽는 본문**을 연다.
                 후자를 안 실으면 `챗봇 반영됨` 인데 상자가 비어 나온다(2026-09-03 신고). */}
             <SecondaryButton
               disabled={busy !== ''}
-              onClick={() => onReview(gb.pendingText ?? gb.confirmedText ?? '', gb.pendingText === null && gb.inChatbot)}
+              onClick={() =>
+                onReview(
+                  gb.admin!.pendingText ?? gb.admin!.confirmedText ?? '',
+                  gb.admin!.pendingText === null && gb.admin!.inChatbot
+                )
+              }
             >
               내용 확인
             </SecondaryButton>

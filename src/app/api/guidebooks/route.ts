@@ -25,8 +25,8 @@ import { internalError } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// PDF 를 내려받아 Gemini 로 읽히는 동안 기본 10초로는 모자란다(20MB 짜리는 수십 초).
-// Hobby 플랜 상한이 60초다.
+// PDF 를 내려받아 Gemini 로 읽히는 동안 기본 10초로는 모자란다(큰 파일은 수십 초).
+// Hobby 플랜 상한이 60초라 이 값이 최대치다 — 잘려도 행은 이미 남아 있다(registerUpload).
 export const maxDuration = 60;
 
 /** 서비스가 던지는 도메인 오류 → 상태코드. 그 밖의 예외는 내부 오류로 감춘다. */
@@ -45,8 +45,9 @@ export async function GET(): Promise<Response> {
   try {
     // 전체 가이드북과 팀 가이드북을 한 번에 준다 — 화면이 한 장이므로 왕복을 둘로 쪼갤 이유가 없다.
     // `canManageClub` 은 표시용 판정이고, 실제 검증은 쓰기 라우트가 다시 한다(규칙 #6).
-    const [teamRows, club] = await Promise.all([listGuidebooks(db, actor), getClubGuidebook(db)]);
-    return NextResponse.json({ teams: teamRows, club, canManageClub: isPrivileged(actor.role) });
+    const canManageClub = isPrivileged(actor.role);
+    const [teamRows, club] = await Promise.all([listGuidebooks(db, actor), getClubGuidebook(db, canManageClub)]);
+    return NextResponse.json({ teams: teamRows, club, canManageClub });
   } catch (e) {
     return internalError('GET /api/guidebooks', e);
   }

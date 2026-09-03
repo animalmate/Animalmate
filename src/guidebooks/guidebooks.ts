@@ -292,29 +292,38 @@ export interface GuidebookView {
   teamName: string;
   /** 가이드북이 아직 없는 팀도 목록에 넣는다(부원에게 "없다"를 보여 주고, 팀장단에게 올릴 자리를 준다). */
   guidebook: {
-    fileName: string;
-    fileBytes: number;
-    status: Guidebook['status'];
-    /** 챗봇이 읽고 있는가. status==='ready' 와 같지만 화면 문구가 이 값을 직접 쓴다. */
-    inChatbot: boolean;
-    /** 뽑아 놓고 **아직 확인받지 않은** 본문. 확인을 마치면 비워진다. */
-    pendingText: string | null;
-    /**
-     * 확인을 마쳐 **챗봇이 지금 읽고 있는** 본문(`documents.content_md`).
-     *
-     * 이것을 함께 싣지 않으면 `내용 확인` 이 빈 상자를 연다 — 확인하는 순간 `pending_text` 가
-     * 비워지기 때문이다. 화면에는 `챗봇 반영됨` 이라고 떠 있는데 열어 보면 아무것도 없어서
-     * 내용이 날아간 것처럼 보인다(2026-09-03 사용자 신고). 고치러 다시 여는 것이 정상 경로다.
-     */
-    confirmedText: string | null;
-    failReason: string | null;
-    uploadedByName: string | null;
-    updatedAt: string;
     /**
      * 서명된 보기 주소(만료 있음). 목록을 열 때마다 새로 발급한다.
      * **null = 스토리지에 파일이 없다**(행만 남은 상태). 화면이 "다시 올려 달라"고 말한다.
      */
     viewUrl: string | null;
+    /**
+     * 관리하는 사람에게만 실리는 값들. **부원에게는 통째로 null 이다**(2026-09-03 사용자 지시).
+     *
+     * 부원이 이 화면에서 할 일은 **여는 것 하나**다. 원본 파일 이름·용량·올린 날짜·챗봇 반영
+     * 상태는 올리고 고치는 사람에게만 뜻이 있는 값이고, 부원 화면에서는 읽을 것만 늘린다.
+     * 숨기지 않고 **아예 보내지 않는다** — 화면에서 감추는 것은 방어가 아니다(규칙 #6).
+     */
+    admin: {
+      fileName: string;
+      fileBytes: number;
+      status: Guidebook['status'];
+      /** 챗봇이 읽고 있는가. status==='ready' 와 같지만 화면 문구가 이 값을 직접 쓴다. */
+      inChatbot: boolean;
+      /** 뽑아 놓고 **아직 확인받지 않은** 본문. 확인을 마치면 비워진다. */
+      pendingText: string | null;
+      /**
+       * 확인을 마쳐 **챗봇이 지금 읽고 있는** 본문(`documents.content_md`).
+       *
+       * 이것을 함께 싣지 않으면 `내용 확인` 이 빈 상자를 연다 — 확인하는 순간 `pending_text` 가
+       * 비워지기 때문이다. 화면에는 `챗봇 반영됨` 이라고 떠 있는데 열어 보면 아무것도 없어서
+       * 내용이 날아간 것처럼 보인다(2026-09-03 사용자 신고). 고치러 다시 여는 것이 정상 경로다.
+       */
+      confirmedText: string | null;
+      failReason: string | null;
+      uploadedByName: string | null;
+      updatedAt: string;
+    } | null;
   } | null;
   /** 이 사람이 이 팀 가이드북을 올리고 지울 수 있는가(서버 판정 — 화면은 이 값으로 버튼을 그린다). */
   canManage: boolean;
@@ -348,16 +357,20 @@ export async function listGuidebooks(db: Db, actor: Actor): Promise<GuidebookVie
     let guidebook: GuidebookView['guidebook'] = null;
     if (r.gb) {
       guidebook = {
-        fileName: r.gb.fileName,
-        fileBytes: r.gb.fileBytes,
-        status: r.gb.status,
-        inChatbot: r.gb.status === 'ready',
-        pendingText: canManage ? r.gb.pendingText : null,
-        confirmedText: canManage ? r.confirmedText : null,
-        failReason: canManage ? r.gb.failReason : null,
-        uploadedByName: r.uploaderName ?? null,
-        updatedAt: r.gb.updatedAt.toISOString(),
         viewUrl: await createGuidebookViewUrl(r.gb.storagePath),
+        admin: canManage
+          ? {
+              fileName: r.gb.fileName,
+              fileBytes: r.gb.fileBytes,
+              status: r.gb.status,
+              inChatbot: r.gb.status === 'ready',
+              pendingText: r.gb.pendingText,
+              confirmedText: r.confirmedText,
+              failReason: r.gb.failReason,
+              uploadedByName: r.uploaderName ?? null,
+              updatedAt: r.gb.updatedAt.toISOString(),
+            }
+          : null,
       };
     }
     out.push({ teamId: r.teamId, teamName: r.teamName, guidebook, canManage });
@@ -461,19 +474,25 @@ export async function deleteClubGuidebook(db: Db, actor: Actor): Promise<void> {
 }
 
 export interface ClubGuidebookView {
-  fileName: string;
-  fileBytes: number;
-  uploadedByName: string | null;
-  updatedAt: string;
   /** 서명된 보기 주소(만료 있음). **null = 스토리지에 파일이 없다**(행만 남은 상태). */
   viewUrl: string | null;
+  /** 팀 것과 같은 이유로 회장단에게만 실린다(위 GuidebookView.admin 주석 참고). */
+  admin: {
+    fileName: string;
+    fileBytes: number;
+    uploadedByName: string | null;
+    updatedAt: string;
+  } | null;
 }
 
 /**
  * 전체 가이드북 한 건. **로그인한 전원**이 부른다(부원 포함) — 애초에 부원 보라고 올리는 자료다.
  * 아직 없으면 null 이고, 화면은 회장단에게만 "올릴 자리"를 그린다.
+ *
+ * `canManage` 는 라우트가 판정해 넘긴다(회장단·시스템관리자). 파일 이름·용량·올린 날짜는
+ * 그 사람에게만 실린다 — 부원이 할 일은 여는 것뿐이다.
  */
-export async function getClubGuidebook(db: Db): Promise<ClubGuidebookView | null> {
+export async function getClubGuidebook(db: Db, canManage: boolean): Promise<ClubGuidebookView | null> {
   const [r] = await db
     .select({ gb: clubGuidebooks, uploaderName: users.name })
     .from(clubGuidebooks)
@@ -483,10 +502,14 @@ export async function getClubGuidebook(db: Db): Promise<ClubGuidebookView | null
   if (!r) return null;
 
   return {
-    fileName: r.gb.fileName,
-    fileBytes: r.gb.fileBytes,
-    uploadedByName: r.uploaderName ?? null,
-    updatedAt: r.gb.updatedAt.toISOString(),
     viewUrl: await createGuidebookViewUrl(r.gb.storagePath),
+    admin: canManage
+      ? {
+          fileName: r.gb.fileName,
+          fileBytes: r.gb.fileBytes,
+          uploadedByName: r.uploaderName ?? null,
+          updatedAt: r.gb.updatedAt.toISOString(),
+        }
+      : null,
   };
 }

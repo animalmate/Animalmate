@@ -9,9 +9,20 @@ import type { Actor } from '@/auth/permissions';
 import { getSettings, setSetting } from '@/rag/settings';
 
 export const LINK_KEYS = {
-  /** 홈 "구글 드라이브" 바로가기 주소. 비어 있으면 카드 자체를 숨긴다. */
+  /** 홈 "구글 드라이브" 바로가기 주소. 비어 있으면 카드 자체를 숨긴다. **운영진 이상 전용.** */
   driveUrl: 'home_drive_url',
+  /** 홈 "건의함" 바로가기(구글 폼). **부원 포함 전원**에게 보인다 — 의견을 내는 사람이 부원이다. */
+  suggestUrl: 'home_suggest_url',
+  /** 홈 "신고함" 바로가기(구글 폼). **부원 포함 전원**에게 보인다. */
+  reportUrl: 'home_report_url',
 } as const;
+
+export type LinkKey = keyof typeof LINK_KEYS;
+export interface HomeLinks {
+  driveUrl: string | null;
+  suggestUrl: string | null;
+  reportUrl: string | null;
+}
 
 export class InvalidLinkError extends Error {
   readonly status = 400;
@@ -51,16 +62,45 @@ export function normalizeLinkUrl(input: string | null | undefined): string | nul
   return url.toString();
 }
 
-/** 홈 바로가기 주소 읽기. 없거나 비었으면 null(카드 숨김). */
-export async function getDriveUrl(db: Database): Promise<string | null> {
-  const s = await getSettings(db, [LINK_KEYS.driveUrl]);
-  const raw = s[LINK_KEYS.driveUrl];
-  return typeof raw === 'string' && raw.trim() ? raw : null;
+const asUrl = (raw: unknown): string | null => (typeof raw === 'string' && raw.trim() ? raw : null);
+
+/**
+ * 홈 바로가기 주소 셋을 한 번에 읽는다. 없거나 비었으면 null(그 카드만 숨김).
+ * 한 번의 조회로 끝내는 이유: 홈은 모든 사람이 여는 화면이라 왕복을 늘리지 않는다.
+ */
+export async function getHomeLinks(db: Database): Promise<HomeLinks> {
+  const s = await getSettings(db, [LINK_KEYS.driveUrl, LINK_KEYS.suggestUrl, LINK_KEYS.reportUrl]);
+  return {
+    driveUrl: asUrl(s[LINK_KEYS.driveUrl]),
+    suggestUrl: asUrl(s[LINK_KEYS.suggestUrl]),
+    reportUrl: asUrl(s[LINK_KEYS.reportUrl]),
+  };
 }
 
-/** 홈 바로가기 주소 저장(회장단 전용 — setSetting 이 권한·audit 을 함께 처리한다). */
+/** 홈 바로가기 주소 읽기(드라이브 하나만 필요할 때). */
+export async function getDriveUrl(db: Database): Promise<string | null> {
+  return (await getHomeLinks(db)).driveUrl;
+}
+
+/**
+ * 홈 바로가기 주소 저장(회장단 전용 — setSetting 이 권한·audit 을 함께 처리한다).
+ *
+ * **보낸 항목만** 손댄다(undefined = 그대로 둠, '' = 지움). 화면이 세 칸을 한 번에 저장하지만,
+ * 부분 저장이 가능해야 나중에 칸이 늘어도 이 함수를 안 고친다.
+ */
+export async function setHomeLinks(
+  db: Db,
+  actor: Actor,
+  input: Partial<Record<LinkKey, string | null>>
+): Promise<HomeLinks> {
+  for (const key of Object.keys(LINK_KEYS) as LinkKey[]) {
+    if (input[key] === undefined) continue;
+    await setSetting(db, actor, LINK_KEYS[key], normalizeLinkUrl(input[key]) ?? '');
+  }
+  return getHomeLinks(db);
+}
+
+/** 드라이브 주소만 저장. */
 export async function setDriveUrl(db: Db, actor: Actor, input: string | null | undefined): Promise<string | null> {
-  const url = normalizeLinkUrl(input);
-  await setSetting(db, actor, LINK_KEYS.driveUrl, url ?? '');
-  return url;
+  return (await setHomeLinks(db, actor, { driveUrl: input ?? '' })).driveUrl;
 }

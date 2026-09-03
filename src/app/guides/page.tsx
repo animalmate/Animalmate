@@ -4,7 +4,7 @@ import { Card, InfoText } from '@/components/ui';
 import { Markdown } from '@/components/markdown';
 import { BOARD_CHECKLIST } from '@/guides/content';
 import { DriveLinkPanel } from './drive-link-panel';
-import { getDriveUrl } from '@/org/links';
+import { getHomeLinks } from '@/org/links';
 import { db } from '@/db/client';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function GuidesPage() {
   const actor = await requireBoard();
-  const driveUrl = await getDriveUrl(db);
+  const links = await getHomeLinks(db);
 
   return (
     <ConsoleShell actor={actor}>
@@ -25,7 +25,7 @@ export default async function GuidesPage() {
           <InfoText>{BOARD_CHECKLIST.summary}</InfoText>
         </div>
         {/* 기수마다 바뀌는 값이라 체크리스트와 같은 자리에 둔다 — 학기 초에 이 화면을 훑기 때문. */}
-        <DriveLinkPanel initialUrl={driveUrl} />
+        <DriveLinkPanel initial={links} />
         <Card className="p-5 sm:p-6">
           <Markdown variant="doc">{BOARD_CHECKLIST.body}</Markdown>
         </Card>
