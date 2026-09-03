@@ -198,22 +198,105 @@ export interface PdfExtraction {
  */
 const MIN_EXTRACT_CHARS = 30;
 
+// ── Files API ──────────────────────────────────────────────────────────
+// PDF 를 요청 본문에 base64 로 싣지 않고 **파일로 올린 뒤 참조**한다.
+//
+// 왜: base64 는 부피를 4/3 로 불린다. 50MB 짜리 가이드북이면 67MB 짜리 문자열이 되고,
+// JSON.stringify 가 그 사본을 하나 더 만든다 — Vercel 함수 한 번에 수백 MB 를 쓰고
+// `maxDuration=60`(Hobby 상한) 을 넘길 위험이 커진다. Files API 는 바이트를 그대로 보내
+// 부피가 안 늘고, 올리는 것과 읽는 것이 두 호출로 갈려 각각이 짧다.
+//
+// 올린 파일은 48시간 뒤 저절로 사라지고 무료다(프로젝트당 20GB). 다 쓰면 바로 지운다 —
+// 가이드북은 회원 전용 자료라 남의 저장소에 필요 이상으로 두지 않는다.
+const UPLOAD_API = 'https://generativelanguage.googleapis.com/upload/v1beta';
+
+interface UploadedFile {
+  /** `files/xxxx` — 삭제할 때 쓴다. */
+  name: string;
+  /** generateContent 의 fileData.fileUri 에 그대로 넣는 절대 주소. */
+  uri: string;
+}
+
+/** 재개 가능(resumable) 업로드 — 시작해서 자리를 받고, 그 자리에 바이트를 한 번에 밀어 넣는다. */
+async function uploadFile(bytes: ArrayBuffer, mimeType: string, displayName: string): Promise<UploadedFile> {
+  const key = apiKey();
+  const start = await fetch(`${UPLOAD_API}/files`, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': key,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(bytes.byteLength),
+      'X-Goog-Upload-Header-Content-Type': mimeType,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file: { display_name: displayName } }),
+  });
+  if (!start.ok) {
+    throw new GeminiError(`파일 업로드 시작 실패: ${start.status}`, start.status);
+  }
+  const slot = start.headers.get('x-goog-upload-url');
+  if (!slot) throw new GeminiError('파일 업로드 응답에 업로드 주소가 없습니다.', 0);
+
+  const put = await fetch(slot, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': key,
+      'Content-Length': String(bytes.byteLength),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    body: bytes,
+  });
+  const body = (await put.json().catch(() => ({}))) as {
+    file?: { name?: string; uri?: string; state?: string };
+    error?: { message?: string };
+  };
+  if (!put.ok || !body.file?.uri || !body.file.name) {
+    throw new GeminiError(`파일 업로드 실패: ${body?.error?.message ?? put.status}`, put.status, body);
+  }
+  // PDF 는 올리자마자 ACTIVE 였지만, 규격상 PROCESSING 을 거칠 수 있다. 그 상태로 참조하면
+  // generateContent 가 400 을 낸다 — 짧게 기다려 본다(무한히 기다리지는 않는다).
+  let state = body.file.state ?? 'ACTIVE';
+  for (let i = 0; state === 'PROCESSING' && i < 5; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const res = await fetch(`${API}/${body.file.name}`, { headers: { 'x-goog-api-key': key } });
+    const cur = (await res.json().catch(() => ({}))) as { state?: string };
+    state = cur.state ?? state;
+  }
+  if (state !== 'ACTIVE') throw new GeminiError(`올린 파일이 준비되지 않았습니다(state=${state}).`, 0);
+
+  return { name: body.file.name, uri: body.file.uri };
+}
+
+/** 올린 파일 삭제. 실패해도 던지지 않는다 — 48시간이면 저절로 사라지고, 본 작업은 이미 끝났다. */
+async function deleteFile(name: string): Promise<void> {
+  try {
+    await fetch(`${API}/${name}`, { method: 'DELETE', headers: { 'x-goog-api-key': apiKey() } });
+  } catch {
+    /* 지워지지 않아도 추출 결과에는 영향이 없다 */
+  }
+}
+
 /**
  * 가이드북 PDF → **봉사 운영 정보 요약** 마크다운.
  *
  * 실패를 전제로 한다(규칙 #5): 일시적 오류는 한 번 더 시도하고, 그래도 안 되면 던진다.
  * 호출부는 예외를 잡아 가이드북 상태를 `failed` 로 남긴다 — 조용히 삼키지 않는다.
+ *
+ * 업로드는 한 번만 한다. 재시도는 **읽는 쪽**만 다시 건다 — 파일은 이미 저쪽에 있으므로
+ * 50MB 를 두 번 밀어 넣을 이유가 없다(그러다 60초를 넘긴다).
  */
 export async function extractPdfMarkdown(pdf: ArrayBuffer): Promise<PdfExtraction> {
-  const name = `models/${generationModel()}`;
-  const base64 = Buffer.from(pdf).toString('base64');
+  const model = `models/${generationModel()}`;
+  const file = await uploadFile(pdf, 'application/pdf', 'guidebook');
   const payload = {
     systemInstruction: { parts: [{ text: PDF_EXTRACT_SYSTEM }] },
     contents: [
       {
         role: 'user',
         parts: [
-          { inlineData: { mimeType: 'application/pdf', data: base64 } },
+          { fileData: { mimeType: 'application/pdf', fileUri: file.uri } },
           { text: '이 PDF 에서 위 규칙대로 봉사 운영 정보만 뽑아라.' },
         ],
       },
@@ -222,32 +305,36 @@ export async function extractPdfMarkdown(pdf: ArrayBuffer): Promise<PdfExtractio
     generationConfig: { temperature: 0 },
   };
 
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500)); // 지수 백오프(2회뿐이라 고정 대기)
-    try {
-      const res = await fetch(`${API}/${name}:generateContent`, {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify(payload),
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        candidates?: { content?: { parts?: GenPart[] } }[];
-        error?: { message?: string };
-      };
-      if (!res.ok) {
-        // 4xx 는 다시 걸어도 같은 결과다(파일이 크거나 형식이 잘못된 것). 바로 던진다.
-        const err = new GeminiError(`가이드북 추출 실패: ${body?.error?.message ?? res.status}`, res.status, body);
-        if (res.status < 500) throw err;
-        lastError = err;
-        continue;
+  try {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1500)); // 지수 백오프(2회뿐이라 고정 대기)
+      try {
+        const res = await fetch(`${API}/${model}:generateContent`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify(payload),
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          candidates?: { content?: { parts?: GenPart[] } }[];
+          error?: { message?: string };
+        };
+        if (!res.ok) {
+          // 4xx 는 다시 걸어도 같은 결과다(쪽수가 넘거나 형식이 잘못된 것). 바로 던진다.
+          const err = new GeminiError(`가이드북 추출 실패: ${body?.error?.message ?? res.status}`, res.status, body);
+          if (res.status < 500) throw err;
+          lastError = err;
+          continue;
+        }
+        const markdown = (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
+        return { markdown, empty: markdown.length < MIN_EXTRACT_CHARS };
+      } catch (e) {
+        if (e instanceof GeminiError && e.status > 0 && e.status < 500) throw e;
+        lastError = e;
       }
-      const markdown = (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
-      return { markdown, empty: markdown.length < MIN_EXTRACT_CHARS };
-    } catch (e) {
-      if (e instanceof GeminiError && e.status > 0 && e.status < 500) throw e;
-      lastError = e;
     }
+    throw lastError instanceof Error ? lastError : new GeminiError('가이드북 추출 실패(원인 불명)', 0);
+  } finally {
+    await deleteFile(file.name);
   }
-  throw lastError instanceof Error ? lastError : new GeminiError('가이드북 추출 실패(원인 불명)', 0);
 }

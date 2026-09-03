@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { GuidebookRejectedError, createUploadTicket } from '@/guidebooks/guidebooks';
+import { GuidebookRejectedError, createClubUploadTicket, createUploadTicket } from '@/guidebooks/guidebooks';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
 
@@ -20,11 +20,14 @@ export async function POST(req: Request): Promise<Response> {
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   try {
     const b = await req.json();
-    const ticket = await createUploadTicket(db, actor, {
-      teamId: String(b.teamId ?? ''),
-      contentType: String(b.contentType ?? ''),
-      fileBytes: Number(b.fileBytes ?? 0),
-    });
+    const contentType = String(b.contentType ?? '');
+    const fileBytes = Number(b.fileBytes ?? 0);
+    // `scope:'club'` = 동아리 전체 가이드북(회장단 전용). 그 밖에는 팀 가이드북이다.
+    // 형식·크기 규칙은 같고 **권한만 갈린다** — 판단은 둘 다 서비스가 한다.
+    const ticket =
+      b.scope === 'club'
+        ? await createClubUploadTicket(actor, { contentType, fileBytes })
+        : await createUploadTicket(db, actor, { teamId: String(b.teamId ?? ''), contentType, fileBytes });
     return NextResponse.json(ticket);
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });

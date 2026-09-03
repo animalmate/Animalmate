@@ -18,11 +18,18 @@ export const GUIDEBOOK_BUCKET = 'team-guidebooks';
 /** PDF 만 받는다. PPTX 는 브라우저가 못 여니 "바로 보기" 요구를 못 지킨다(파워포인트에서 PDF 로 저장). */
 export const ALLOWED_GUIDEBOOK_TYPE = 'application/pdf';
 /**
- * 파일 크기 상한 20MB.
- * 이 값은 Gemini 가 inlineData 로 받는 요청 본문 한도(20MB)에서 왔다 — 더 크게 받으면
- * 화면에서는 올라가는데 텍스트 추출 단계에서 실패한다. 막을 거면 올리기 전에 막는다.
+ * 파일 크기 상한 50MB.
+ *
+ * 이 숫자는 고른 것이 아니라 **천장 두 개가 겹치는 자리**다(2026-09-03 실측):
+ *   ① Supabase 무료 플랜의 파일당 상한 = 50MB. 49MB 는 200, 55MB 는 413 `EntityTooLarge` 로
+ *      잘린다 — 서명 URL 로 직접 올리므로 이 거부는 **우리 코드에 닿기도 전에** 일어난다.
+ *   ② Gemini 의 PDF 상한 = 50MB(1000쪽). 넘으면 파일은 올라가는데 추출만 실패한다.
+ * 유료로 올려도 ②는 그대로라 50MB 가 끝이다. 그 이상은 받을 방법이 없다.
+ *
+ * 옛 값 20MB 는 "Gemini inlineData 요청 본문 한도 20MB"를 근거로 삼았는데, 그 한도는
+ * 2026-01-12 에 100MB 로 올랐고 추출도 Files API 로 옮겨(`src/rag/gemini.ts`) 근거가 사라졌다.
  */
-export const MAX_GUIDEBOOK_BYTES = 20 * 1024 * 1024;
+export const MAX_GUIDEBOOK_BYTES = 50 * 1024 * 1024;
 
 /** 보기용 서명 URL 유효기간(초). 화면을 열어 둔 채 읽을 만큼만 준다. */
 const VIEW_URL_TTL_SEC = 60 * 30;
@@ -49,6 +56,15 @@ export function guidebookPath(teamId: string): string {
   return `${teamId}/${crypto.randomUUID()}.pdf`;
 }
 
+/**
+ * 동아리 전체 가이드북이 놓일 경로. 팀 경로가 UUID 로 시작하므로 `club/` 과 절대 겹치지 않는다
+ * (팀 하나를 통째로 가리키는 접두사가 아니라 예약어다).
+ */
+export const CLUB_GUIDEBOOK_PREFIX = 'club';
+export function clubGuidebookPath(): string {
+  return `${CLUB_GUIDEBOOK_PREFIX}/${crypto.randomUUID()}.pdf`;
+}
+
 export interface SignedUpload {
   /** 브라우저가 PUT 할 절대 주소. */
   uploadUrl: string;
@@ -61,9 +77,8 @@ export interface SignedUpload {
  * 서명은 이 경로 하나에만 유효하므로, 브라우저가 받은 URL 로 다른 팀 경로나 다른 버킷에
  * 쓸 수 없다. 경로를 정하는 것은 항상 서버다(요청 본문의 경로를 믿지 않는다).
  */
-export async function createGuidebookUploadUrl(teamId: string): Promise<SignedUpload> {
+export async function createGuidebookUploadUrl(path: string): Promise<SignedUpload> {
   const { base, key } = storageBase();
-  const path = guidebookPath(teamId);
 
   const res = await fetch(`${base}/storage/v1/object/upload/sign/${GUIDEBOOK_BUCKET}/${path}`, {
     method: 'POST',

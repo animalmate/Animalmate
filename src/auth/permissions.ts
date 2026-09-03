@@ -52,6 +52,7 @@ export type Action =
   | { kind: 'post.modify'; owner: Ownership } // 수정/삭제
   | { kind: 'document.modify'; owner: Ownership } // 수정/삭제
   | { kind: 'guidebook.manage'; owner: Ownership } // 팀 가이드북 업로드/교체/삭제(팀 소유)
+  | { kind: 'clubGuidebook.manage' } // 동아리 전체 가이드북 업로드/교체/제목/삭제 — 회장단 전용(주인이 팀이 아니다)
   | { kind: 'schedule.manage' } // 동아리 일정(캘린더) 등록·수정·삭제 — 회장단 전용, 조회는 운영진 이상
   | { kind: 'recurring.manage'; owner: Ownership } // 반복 규칙/프리셋 CRUD(팀 소유)
   | { kind: 'template.manage'; owner: Ownership } // 발행 템플릿 CRUD(팀/개인 소유; global 은 별도 처리)
@@ -177,6 +178,11 @@ export function authorize(actor: Actor, action: Action): Decision {
       if (action.owner.ownerType !== 'team') return deny('not_owner'); // 가이드북은 팀 소유만 존재한다
       return leadsTeam(actor, action.owner.ownerId) ? ALLOW : deny('not_owner');
     }
+
+    // 동아리 전체 가이드북: 회장단·시스템관리자만. 팀 가이드북과 갈라 둔 이유는 주인이 없기
+    // 때문이다 — 특정 팀 자료가 아니라 동아리가 통째로 내놓는 한 권이라 팀장단에게 열지 않는다.
+    case 'clubGuidebook.manage':
+      return isPrivileged(actor.role) ? ALLOW : deny('role_insufficient');
 
     // 챗봇 지식베이스 문서: 관리(생성·수정·삭제)는 회장단·시스템관리자 전용(운영진·부원 불가).
     // 동아리 일정도 같다 — 일정은 동아리 전체가 따르는 공식 정보라 운영진이 각자 고치면 안 된다.

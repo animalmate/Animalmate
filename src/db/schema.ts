@@ -22,6 +22,7 @@ import {
   unique,
   uniqueIndex,
   index,
+  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -62,9 +63,14 @@ export const teamPositionEnum = pgEnum('team_position', ['leader', 'member']);
 // 갈라 두는 이유: `/documents` 관리 목록에 가이드북 본문까지 섞이면 회장단이 손으로 쓴 문서를
 // 찾기 어렵다. 챗봇 검색은 둘을 구분하지 않는다(같은 doc_chunks 를 본다).
 export const documentKindEnum = pgEnum('document_kind', ['manual', 'guidebook']);
-// 가이드북 처리 단계. extracted = 텍스트를 뽑아 두고 사람 확인을 기다리는 중, ready = 확인까지
-// 끝나 챗봇이 읽는 중, failed = 추출이 실패해 파일만 있는 상태(보기는 되고 챗봇은 모른다).
-export const guidebookStatusEnum = pgEnum('guidebook_status', ['extracted', 'ready', 'failed']);
+// 가이드북 처리 단계. extracting = 파일은 올라왔고 지금 읽는 중, extracted = 텍스트를 뽑아 두고
+// 사람 확인을 기다리는 중, ready = 확인까지 끝나 챗봇이 읽는 중, failed = 추출이 실패해 파일만
+// 있는 상태(보기는 되고 챗봇은 모른다).
+//
+// `extracting` 이 있는 이유: 행을 **추출보다 먼저** 남기기 때문이다(마이그레이션 0034).
+// 예전에는 추출을 마친 뒤에 행을 넣어서, 함수가 60초에 잘리면 행이 아예 안 생기고 파일만
+// 스토리지에 떠돌았다 — 화면에는 아무것도 안 보이니 올린 사람은 또 올린다.
+export const guidebookStatusEnum = pgEnum('guidebook_status', ['extracting', 'extracted', 'ready', 'failed']);
 export const naverTokenStatusEnum = pgEnum('naver_token_status', ['ok', 'error']);
 // 제거됨: monthWeekEnum — recurring_rules 전용이었다(마이그레이션 0020).
 // F9 신입 모집 지원자 상태(스펙 2026-07-25). 접수 → 서류합격|서류불합격 → 면접완료 → 최종합격|최종불합격.
@@ -763,3 +769,39 @@ export const teamGuidebooks = pgTable('team_guidebooks', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── 동아리 전체 가이드북 ───────────────────────────────────────────────
+// 기수 단위로 회장단이 올리는 한 권(예: "33기 전체 가이드북"). 팀 가이드북과 **테이블을 나눴다.**
+//
+// 왜 나눴나: 이쪽은 **챗봇이 읽지 않는다**(2026-09-03 사용자 결정). 부원이 파일을 보는 것이 전부라
+// documents·pending_text·status 가 통째로 필요 없다. 억지로 team_guidebooks 에 얹으면 team_id 를
+// nullable 로 풀어야 하고(팀당 한 건이라는 보장이 사라진다), 쓰지 않는 칸이 절반이 된다.
+// 챗봇에 넣지 않은 이유도 분명하다 — 회칙·회비·활동기간은 이미 `동아리 기본 정보` 문서에 있고,
+// 같은 사실이 문서 두 곳에 생기면 결정 153(회비가 검색 12위로 밀린 그 건)이 그대로 재현된다.
+//
+// **행은 하나뿐이다.** 기수별로 쌓지 않는다(사용자 결정) — 새 기수가 오면 파일만 갈아 끼운다.
+// 고정 PK + CHECK 로 DB 가 그것을 보장한다(마이그레이션 0034). 두 벌이 쌓이면 화면이 어느 것을
+// 그릴지 알 수 없고, 부원은 지난 기수 것을 보고 있을 수 있다.
+//
+// **제목 칸이 없다**(0035 에서 뺐다). 칸이 하나뿐이라 이름이 늘 같다 — `전체 부원 가이드북`.
+// 기수를 이름에 넣으면 새 기수마다 사람이 고쳐 줘야 하고, 안 고치면 표시가 거짓이 된다.
+export const CLUB_GUIDEBOOK_ID = 'club';
+export const clubGuidebooks = pgTable(
+  'club_guidebooks',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => CLUB_GUIDEBOOK_ID),
+    storagePath: text('storage_path').notNull(),
+    fileName: text('file_name').notNull(),
+    fileBytes: integer('file_bytes').notNull(),
+    uploadedBy: uuid('uploaded_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  // 고정 키 + CHECK = "행은 하나뿐"의 DB 보장. 스키마에 적어 두는 이유는 다음 db:generate 가
+  // 모르는 제약으로 보고 지워 버리지 않게 하기 위해서다.
+  (t) => [check('club_guidebooks_singleton', sql`${t.id} = 'club'`)]
+);

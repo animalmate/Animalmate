@@ -91,6 +91,8 @@ export const ACTION_LABEL: Record<string, string> = {
   'document.reindex': '문서 재색인(내용 그대로)',
   'guidebook.upload': '가이드북 올림',
   'guidebook.delete': '가이드북 지움',
+  'guidebook.club.upload': '전체 부원 가이드북 올림',
+  'guidebook.club.delete': '전체 부원 가이드북 지움',
   'guidebook.document.create': '가이드북 본문 챗봇 반영',
   'guidebook.document.update': '가이드북 본문 갱신',
 

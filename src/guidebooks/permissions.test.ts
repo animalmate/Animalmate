@@ -61,3 +61,37 @@ describe('guidebook.manage', () => {
     expect(authorize(a, personal)).toMatchObject({ allowed: false, reason: 'not_owner' });
   });
 });
+
+// 동아리 전체 가이드북은 주인이 없다 — 팀 자료가 아니라 동아리가 통째로 내놓는 한 권이라
+// 팀장단에게 열지 않는다. 팀 가이드북 규칙을 그대로 베껴 쓰면 팀장단이 전체 가이드북을
+// 갈아치울 수 있게 되므로, 두 규칙이 서로 새지 않는지 여기서 못박는다.
+describe('clubGuidebook.manage', () => {
+  const manageClub = { kind: 'clubGuidebook.manage' } as const;
+
+  it('회장단은 허용', () => {
+    expect(authorize(actor({ role: 'board' }), manageClub)).toMatchObject({ allowed: true });
+  });
+
+  it('시스템관리자는 허용', () => {
+    expect(authorize(actor({ role: 'sysadmin' }), manageClub)).toMatchObject({ allowed: true });
+  });
+
+  it('팀장단이어도 거부 — 전체 가이드북은 팀 소유가 아니다', () => {
+    const a = actor({ role: 'staff', teams: [{ teamId: TEAM_A, position: 'leader', canEditNotice: false }] });
+    expect(authorize(a, manageClub)).toMatchObject({ allowed: false, reason: 'role_insufficient' });
+  });
+
+  it('부원은 거부', () => {
+    expect(authorize(actor({ role: 'member' }), manageClub)).toMatchObject({
+      allowed: false,
+      reason: 'role_insufficient',
+    });
+  });
+
+  it('임기 만료(멤버십 비활성)면 회장단이어도 거부', () => {
+    expect(authorize(actor({ role: 'board', membershipActive: false }), manageClub)).toMatchObject({
+      allowed: false,
+      reason: 'membership_inactive',
+    });
+  });
+});

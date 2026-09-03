@@ -129,9 +129,9 @@
     감사 기록·챗봇 평가 데이터도 사라진다. 경계는 반드시 **DB 시계(`now()`)** 로 찍는다
     (앱 시계로 찍으면 시계 차이만큼 초기화 직후 메시지가 사라진다 — 07-DECISIONS 61).
 
-### 팀 가이드북   ← 0031
+### 팀 가이드북   ← 0031 (status 에 `extracting` 추가 0034)
 - `team_guidebooks` (id, **team_id unique**, document_id?, storage_path, file_name, file_bytes,
-  status `extracted|ready|failed`, pending_text?, fail_reason?, uploaded_by, created_at, updated_at)
+  status `extracting|extracted|ready|failed`, pending_text?, fail_reason?, uploaded_by, created_at, updated_at)
   - **팀당 한 건**(`team_id` unique). 새로 올리면 파일과 본문을 교체한다 — 여러 벌이 쌓이면
     어느 것이 지금 것인지 알 수 없고, 챗봇이 낡은 쪽을 집어 답한다.
   - **파일과 본문은 별개다.** 파일(Supabase Storage `team-guidebooks`, **비공개 버킷**)은 부원이
@@ -145,6 +145,29 @@
     고를 이유가 없고, 실수로 부원에게 안 보이게 저장되는 쪽이 더 나쁘다.
   - 권한: `guidebook.manage` = **그 팀의 팀장단**(`team_members.position='leader'`) + 회장단.
     `document.modify`(회장단 전용)와 갈라 둔 것은 주인이 다르기 때문이다.
+  - `status='extracting'` = 파일은 등록됐고 **지금 읽는 중**. 행을 추출보다 **먼저** 넣기 때문에
+    존재한다(0034) — 예전에는 추출을 마친 뒤 넣어서, 함수가 `maxDuration=60` 에 잘리면 행이
+    안 생기고 파일만 스토리지에 남았다. 화면에 안 보이니 올린 사람은 또 올리고 고아 파일이 쌓인다.
+  - 파일 상한 **50MB**(`MAX_GUIDEBOOK_BYTES`). 고른 값이 아니라 천장 두 개가 겹치는 자리다 —
+    Supabase 무료 플랜의 파일당 상한(초과 시 서명 URL 단계에서 413)과 Gemini 의 PDF 상한(50MB/1000쪽).
+
+### 전체 부원 가이드북   ← 0034 (title 칸 제거 0035)
+- `club_guidebooks` (**id `'club'` 고정 PK + CHECK**, storage_path, file_name, file_bytes,
+  uploaded_by, created_at, updated_at)
+  - **행은 하나뿐이다.** 기수별로 쌓지 않는다 — 새 기수가 오면 파일만 갈아 끼운다.
+    고정 PK + `club_guidebooks_singleton` CHECK 로 DB 가 보장한다(두 벌이 쌓이면 화면이 어느 것을
+    그릴지 알 수 없고, 부원이 지난 기수 것을 보고 있어도 아무도 모른다).
+  - **챗봇이 읽지 않는다.** 그래서 `document_id`·`pending_text`·`status` 가 없다 —
+    회칙·회비·활동기간은 이미 `동아리 기본 정보` 문서에 있고, 같은 사실이 두 곳에 생기면
+    07-DECISIONS 153(회비가 검색 12위로 밀린 건)이 재현된다.
+  - **이름 칸이 없다.** 화면에 보이는 이름은 코드 상수 `전체 부원 가이드북` 고정이다(0035 에서 뺐다).
+    기수를 이름에 넣는 안을 잠깐 넣었다가 뺐다 — 새 기수마다 사람이 고쳐 줘야 하고, 안 고치면
+    33기 파일이 34기라고 적혀 있게 된다. `recruit_cohorts` 와 FK 로 묶지 않은 이유도 같다
+    (게다가 기수 행은 폐기 때 hard delete 된다).
+  - 파일은 `team_guidebooks` 와 **같은 비공개 버킷**(`team-guidebooks`)의 `club/` 아래 둔다.
+    팀 경로는 UUID 로 시작하므로 겹치지 않는다.
+  - 권한: `clubGuidebook.manage` = **회장단·시스템관리자 전용**. 팀장단에게 열지 않는다 —
+    특정 팀 자료가 아니라 동아리가 통째로 내놓는 한 권이다.
 
 ### 동아리 일정(캘린더)   ← 0025
 - `schedules` (id, title, start_date, end_date?, start_time?, place?, details?, visibility,

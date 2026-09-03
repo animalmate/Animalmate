@@ -239,6 +239,20 @@
       "when": 1787735986783,
       "tag": "0033_nappy_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788434860735,
+      "tag": "0034_peaceful_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788435424429,
+      "tag": "0035_strange_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

@@ -14,9 +14,11 @@ import {
   GuidebookRejectedError,
   confirmGuidebookText,
   deleteTeamGuidebook,
+  getClubGuidebook,
   listGuidebooks,
   registerUpload,
 } from '@/guidebooks/guidebooks';
+import { isPrivileged } from '@/auth/permissions';
 import { PiiBlockedError } from '@/rag/documents';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
@@ -41,7 +43,10 @@ export async function GET(): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   try {
-    return NextResponse.json({ teams: await listGuidebooks(db, actor) });
+    // 전체 가이드북과 팀 가이드북을 한 번에 준다 — 화면이 한 장이므로 왕복을 둘로 쪼갤 이유가 없다.
+    // `canManageClub` 은 표시용 판정이고, 실제 검증은 쓰기 라우트가 다시 한다(규칙 #6).
+    const [teamRows, club] = await Promise.all([listGuidebooks(db, actor), getClubGuidebook(db)]);
+    return NextResponse.json({ teams: teamRows, club, canManageClub: isPrivileged(actor.role) });
   } catch (e) {
     return internalError('GET /api/guidebooks', e);
   }
