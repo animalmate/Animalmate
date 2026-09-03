@@ -28,8 +28,17 @@ describe('감사 기록 조회 (실 DB)', () => {
     await db.delete(users).where(inArray(users.email, EMAILS));
   }
 
-  /** 같은 시각에 여러 건을 만들어 커서 경계를 실제로 밟게 한다. */
-  const SAME_MOMENT = new Date('2026-08-28T03:00:00.000Z');
+  /**
+   * 같은 시각에 여러 건을 만들어 커서 경계를 실제로 밟게 한다.
+   *
+   * **고정된 과거 시각이 아니라 "지금"이다.** 예전에는 `2026-08-28T03:00:00Z` 로 박아 두었는데,
+   * 테스트 DB 의 감사 기록은 실행할 때마다 쌓이기만 한다. 그 시각 이후의 사람 기록이 200건을
+   * 넘어서는 순간(2026-09-03에 239건) `limit: 200` 짜리 조회에서 이 픽스처가 통째로 밀려나
+   * 행위자로 좁히지 않은 두 테스트가 빈 배열을 받았다. 코드가 아니라 픽스처가 만드는 실패다
+   * (이 파일 아래쪽 테스트들이 같은 이유로 이미 `actorUserId` 로 좁혀져 있다).
+   * 지금 시각으로 심으면 항상 목록 맨 앞이라 쌓인 양과 무관해진다.
+   */
+  const SAME_MOMENT = new Date();
 
   beforeAll(async () => {
     sql = postgres(TEST_DATABASE_URL, { prepare: false, max: 1 });
