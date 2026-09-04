@@ -1,0 +1,2 @@
+ALTER TABLE "flash_signups" ADD COLUMN "placed_by" uuid;--> statement-breakpoint
+ALTER TABLE "flash_signups" ADD CONSTRAINT "flash_signups_placed_by_users_id_fk" FOREIGN KEY ("placed_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;

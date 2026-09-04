@@ -15,7 +15,9 @@ import {
   acceptsSignups,
   isPublicFlash,
   normalizeSignupOpenAt,
+  normalizePlaceIds,
   signupWindow,
+  PLACE_PEOPLE_MAX,
   FlashInputError,
   type FlashInput,
   type SeatRow,
@@ -133,6 +135,28 @@ describe('normalizeMessage', () => {
 
   it('너무 긴 메시지는 거절한다', () => {
     expect(() => normalizeMessage('가'.repeat(1001))).toThrow(FlashInputError);
+  });
+});
+
+describe('normalizePlaceIds — 개최자가 미리 넣을 사람', () => {
+  it('공백을 정리하고 중복을 접는다', () => {
+    expect(normalizePlaceIds([' a ', 'b', 'a', ''])).toEqual(['a', 'b']);
+  });
+
+  it('고른 순서를 지킨다 — 정원 경계에서 먼저 고른 사람이 확정이라 순서가 곧 결과다', () => {
+    expect(normalizePlaceIds(['c', 'a', 'b'])).toEqual(['c', 'a', 'b']);
+  });
+
+  it('빈 목록은 거절한다 — 조용히 성공하면 잡아 두려던 자리가 빈 채로 남는다', () => {
+    expect(() => normalizePlaceIds([])).toThrow(FlashInputError);
+    expect(() => normalizePlaceIds(null)).toThrow(FlashInputError);
+    expect(() => normalizePlaceIds(['  ', ''])).toThrow(FlashInputError);
+  });
+
+  it('상한을 넘으면 거절한다', () => {
+    const ids = Array.from({ length: PLACE_PEOPLE_MAX }, (_, i) => `u${i}`);
+    expect(normalizePlaceIds(ids)).toHaveLength(PLACE_PEOPLE_MAX);
+    expect(() => normalizePlaceIds([...ids, 'one-more'])).toThrow(FlashInputError);
   });
 });
 

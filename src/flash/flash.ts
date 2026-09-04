@@ -143,6 +143,27 @@ export function normalizeCapacity(v: number | null | undefined): number | null {
   return n;
 }
 
+/**
+ * 개최자가 한 번에 명단에 넣을 수 있는 **인원** 상한(위 `PLACE_MAX` 는 장소 글자 수라 이름이
+ * 비슷할 뿐 관계가 없다). 정원(300)보다 훨씬 작게 잡는 이유는
+ * 이것이 "명단을 통째로 채우는 기능"이 아니라 **자리 몇 개를 미리 잡아 두는 기능**이라서다.
+ * 한 화면에서 스무 명을 골라야 할 일이면 그건 번개가 아니라 정기 봉사다.
+ */
+export const PLACE_PEOPLE_MAX = 20;
+
+/**
+ * 미리 넣을 사람 id 목록 정리(순수) — 공백 제거, 중복 접기, 상한 확인.
+ *
+ * **빈 목록을 조용히 통과시키지 않는다.** 아무도 안 골랐는데 성공했다고 답하면 개최자는
+ * 넣은 줄 알고 넘어가고, 그 자리는 당일까지 비어 있다.
+ */
+export function normalizePlaceIds(ids: string[] | null | undefined): string[] {
+  const out = [...new Set((ids ?? []).map((v) => String(v ?? '').trim()).filter(Boolean))];
+  if (out.length === 0) throw new FlashInputError('명단에 넣을 사람을 골라 주세요.');
+  if (out.length > PLACE_PEOPLE_MAX) throw new FlashInputError(`한 번에 ${PLACE_PEOPLE_MAX}명까지 넣을 수 있어요.`);
+  return out;
+}
+
 /** 쪽지 본문 정리(순수). **신청의 첫 줄도 이 검사를 지난다** — 메시지가 곧 신청이라서다. */
 export function normalizeMessage(body: string | null | undefined): string {
   const s = (body ?? '').trim();
@@ -470,6 +491,11 @@ export interface RosterEntry {
   name: string;
   status: 'confirmed' | 'waitlisted';
   order: number;
+  /**
+   * 개최자가 직접 넣어 준 자리인가. **명단에 그대로 드러낸다** — 이 게시판의 존재 이유가
+   * "순서가 남는다"라서, 먼저 보낸 사람을 제치고 앉은 자리가 있으면 그 사실도 같이 보여야 한다.
+   */
+  placed: boolean;
 }
 
 export interface ThreadView {
@@ -479,6 +505,8 @@ export interface ThreadView {
   status: FlashSignupStatus;
   order: number | null; // 취소된 신청은 순번이 없다
   canceledByHost: boolean;
+  /** 개최자가 직접 넣은 자리 = 첫 쪽지가 없다. 화면이 빈 대화를 설명할 수 있어야 한다. */
+  placed: boolean;
   messages: FlashMessageView[];
   unread: number;
 }
@@ -550,6 +578,7 @@ export async function getFlashDetail(db: Db, actor: Actor, id: string, now: Date
       seq: flashSignups.seq,
       applicantReadAt: flashSignups.applicantReadAt,
       canceledBy: flashSignups.canceledBy,
+      placedBy: flashSignups.placedBy,
     })
     .from(flashSignups)
     .innerJoin(users, eq(users.id, flashSignups.userId))
@@ -559,7 +588,7 @@ export async function getFlashDetail(db: Db, actor: Actor, id: string, now: Date
   const seats = assignSeats(signupRows, row.capacity);
   const roster: RosterEntry[] = signupRows
     .filter((s) => seats.has(s.id))
-    .map((s) => ({ userId: s.userId, name: s.name, ...seats.get(s.id)! }))
+    .map((s) => ({ userId: s.userId, name: s.name, placed: s.placedBy != null, ...seats.get(s.id)! }))
     .sort((a, b) => (a.status === b.status ? a.order - b.order : a.status === 'confirmed' ? -1 : 1));
 
   // 쪽지는 **내 신청 것**과, 내가 개최자라면 **이 번개의 전부**만 읽는다.
@@ -597,6 +626,7 @@ export async function getFlashDetail(db: Db, actor: Actor, id: string, now: Date
       status: s.status,
       order: seats.get(s.id)?.order ?? null,
       canceledByHost: s.status === 'canceled' && s.canceledBy != null && s.canceledBy !== s.userId,
+      placed: s.placedBy != null,
       messages: msgs,
       unread: msgs.filter((m) => m.senderId !== actor.userId && (!since || new Date(m.createdAt) > since)).length,
     };
@@ -938,7 +968,16 @@ export async function signUpToFlash(
     if (existing) {
       await tx
         .update(flashSignups)
-        .set({ seq, status: 'confirmed', canceledAt: null, canceledBy: null, applicantReadAt: new Date() })
+        // `placedBy` 를 비운다 — 전에 개최자가 넣어 줬던 자리라도 지금 이 행은 본인이 보낸
+        // 신청이다. 남겨 두면 명단에 "개최자가 넣음"이 계속 붙어 사실과 어긋난다.
+        .set({
+          seq,
+          status: 'confirmed',
+          canceledAt: null,
+          canceledBy: null,
+          placedBy: null,
+          applicantReadAt: new Date(),
+        })
         .where(eq(flashSignups.id, existing.id));
       signupId = existing.id;
     } else {
@@ -956,6 +995,144 @@ export async function signUpToFlash(
       meetup.capacity
     ).get(signupId)!;
     return { signupId, status: after.status, order: after.order };
+  });
+}
+
+export interface PlacedSeat {
+  userId: string;
+  name: string;
+  status: 'confirmed' | 'waitlisted';
+  order: number;
+}
+
+/**
+ * 개최자가 **명단에 사람을 직접 넣는다**(사전 배정). "이 번개는 운영진 한 명을 미리 넣어 둔다"
+ * 처럼 자리 몇 개를 먼저 잡아 두는 용도다.
+ *
+ * 신청 행으로 넣는다 — 정원에서 머릿수만 깎는 방법을 쓰지 않는 이유는 스키마 주석
+ * (`flash_signups.placed_by`)에 적어 두었다. 여기서 중요한 것은 **넣은 뒤가 평범해진다**는 점이다:
+ * 대기 승격도, 본인 취소도, 개최자 내보내기도 전부 기존 코드가 그대로 처리한다.
+ *
+ * 규칙 셋:
+ *  - **신청 시작 시각(`signupOpenAt`)을 보지 않는다.** 오픈런이 열리기 전에 자리를 잡아 두는 것이
+ *    이 기능의 목적이라, 여기서 창을 확인하면 기능이 아무 일도 못 한다.
+ *  - **승인 전(pending) 번개에는 못 넣는다.** 거절될 수 있는 글에 남의 이름을 넣어 두면, 그 사람은
+ *    `visibleFlash` 의 "내가 신청한 것" 조건 때문에 있지도 않은 번개와 그 거절 사유까지 보게 된다.
+ *  - **자리를 빼앗지 않는다.** 정원이 이미 찼으면 넣어진 사람이 대기 줄로 간다(`resyncSeats`).
+ *    먼저 보낸 사람을 밀어내면 선착순을 남기려고 만든 게시판이 스스로를 부정한다.
+ *
+ * 전부 되거나 전부 안 된다. 한 명이 걸렸을 때 나머지만 넣으면 개최자는 누가 들어갔는지
+ * 다시 세어 봐야 하고, 그 확인을 건너뛰면 자리 하나가 조용히 빈다.
+ */
+export async function placeFlashSignups(
+  db: Db,
+  actor: Actor,
+  flashId: string,
+  userIds: string[] | null | undefined
+): Promise<PlacedSeat[]> {
+  const wanted = normalizePlaceIds(userIds);
+
+  return db.transaction(async (tx) => {
+    // 신청과 같은 잠금을 쓴다 — 오픈런 도중에 개최자가 한 명 넣으면 seq 채번이 겹칠 수 있다.
+    const [meetup] = await tx
+      .select()
+      .from(flashMeetups)
+      .where(eq(flashMeetups.id, flashId))
+      .for('update')
+      .limit(1);
+    if (!meetup) throw new FlashInputError('없는 번개예요. 목록을 새로고침해 주세요.');
+    const hosts = await hostIdsOf(tx, flashId);
+    const decision = requireAuthorized(actor, { kind: 'flash.manage', hosts });
+
+    if (meetup.status === 'pending') throw new FlashInputError('승인된 뒤에 명단에 넣을 수 있어요.');
+    if (meetup.status !== 'open' && meetup.status !== 'closed') {
+      throw new FlashInputError('지금은 명단을 바꿀 수 없는 번개예요.');
+    }
+
+    const people = await tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(and(inArray(users.id, wanted), sql`${users.withdrawnAt} is null`));
+    // 없는 id 를 조용히 버리지 않는다(공동 개최자와 다른 판단이다). 저쪽은 빠져도 번개가 열리지만,
+    // 여기서 빠지면 잡아 두려던 자리가 빈 채로 남고 개최자는 넣은 줄 안다.
+    if (people.length !== wanted.length) {
+      throw new FlashInputError('탈퇴했거나 없는 회원이 섞여 있어요. 다시 골라 주세요.');
+    }
+    const nameOf = new Map(people.map((p) => [p.id, p.name]));
+
+    const asHost = wanted.find((id) => hosts.includes(id));
+    if (asHost) throw new FlashInputError(`${nameOf.get(asHost)} 님은 이 번개를 여는 사람이에요.`);
+
+    const rows = await tx
+      .select({ id: flashSignups.id, userId: flashSignups.userId, seq: flashSignups.seq, status: flashSignups.status })
+      .from(flashSignups)
+      .where(eq(flashSignups.flashId, flashId));
+    const byUser = new Map(rows.map((r) => [r.userId, r]));
+    const already = wanted.find((id) => {
+      const r = byUser.get(id);
+      return r != null && r.status !== 'canceled';
+    });
+    if (already) throw new FlashInputError(`${nameOf.get(already)} 님은 이미 신청했어요.`);
+
+    // 고른 순서대로 번호를 딴다 — 정원 경계에 걸리면 먼저 고른 사람이 확정이다.
+    let seq = rows.reduce((max, r) => Math.max(max, r.seq), 0);
+    const placed: { userId: string; signupId: string }[] = [];
+    for (const userId of wanted) {
+      seq += 1;
+      const old = byUser.get(userId);
+      // 취소했던 사람을 다시 넣는 경우 행을 재사용하되 번호는 새로 딴다(신청과 같은 규칙).
+      // `applicantReadAt` 은 null 로 되돌린다 — 넣어진 사람은 아직 이 대화를 본 적이 없고,
+      // 지난 읽음 시각이 남아 있으면 개최자가 뒤에 보낸 안내가 안 읽음으로 잡히지 않는다.
+      if (old) {
+        await tx
+          .update(flashSignups)
+          .set({
+            seq,
+            status: 'confirmed',
+            canceledAt: null,
+            canceledBy: null,
+            placedBy: actor.userId,
+            applicantReadAt: null,
+          })
+          .where(eq(flashSignups.id, old.id));
+        placed.push({ userId, signupId: old.id });
+      } else {
+        const [created] = await tx
+          .insert(flashSignups)
+          .values({ flashId, userId, seq, status: 'confirmed', placedBy: actor.userId })
+          .returning({ id: flashSignups.id });
+        placed.push({ userId, signupId: created!.id });
+      }
+    }
+    await resyncSeats(tx, flashId); // 정원이 이미 찼으면 방금 넣은 사람이 여기서 대기로 내려간다
+
+    const after = await tx
+      .select({ id: flashSignups.id, seq: flashSignups.seq, status: flashSignups.status })
+      .from(flashSignups)
+      .where(eq(flashSignups.flashId, flashId));
+    const seats = assignSeats(after, meetup.capacity);
+
+    // 사람마다 한 줄씩 남긴다 — 한 줄에 몰아 적으면 나중에 "내가 왜 이 명단에 있나"를 되짚을 때
+    // 그 사람 신청 행으로 감사 기록을 찾을 수 없다(내보내기 `flash.signup.remove` 와 같은 모양).
+    for (const p of placed) {
+      await recordAudit(
+        tx,
+        buildAuditEntry({
+          actorUserId: actor.userId,
+          action: 'flash.signup.place',
+          targetTable: 'flash_signups',
+          targetId: p.signupId,
+          after: { flashId, userId: p.userId, status: seats.get(p.signupId)?.status ?? 'confirmed' },
+          override: decision.override,
+        })
+      );
+    }
+
+    return placed.map((p) => ({
+      userId: p.userId,
+      name: nameOf.get(p.userId) ?? '',
+      ...seats.get(p.signupId)!,
+    }));
   });
 }
 

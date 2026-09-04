@@ -898,6 +898,8 @@ export const flashHosts = pgTable(
  *
  * 취소했다가 다시 신청하면 **새 번호를 받는다**(행은 재사용, seq 만 새로 채번). 옛 번호를
  * 그대로 살리면 한 번 빠졌던 사람이 대기 줄 앞자리를 계속 쥐게 된다.
+ *
+ * 예외가 하나 있다: `placed_by` 가 찍힌 행은 **개최자가 직접 넣은 자리**라 첫 쪽지가 없다.
  */
 export const flashSignups = pgTable(
   'flash_signups',
@@ -916,6 +918,18 @@ export const flashSignups = pgTable(
     canceledAt: timestamp('canceled_at', { withTimezone: true }),
     /** 취소를 누른 사람. 본인이면 자진 취소, 개최자면 내보내기 — 화면 문구가 갈린다. */
     canceledBy: uuid('canceled_by').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * 이 자리를 **개최자가 대신 잡아 준** 경우 그 개최자. null = 본인이 보낸 신청이다.
+     *
+     * 왜 숫자가 아니라 행인가(2026-09-05 사용자 결정): "이 번개는 운영진 한 명을 미리 넣어 둔다"
+     * 같은 일이 있다. 정원에서 머릿수만 깎아 두면 그 자리의 주인이 명단에 안 남아, 개최자는
+     * 누구를 넣어 뒀는지 기억에 의존하게 되고 쪽지도 못 보내며 못 오게 됐을 때 뺄 방법도 없다.
+     * 신청 행으로 넣으면 선착순 계산(`assignSeats`)·취소·대기 승격이 전부 기존 코드 그대로 굴러간다.
+     *
+     * 넣어진 사람도 **본인이 취소할 수 있다** — 대신 넣어 준 것이지 대신 약속한 것이 아니다.
+     * 자리를 빼앗지도 않는다: 이미 정원이 찬 뒤에 넣으면 그 사람이 대기 줄로 간다.
+     */
+    placedBy: uuid('placed_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -924,7 +938,10 @@ export const flashSignups = pgTable(
   ]
 );
 
-/** 신청 건마다 붙는 1:1 대화(신청자 ↔ 개최자 전원). 첫 줄이 신청 메시지다. */
+/**
+ * 신청 건마다 붙는 1:1 대화(신청자 ↔ 개최자 전원). 첫 줄이 신청 메시지다.
+ * 개최자가 직접 넣은 자리(`flash_signups.placed_by`)만 **줄이 하나도 없는 채로** 시작한다.
+ */
 export const flashMessages = pgTable(
   'flash_messages',
   {

@@ -122,6 +122,17 @@ export const ACTION_LABEL: Record<string, string> = {
   'schedule.delete': '일정 지움',
   'event.cancel': '봉사 취소 표시',
 
+  'flash.request': '번개 개최 신청',
+  'flash.create': '번개 열었음',
+  'flash.update': '번개 고침',
+  'flash.approve': '번개 개최 승인',
+  'flash.reject': '번개 개최 거절',
+  'flash.close': '번개 신청 마감',
+  'flash.reopen': '번개 신청 다시 엶',
+  'flash.cancel': '번개 취소',
+  'flash.signup.place': '번개 명단에 직접 넣음',
+  'flash.signup.remove': '번개 신청 내보냄',
+
   'recruit.cohort.create': '기수 만듦',
   'recruit.cohort.delete': '기수 지움',
   'recruit.cohort.closeSwitch': '모집 마감 스위치',

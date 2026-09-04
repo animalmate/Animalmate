@@ -13,7 +13,7 @@ import 'dotenv/config';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq, like, inArray } from 'drizzle-orm';
+import { and, eq, like, inArray } from 'drizzle-orm';
 import * as schema from '@/db/schema';
 import { flashMeetups, flashSignups, users, auditLogs } from '@/db/schema';
 import {
@@ -22,6 +22,7 @@ import {
   decideFlashMeetup,
   setFlashState,
   signUpToFlash,
+  placeFlashSignups,
   cancelFlashSignup,
   postFlashMessage,
   getFlashDetail,
@@ -82,6 +83,15 @@ describe('번개 — 선착순·대기·쪽지', () => {
   /** 운영진이 곧바로 여는 번개(승인 단계를 건너뛴다). 대부분의 테스트가 여기서 시작한다. */
   async function openMeetup(title: string, capacity: number | null, coHostIds: string[] = []) {
     return createFlashMeetup(db, staff, { title: `${PREFIX}${title}`, meetDate: DATE, capacity, coHostIds });
+  }
+
+  /** 감사 기록은 신청 행 id 로 붙는데, 미리 넣기는 그 id 를 돌려주지 않는다(이름·순번만 준다). */
+  async function signupIdOf(flashId: string, userId: string): Promise<string | undefined> {
+    const [row] = await db
+      .select({ id: flashSignups.id })
+      .from(flashSignups)
+      .where(and(eq(flashSignups.flashId, flashId), eq(flashSignups.userId, userId)));
+    return row?.id;
   }
 
   beforeAll(async () => {
@@ -303,6 +313,132 @@ describe('번개 — 선착순·대기·쪽지', () => {
     expect(forA.map((f) => f.id)).toContain(m.id);
     // 신청하지 않은 부원에게는 안 보인다.
     expect((await listFlashMeetups(db, b, { now: NOW })).map((f) => f.id)).not.toContain(m.id);
+  });
+
+  // ── 명단에 미리 넣기(사전 배정) ───────────────────────────────────────
+  //
+  // 순수 테스트로 덮이지 않는 것만 여기서 본다: **자리를 빼앗지 않는가**(먼저 신청한 사람이
+  // 밀려나면 선착순을 남기려고 만든 게시판이 스스로를 부정한다), 신청 창을 지나치는가,
+  // 그리고 넣어진 사람이 그 뒤로 평범한 신청자처럼 굴러가는가(취소·대기 승격).
+
+  it('개최자가 넣은 사람이 명단에 확정으로 들어가고, 넣은 표시가 함께 남는다', async () => {
+    const m = await openMeetup('미리넣기', 3);
+    const placed = await placeFlashSignups(db, staff, m.id, [a.userId]);
+    expect(placed).toEqual([expect.objectContaining({ name: '신청자가', status: 'confirmed', order: 1 })]);
+
+    const detail = await getFlashDetail(db, staff, m.id);
+    expect(detail!.counts).toEqual({ confirmed: 1, waiting: 0 });
+    expect(detail!.roster).toEqual([expect.objectContaining({ name: '신청자가', placed: true })]);
+    // 첫 쪽지가 없는 유일한 신청이다 — 화면이 빈 대화를 설명할 수 있어야 한다.
+    expect(detail!.threads![0]).toMatchObject({ placed: true, messages: [] });
+  });
+
+  it('여러 명을 **고른 순서대로** 넣는다 — 그 순서가 곧 정원 경계의 결과다', async () => {
+    const m = await openMeetup('여럿넣기', 2);
+    const placed = await placeFlashSignups(db, staff, m.id, [c.userId, a.userId, b.userId]);
+    expect(placed.map((p) => `${p.name}:${p.status}${p.order}`)).toEqual([
+      '신청자다:confirmed1',
+      '신청자가:confirmed2',
+      '신청자나:waitlisted1',
+    ]);
+  });
+
+  it('**먼저 신청한 사람을 밀어내지 않는다** — 정원이 찼으면 넣어진 사람이 대기로 간다', async () => {
+    const m = await openMeetup('자리안뺏음', 1);
+    await signUpToFlash(db, a, m.id, '1등입니다');
+    const placed = await placeFlashSignups(db, staff, m.id, [b.userId]);
+    expect(placed[0]).toMatchObject({ status: 'waitlisted', order: 1 });
+    expect((await getFlashDetail(db, staff, m.id))!.roster.map((r) => `${r.name}:${r.status}`)).toEqual([
+      '신청자가:confirmed',
+      '신청자나:waitlisted',
+    ]);
+  });
+
+  it('신청 시작 시각 전에도 넣을 수 있다 — 자리를 미리 잡아 두는 것이 이 기능의 목적이다', async () => {
+    const m = await createFlashMeetup(db, staff, {
+      title: `${PREFIX}오픈런`,
+      meetDate: DATE,
+      capacity: 2,
+      signupOpenAt: '2030-05-10T15:00',
+    });
+    const early = new Date('2030-05-01T00:00:00Z'); // 시작 한참 전
+    // 부원은 아직 못 보낸다.
+    await expect(signUpToFlash(db, a, m.id, '미리요', early)).rejects.toBeInstanceOf(FlashInputError);
+    // 개최자는 넣을 수 있다.
+    expect(await placeFlashSignups(db, staff, m.id, [a.userId])).toEqual([
+      expect.objectContaining({ status: 'confirmed', order: 1 }),
+    ]);
+  });
+
+  it('넣어진 사람은 **본인이 취소할 수 있고**, 그 자리는 대기자에게 넘어간다', async () => {
+    const m = await openMeetup('넣고취소', 1);
+    await placeFlashSignups(db, staff, m.id, [a.userId]);
+    await signUpToFlash(db, b, m.id, '대기라도 걸게요');
+
+    const forA = (await getFlashDetail(db, a, m.id))!;
+    expect(forA.mine).toMatchObject({ status: 'confirmed', placed: true });
+    await cancelFlashSignup(db, a, forA.mine!.signupId);
+
+    expect((await getFlashDetail(db, staff, m.id))!.roster).toEqual([
+      expect.objectContaining({ name: '신청자나', status: 'confirmed' }),
+    ]);
+  });
+
+  it('넣어졌다가 취소한 사람이 스스로 신청하면 "개최자가 넣음" 표시가 지워진다', async () => {
+    const m = await openMeetup('표시지움', 5);
+    await placeFlashSignups(db, staff, m.id, [a.userId]);
+    const forA = (await getFlashDetail(db, a, m.id))!;
+    await cancelFlashSignup(db, a, forA.mine!.signupId);
+    await signUpToFlash(db, a, m.id, '역시 갈게요');
+
+    const mine = (await getFlashDetail(db, a, m.id))!.mine!;
+    expect(mine).toMatchObject({ status: 'confirmed', placed: false });
+    expect(mine.messages.map((x) => x.body)).toEqual(['역시 갈게요']);
+  });
+
+  it('한 명이라도 걸리면 **아무도 안 들어간다**(이미 신청한 사람이 섞인 경우)', async () => {
+    const m = await openMeetup('전부아니면전무', 5);
+    await signUpToFlash(db, a, m.id, '이미 왔어요');
+    await expect(placeFlashSignups(db, staff, m.id, [b.userId, a.userId])).rejects.toBeInstanceOf(FlashInputError);
+    // b 도 들어가지 않았어야 한다.
+    expect((await getFlashDetail(db, staff, m.id))!.roster.map((r) => r.name)).toEqual(['신청자가']);
+  });
+
+  it('개최자 자신은 명단에 넣을 수 없다(자기 번개에 신청할 수 없는 것과 같은 규칙)', async () => {
+    const m = await openMeetup('개최자넣기', 5, [host.userId]);
+    await expect(placeFlashSignups(db, staff, m.id, [host.userId])).rejects.toBeInstanceOf(FlashInputError);
+  });
+
+  it('승인 전 번개에는 못 넣는다 — 거절되면 있지도 않은 번개가 그 사람에게 보인다', async () => {
+    const m = await createFlashMeetup(db, host, { title: `${PREFIX}승인전넣기`, meetDate: DATE });
+    await expect(placeFlashSignups(db, host, m.id, [a.userId])).rejects.toBeInstanceOf(FlashInputError);
+  });
+
+  it('취소된 번개에는 못 넣고, 마감된 번개에는 넣을 수 있다(뒤늦게 합류하는 사람이 있다)', async () => {
+    const closed = await openMeetup('마감후넣기', 5);
+    await setFlashState(db, staff, closed.id, 'close');
+    expect(await placeFlashSignups(db, staff, closed.id, [a.userId])).toHaveLength(1);
+
+    const canceled = await openMeetup('취소후넣기', 5);
+    await setFlashState(db, staff, canceled.id, 'cancel', '비 예보');
+    await expect(placeFlashSignups(db, staff, canceled.id, [b.userId])).rejects.toBeInstanceOf(FlashInputError);
+  });
+
+  it('개최자가 아닌 부원은 남의 번개 명단을 못 건드린다', async () => {
+    const m = await openMeetup('남의명단', 5);
+    await expect(placeFlashSignups(db, a, m.id, [b.userId])).rejects.toBeInstanceOf(PermissionError);
+  });
+
+  it('넣은 사람마다 감사 기록이 한 줄씩 남는다(회장단이 했으면 override 표시까지)', async () => {
+    const m = await openMeetup('넣기기록', 5);
+    const placed = await placeFlashSignups(db, board, m.id, [a.userId, b.userId]);
+    for (const p of placed) {
+      const [row] = await db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.targetId, (await signupIdOf(m.id, p.userId))!));
+      expect(row!.action).toBe('flash.signup.place [override]');
+    }
   });
 
   // ── 쪽지(1:1) ────────────────────────────────────────────────────────

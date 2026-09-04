@@ -18,10 +18,13 @@ export function CoHostPicker({
   value,
   onChange,
   disabled = false,
+  ariaLabel = '함께 여는 사람 검색',
 }: {
   value: CoHost[];
   onChange: (next: CoHost[]) => void;
   disabled?: boolean;
+  /** 같은 검색을 "명단에 미리 넣을 사람" 고르기에도 쓴다 — 읽어 주는 이름만 달라진다. */
+  ariaLabel?: string;
 }) {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<CoHost[]>([]);
@@ -65,7 +68,7 @@ export function CoHostPicker({
         onChange={(e) => setQ(e.target.value)}
         placeholder="이름 두 글자부터 검색"
         uiSize="sm"
-        aria-label="함께 여는 사람 검색"
+        aria-label={ariaLabel}
       />
       {q.trim().length >= 2 ? (
         <div className="rounded-xl border border-ink-200 bg-white">

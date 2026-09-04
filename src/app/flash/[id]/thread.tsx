@@ -1,8 +1,11 @@
 'use client';
 // 신청 한 건의 대화 — 신청자와 개최자 사이 1:1 쪽지.
 //
-// 첫 줄이 신청 메시지다(사용자 결정: "메시지 자체가 신청"). 그래서 이 대화는 언제나
-// 신청자가 먼저 말한 상태로 시작하고, 빈 대화는 존재하지 않는다.
+// 첫 줄이 신청 메시지다(사용자 결정: "메시지 자체가 신청"). 그래서 이 대화는 거의 언제나
+// 신청자가 먼저 말한 상태로 시작한다.
+//
+// 예외 하나: **개최자가 명단에 직접 넣은 자리**(`thread.placed`)는 아무도 말한 적이 없어
+// 대화가 비어 있다. 빈 상자를 그대로 두면 "안 불러와졌나"로 읽히므로 왜 비었는지를 적는다.
 import { useEffect, useRef, useState } from 'react';
 import { apiPost, errorMessage, waitMessage } from '@/lib/api';
 import { Button, Textarea, ErrorText } from '@/components/ui';
@@ -58,6 +61,13 @@ export function MessageThread({
     <div className="space-y-2.5">
       {/* 대화가 길어져도 카드가 끝없이 늘어나지 않게 상자를 정해 둔다 — 그러지 않으면 아래에
           붙은 신청 취소·내보내기 버튼이 화면 밖으로 밀려 찾을 수 없게 된다. */}
+      {thread.messages.length === 0 ? (
+        <p className="rounded-xl bg-cream-50 px-3.5 py-3 text-[13px] text-ink-500">
+          {thread.placed
+            ? '개최자가 명단에 넣어 준 자리라 아직 오간 말이 없어요.'
+            : '아직 오간 말이 없어요.'}
+        </p>
+      ) : null}
       <ul ref={listRef} className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
         {thread.messages.map((m) => {
           const mine = m.senderId === me;

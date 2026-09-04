@@ -50,6 +50,20 @@ export function MySignupBadge({ status, order }: { status: FlashSignupStatus; or
   );
 }
 
+/**
+ * 개최자가 직접 넣어 준 자리 표시.
+ *
+ * **명단에 그대로 드러낸다.** 이 게시판을 만든 이유가 "먼저 온 순서가 남는다"라서, 순서를
+ * 거치지 않고 앉은 자리를 조용히 섞어 두면 뒤에서 대기 중인 사람에게는 선착순이 거짓말이 된다.
+ */
+export function PlacedTag() {
+  return (
+    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-ink-100 px-2 py-0.5 text-[11px] font-semibold text-ink-500">
+      개최자가 넣음
+    </span>
+  );
+}
+
 /** 안 읽은 쪽지 개수 점. 0 이면 아무것도 그리지 않는다(빈 동그라미는 읽은 것처럼 보인다). */
 export function UnreadDot({ count }: { count: number }) {
   if (count <= 0) return null;

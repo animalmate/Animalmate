@@ -267,6 +267,13 @@
       "when": 1788455004042,
       "tag": "0037_youthful_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788537487119,
+      "tag": "0038_same_sphinx",
+      "breakpoints": true
     }
   ]
 }

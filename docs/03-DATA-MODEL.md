@@ -222,8 +222,12 @@
   - `read_at` 이 **개최자마다** 있는 이유: 홈 배지를 번개 행에 하나만 두면 공동 개최자 중 한 명이
     열어 본 순간 나머지 배지가 같이 꺼져, 다른 개최자는 새 신청이 온 줄 모른다.
 - `flash_signups` (id, flash_id, user_id, status, seq, applicant_read_at?, canceled_at?, canceled_by?,
-  created_at, UNIQUE(flash_id, user_id), INDEX(flash_id, seq))
+  placed_by?, created_at, UNIQUE(flash_id, user_id), INDEX(flash_id, seq))
   - **메시지가 곧 신청이다**(사용자 결정) — "테마 1 참가하고 싶습니다!" 같은 첫 쪽지가 이 행을 만든다.
+  - `placed_by` = **개최자가 대신 잡아 준 자리**(사전 배정, 07-DECISIONS 166). null 이면 본인이 보낸 신청.
+    정원에서 머릿수만 깎지 않고 행으로 넣는 이유: 숫자만 깎으면 그 자리의 주인이 명단에 안 남아
+    개최자가 기억에 의존하게 되고, 쪽지도 못 보내고, 못 오게 됐을 때 뺄 방법도 없다. 행이면 대기
+    승격·본인 취소·내보내기가 전부 기존 경로로 굴러간다. **이 행만 첫 쪽지가 없다.**
   - `seq` = 그 번개 안에서의 신청 순번(1부터). **선착순·대기 승격의 유일한 근거.**
     `created_at` 으로 대신하지 않는 이유: 같은 밀리초에 두 건이 들어오면 순서가 흔들리고, 그 순간이
     하필 정원 경계면 누가 확정인지 뒤집힌다. 채번은 번개 행을 `FOR UPDATE` 로 잠근 트랜잭션 안에서만 한다.
@@ -417,6 +421,9 @@
   - 전이를 명령으로 만들지 않는다. 취소·정원 변경이 나면 `resyncSeats` 가 seq 순서로 전부 다시
     계산해 **바뀐 행만** UPDATE 한다 — 그래서 확정자가 취소하면 맨 앞 대기자가 별도 코드 없이 올라간다.
   - `canceled` → 다시 신청하면 같은 행을 되살리되 **seq 를 새로 딴다**(대기 줄 맨 뒤).
+  - 개최자가 미리 넣는 자리(`placed_by`)도 **같은 줄 맨 뒤에 선다** — 정원이 이미 찼으면 `waitlisted`
+    로 들어간다. 먼저 신청한 사람을 밀어내지 않는다. 넣어졌던 사람이 스스로 신청하면 `placed_by` 를
+    비운다(그 행은 이제 본인이 보낸 신청이다).
 
 - **memberships**: `active` → `expired`. 전이 경로 3개 —
   ① **미접속 만료(자동)**: 일일 크론이 `coalesce(users.last_seen_at, users.created_at)` 가

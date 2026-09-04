@@ -13,9 +13,10 @@ import { Card, Button, SecondaryButton, DangerButton, Banner, Textarea, ErrorTex
 import { Icon } from '@/components/icon';
 import { Modal } from '@/components/modal';
 import { instantToKstLocal, kstDateTimeLabel } from '@/lib/kst-date';
-import type { FlashDetail, RosterEntry, ThreadView } from '@/flash/flash';
-import { FlashStatusBadge, MySignupBadge, UnreadDot, SeatSummary, dayLabel, SignupCountdown } from '../shared';
+import type { FlashDetail, PlacedSeat, RosterEntry, ThreadView } from '@/flash/flash';
+import { FlashStatusBadge, MySignupBadge, UnreadDot, SeatSummary, dayLabel, SignupCountdown, PlacedTag } from '../shared';
 import { FlashForm, type FlashDraft } from '../flash-form';
+import { CoHostPicker, type CoHost } from '../co-host-picker';
 import { MessageThread } from './thread';
 
 function toDraft(f: FlashDetail): FlashDraft {
@@ -41,6 +42,8 @@ export function FlashDetailPanel({ id, me }: { id: string; me: string }) {
   const [rejecting, setRejecting] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [notice, setNotice] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [placed, setPlaced] = useState(''); // 미리 넣은 직후 안내(대기로 갔는지까지 말해 준다)
   const [note, setNote] = useState('');
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [showCanceled, setShowCanceled] = useState(false);
@@ -139,6 +142,13 @@ export function FlashDetailPanel({ id, me }: { id: string; me: string }) {
 
       {myActive ? (
         <>
+          {/* 내가 신청한 적이 없는데 명단에 있는 경우 — 개최자가 넣어 준 자리다. 이 말이 없으면
+              "내가 신청한 적 없는 번개에 왜 확정으로 들어가 있지?" 로 읽힌다. */}
+          {flash.mine!.placed ? (
+            <InfoText>
+              개최자가 명단에 넣어 준 자리예요. 못 가게 되면 아래 <strong>신청 취소</strong>로 빠질 수 있어요.
+            </InfoText>
+          ) : null}
           <MessageThread thread={flash.mine!} me={me} canWrite={flash.status !== 'canceled'} onSent={load} />
           {flash.status !== 'canceled' ? (
             <div className="flex justify-start border-t border-cream-100 pt-3">
@@ -169,6 +179,12 @@ export function FlashDetailPanel({ id, me }: { id: string; me: string }) {
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <strong className="mr-auto text-[15px] font-bold text-ink-900">받은 신청 {alive.length}건</strong>
+        {live ? (
+          <SecondaryButton type="button" onClick={() => setPlacing(true)} disabled={busy}>
+            <Icon name="plus" size={15} />
+            명단에 미리 넣기
+          </SecondaryButton>
+        ) : null}
         {alive.length > 0 && live ? (
           <SecondaryButton type="button" onClick={() => setNotice(true)} disabled={busy}>
             <Icon name="megaphone" size={15} />
@@ -176,6 +192,11 @@ export function FlashDetailPanel({ id, me }: { id: string; me: string }) {
           </SecondaryButton>
         ) : null}
       </div>
+      {placed ? (
+        <Banner kind="success" title="명단에 넣었어요">
+          {placed}
+        </Banner>
+      ) : null}
       {alive.length === 0 ? (
         <p className="text-[14px] text-ink-500">아직 신청이 없어요.</p>
       ) : (
@@ -407,6 +428,20 @@ export function FlashDetailPanel({ id, me }: { id: string; me: string }) {
         </Modal>
       ) : null}
 
+      {placing ? (
+        <PlaceModal
+          flashId={id}
+          capacity={flash.capacity}
+          confirmed={flash.counts.confirmed}
+          onClose={() => setPlacing(false)}
+          onPlaced={(seats) => {
+            setPlacing(false);
+            setPlaced(describePlaced(seats));
+            void load();
+          }}
+        />
+      ) : null}
+
       {notice ? (
         <NoticeModal
           flashId={id}
@@ -448,6 +483,7 @@ function RosterList({ roster, me }: { roster: RosterEntry[]; me: string }) {
                     {r.name}
                     {r.userId === me ? ' (나)' : ''}
                   </span>
+                  {r.placed ? <PlacedTag /> : null}
                 </li>
               ))}
             </ol>
@@ -498,14 +534,20 @@ function ThreadRow({
       <button type="button" onClick={onToggle} className="flex w-full items-center gap-2 text-left">
         {seat}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-semibold text-ink-900">{t.name}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="min-w-0 truncate text-[15px] font-semibold text-ink-900">{t.name}</span>
+            {t.placed ? <PlacedTag /> : null}
+          </span>
           {/* 마지막 한 줄을 미리 보여 준다 — 열어 보지 않고도 무엇을 묻는지 알 수 있어야
-              신청이 여럿일 때 어디부터 답할지 정할 수 있다. */}
+              신청이 여럿일 때 어디부터 답할지 정할 수 있다.
+              직접 넣은 자리는 오간 말이 없어 빈 줄이 되므로, 그 사실을 대신 적는다. */}
           {!open && last ? (
             <span className="block truncate text-[13px] text-ink-500">
               {last.senderId === me ? '나: ' : ''}
               {last.body}
             </span>
+          ) : !open && t.placed ? (
+            <span className="block truncate text-[13px] text-ink-400">내가 넣은 자리 · 오간 말 없음</span>
           ) : null}
         </span>
         {t.status === 'canceled' ? (
@@ -576,6 +618,86 @@ function SignupForm({ flashId, onDone }: { flashId: string; onDone: () => void }
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 넣은 결과를 한 줄로. **대기로 간 사람을 따로 말해 준다** — 정원이 이미 찼으면 넣어진 사람도
+ * 대기 줄로 가는데, "넣었어요"로만 끝내면 개최자는 자리를 잡았다고 믿고 넘어간다.
+ */
+function describePlaced(seats: PlacedSeat[]): string {
+  const waiting = seats.filter((s) => s.status === 'waitlisted');
+  const names = seats.map((s) => s.name).join(', ');
+  if (waiting.length === 0) return `${names} 님을 확정 자리에 넣었어요.`;
+  const waitNames = waiting.map((s) => `${s.name}(대기 ${s.order}번)`).join(', ');
+  return `${names} 님을 넣었어요. 정원이 차 있어 ${waitNames} 은(는) 대기 줄로 갔어요.`;
+}
+
+/**
+ * 개최자가 명단에 사람을 미리 넣는 팝업 — "이 자리는 운영진 몫" 같은 것을 잡아 둘 때 쓴다.
+ *
+ * 신청 시작 시각 전에도 넣을 수 있다(서버가 신청 창을 보지 않는다). 그게 이 기능의 목적이라
+ * 여기서 버튼을 잠그면 아무것도 못 한다.
+ */
+function PlaceModal({
+  flashId,
+  capacity,
+  confirmed,
+  onClose,
+  onPlaced,
+}: {
+  flashId: string;
+  capacity: number | null;
+  confirmed: number;
+  onClose: () => void;
+  onPlaced: (seats: PlacedSeat[]) => void;
+}) {
+  const [people, setPeople] = useState<CoHost[]>([]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const left = capacity == null ? null : Math.max(0, capacity - confirmed);
+
+  async function submit() {
+    if (people.length === 0) return;
+    setError('');
+    setBusy(true);
+    const r = await apiPost<{ placed: PlacedSeat[] }>(`/api/flash/${flashId}/place`, {
+      userIds: people.map((p) => p.userId),
+    });
+    setBusy(false);
+    if (!r.ok) return setError(r.data.message ?? errorMessage(r.data.error));
+    onPlaced(r.data.placed ?? []);
+  }
+
+  return (
+    <Modal
+      title="명단에 미리 넣기"
+      onClose={onClose}
+      footer={
+        <div className="flex gap-2">
+          <SecondaryButton type="button" onClick={onClose} disabled={busy} className="flex-1">
+            그만두기
+          </SecondaryButton>
+          <Button type="button" onClick={submit} disabled={busy || people.length === 0} className="flex-[2]">
+            {busy ? '넣는 중…' : people.length > 0 ? `${people.length}명 넣기` : '넣기'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <InfoText>
+          신청을 받기 전에 자리를 잡아 둘 때 쓰세요. 넣은 사람은 <strong>보낸 순서 맨 뒤</strong>에 붙고, 남은 자리가
+          없으면 대기 줄로 갑니다 — 먼저 신청한 사람을 밀어내지 않아요. 본인이 직접 취소할 수도 있습니다.
+        </InfoText>
+        {left != null ? (
+          <p className="text-[13px] font-semibold text-ink-700">
+            지금 남은 확정 자리 {left}개 (정원 {capacity}명)
+          </p>
+        ) : null}
+        <CoHostPicker value={people} onChange={setPeople} disabled={busy} ariaLabel="명단에 넣을 사람 검색" />
+        <ErrorText>{error}</ErrorText>
+      </div>
+    </Modal>
   );
 }
 
