@@ -6,8 +6,10 @@ import {
   isResultMailTarget,
   MAX_ATTEMPTS,
   requiredSwitch,
+  RESULT_MAIL_STAGES,
   resultMailContent,
   sendableNow,
+  STAGE_LABEL,
 } from './result-mail-rules';
 import type { RecruitStatus } from './status';
 
@@ -119,7 +121,43 @@ describe('결과 안내 메일 — 본문', () => {
     expect(resultMailContent('final', '34기', 'u').subject).toContain('최종');
   });
 
-  it('면접 일정 안내는 시간·장소를 확인하라고 알려 준다', () => {
-    expect(resultMailContent('interview', '34기', 'u').text).toContain('면접 일시');
+  it('면접 일정 변경 안내는 시간·장소를 확인하라고 알려 준다', () => {
+    const { text } = resultMailContent('interview', '34기', 'u');
+    expect(text).toContain('면접 일정이 바뀌었습니다');
+    expect(text).toContain('일시와 장소');
+    expect(text).toContain('접속 링크');
+  });
+
+  // ── 서류·면접을 한 통으로 합친 뒤(2026-09-04) 지켜야 하는 것들 ────────────────────────
+  it('서류 안내 한 통에 면접 일정 안내가 함께 담긴다 — 두 통으로 갈리면 같은 사람이 두 번 받는다', () => {
+    const { subject, text } = resultMailContent('document', '34기', 'u');
+    expect(subject).toContain('서류 결과');
+    expect(subject).toContain('면접 일정');
+    expect(text).toContain('일시와 장소');
+    expect(text).toContain('접속 링크');
+  });
+
+  it('서류 안내의 면접 줄은 단정하지 않는다 — 받은 것만으로 당락이 드러나면 안 된다', () => {
+    // 이 메일은 불합격자에게도 똑같이 간다. "면접 일시를 확인하세요" 라고 단정하면
+    // 메일을 받은 사실 자체가 서류 통과를 뜻하게 된다.
+    expect(resultMailContent('document', '34기', 'u').text).toContain('면접 일정이 잡힌 경우');
+  });
+
+  it('면접 단계는 발표 뒤 배정이 바뀐 사람에게 가는 변경 안내다', () => {
+    expect(resultMailContent('interview', '34기', 'u').subject).toContain('변경');
+    expect(resultMailContent('interview', '34기', 'u').text).toContain('바뀐');
+  });
+
+  it('제목은 화면 라벨과 같다 — 회장단이 고른 이름과 지원자가 받는 제목이 어긋나면 안 된다', () => {
+    for (const stage of RESULT_MAIL_STAGES) {
+      expect(resultMailContent(stage, '34기', 'u').subject).toBe(`[애니멀메이트] 34기 ${STAGE_LABEL[stage]}`);
+    }
+  });
+
+  it('조사가 어긋나지 않는다 — 문장을 한 틀에 끼워 넣으면 "일정가 나왔습니다" 가 된다', () => {
+    for (const stage of RESULT_MAIL_STAGES) {
+      const { text } = resultMailContent(stage, '34기', 'u');
+      expect(text).not.toMatch(/일정가|결과이 /);
+    }
   });
 });

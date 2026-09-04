@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, SecondaryButton, StatusMessage } from '@/components/ui';
-import { RESULT_MAIL_STAGES, STAGE_LABEL, type ResultMailStage } from '@/recruit/result-mail-rules';
+import { RESULT_MAIL_STAGES, STAGE_DESC, STAGE_LABEL, type ResultMailStage } from '@/recruit/result-mail-rules';
 
 interface Preview {
   stage: ResultMailStage;
@@ -135,6 +135,9 @@ export function ResultMailCard({
             >
               <div className="min-w-0">
                 <p className="text-[13px] font-bold text-ink-900">{STAGE_LABEL[stage]}</p>
+                {/* 누구에게 가는 안내인지 한 줄. 없으면 셋을 다 눌러야 하는 것으로 보인다 —
+                    실제로 서류·면접이 두 통으로 갈려 있던 동안 같은 사람이 두 번 받았다. */}
+                <p className="text-[11px] text-ink-500">{STAGE_DESC[stage]}</p>
                 <p className="text-[11px] text-ink-500">
                   보냄 {row.sent} · 대기 {row.queued}
                   {row.failed > 0 && <span className="ml-1 font-semibold text-coral-600">· 실패 {row.failed}</span>}

@@ -100,8 +100,8 @@ export const recruitReviewMarkEnum = pgEnum('recruit_review_mark', ['drop', 'mov
  * 채점은 서류/면접 둘뿐이고, 안내 메일은 최종 발표까지 셋이다.
  */
 export const recruitResultMailStageEnum = pgEnum('recruit_result_mail_stage', [
-  'document', // 서류 결과 안내(합격·불합격 모두)
-  'interview', // 면접 일정 안내(배정된 사람)
+  'document', // 서류 결과 + 면접 일정 안내(합격·불합격 모두 — 둘은 같은 스위치로 함께 공개된다)
+  'interview', // 면접 일정 **변경** 안내(발표 뒤 배정이 바뀐 사람에게만 다시)
   'final', // 최종 결과 안내(합격·불합격 모두)
 ]);
 
