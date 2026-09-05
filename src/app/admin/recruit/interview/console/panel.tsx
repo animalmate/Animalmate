@@ -15,6 +15,7 @@ import { slotPlaceLabel, formatScore, slotPanelNumbers } from '@/recruit/display
 import { formatTimeKo, formatTimeRange } from '@/recruit/timetable';
 import { panelOrder } from '@/recruit/staff-timetable';
 import { groupApplicantsBySlot } from '@/recruit/interview-groups';
+import { pickInterviewLink } from '@/recruit/interview-link';
 import { recruitStatusBadge, BADGE_TONE_CLASS } from '@/recruit/status-label';
 import { Button, Card, DangerButton, Field, Input, StatusMessage, ToolbarSelect } from '@/components/ui';
 
@@ -348,6 +349,7 @@ export function RecruitInterviewConsolePanel({ role, canEditNotice }: { role: Ro
 
   const selectedApp = applicants.find((a) => a.id === selectedApplicantId);
   const selectedSlot = slots.find((s) => s.id === selectedApp?.slotId);
+  const interviewLink = pickInterviewLink(selectedApp?.interviewLink, selectedSlot?.link);
   const currentInterviewScores = scores.filter(
     (s) => s.applicantId === selectedApplicantId && s.stage === 'interview'
   );
@@ -881,9 +883,11 @@ export function RecruitInterviewConsolePanel({ role, canEditNotice }: { role: Ro
                         · {selectedSlot.durationMin}분
                       </span>
                     )}
-                    {selectedApp.interviewLink && (
+                    {/* 비대면 링크는 보통 조 단위로 한 번 적는다 — 개인 링크가 있으면 그게 우선이고,
+                        없으면 그 사람이 배정된 조의 링크가 곧 들어갈 방이다(지원자 조회 화면과 같은 규칙). */}
+                    {interviewLink && (
                       <a
-                        href={selectedApp.interviewLink}
+                        href={interviewLink}
                         target="_blank"
                         rel="noreferrer"
                         className="rounded-lg border border-blue-200 px-3 py-1.5 text-[13px] font-bold text-blue-700 no-underline hover:bg-blue-50"

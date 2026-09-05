@@ -4,6 +4,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { createSlot, createPanelSlots, listSlotsByCohort, listPanelNames, deleteSlot, getSlotById, updateSlotNote } from '@/recruit/slots';
 import { getSlotsInterviewersMap } from '@/recruit/slot-interviewers';
+import { normalizeInterviewLink } from '@/recruit/interview-link';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { internalError } from '@/http/errors';
 import { parseDate } from '@/http/input';
@@ -51,6 +52,18 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ error: 'invalid_durationMin' }, { status: 400 });
     }
 
+    // 붙여 넣은 주소를 여기서 절대 주소로 맞춘다(`meet.google.com/...` 처럼 스킴 없이 넣는 일이 잦다).
+    // 주소로 읽히지 않으면 조용히 비우지 않고 막는다 — 적었다고 믿은 링크가 null 로 들어가면
+    // 그 사실은 면접 당일 지원자가 들어갈 방이 없을 때야 드러난다.
+    const rawLink = link == null ? '' : String(link).trim();
+    const parsedLink = normalizeInterviewLink(rawLink);
+    if (rawLink && !parsedLink) {
+      return NextResponse.json(
+        { error: 'invalid_link', message: '화상 링크가 주소 형식이 아닙니다(예: https://meet.google.com/abc-defg-hij).' },
+        { status: 400 }
+      );
+    }
+
     // `until` 이 있으면 조 하나를 통째로 만든다(시작~종료를 durationMin 으로 자른다).
     if (until) {
       const parsedUntil = parseDate(until);
@@ -82,7 +95,7 @@ export async function POST(req: Request): Promise<Response> {
         startsAt: parsedStartsAt,
         until: parsedUntil,
         durationMin: parsedDuration,
-        link: link ? String(link) : null,
+        link: parsedLink,
         venue: venue ? String(venue) : null,
         isRemote: !!isRemote,
         createdBy: actor.userId,
@@ -105,7 +118,7 @@ export async function POST(req: Request): Promise<Response> {
       panel: panel ? String(panel) : null,
       startsAt: parsedStartsAt,
       durationMin: parsedDuration,
-      link: link ? String(link) : null,
+      link: parsedLink,
       venue: venue ? String(venue) : null,
       isRemote: !!isRemote,
       createdBy: actor.userId,

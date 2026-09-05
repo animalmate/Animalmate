@@ -8,6 +8,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { consumeRateLimit, resetRateLimit, RULES } from '../http/rate-limit';
 import { lookupFailKey } from './lookup-key';
 import { visibleLookupResult, type PublicStage } from './lookup-visibility';
+import { pickInterviewLink } from './interview-link';
 import type { RecruitStatus } from './status';
 
 export interface PublicLookupResult {
@@ -136,6 +137,10 @@ export async function lookupApplicantResult(
     docPassMessage: visible.stage === 'doc_pass' ? cohort?.docPassMessage : null,
     interviewNotice: visible.showInterview ? cohort?.interviewNotice : null,
     interviewSlot: slotInfo,
-    interviewLink: visible.showInterview ? applicant.interviewLink : null,
+    // 개인 링크 → 조 링크 순으로 고르고, 스킴 없는 주소는 절대 주소로 맞춘다
+    // (규칙과 이유는 interview-link.ts 에 있다).
+    interviewLink: visible.showInterview
+      ? pickInterviewLink(applicant.interviewLink, slotInfo?.link)
+      : null,
   };
 }
