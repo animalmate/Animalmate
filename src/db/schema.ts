@@ -464,6 +464,11 @@ export const recruitCohorts = pgTable('recruit_cohorts', {
   noticeImages: jsonb('notice_images').$type<string[]>(), // 공개 모집 공고 이미지 URL 리스트
   congratsMessage: text('congrats_message'), // 최종 합격자 축하 멘트
   postPassNotice: text('post_pass_notice'), // 최종 합격자 합격 후 안내 사항
+  // 서류 합격자가 조회 화면에서 보는 면접 안내 문구 2개(0039). schedule_public 이 켜졌을 때만 나간다.
+  // 일시·장소·링크는 배정에서 자동으로 채워지지만, "학생증을 챙겨 오세요" 같은 말은 적을 자리가
+  // 없어 해마다 코드를 고쳐야 했다.
+  docPassMessage: text('doc_pass_message'), // 서류 합격 안내 멘트(비면 화면 기본 문구)
+  interviewNotice: text('interview_notice'), // 면접 안내 사항(준비물·복장·문의처 등)
   isClosed: boolean('is_closed').notNull().default(false), // 모집 중단/마감 스위치
   venues: jsonb('venues').$type<string[]>(), // 기수별 사전 등록 대면 면접 장소 프리셋 리스트
   // 면접 당일 대기실 업무 이름들(예: 면접자 명단 체크·대기실 안내·면접장 인솔a). 기수마다 다르다.

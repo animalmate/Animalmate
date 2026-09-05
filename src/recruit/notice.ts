@@ -9,6 +9,10 @@ export interface UpdateNoticeInput {
   noticeImages?: string[] | null;
   congratsMessage?: string | null;
   postPassNotice?: string | null;
+  /** 서류 합격자 조회 화면의 안내 멘트(비면 화면 기본 문구를 쓴다). */
+  docPassMessage?: string | null;
+  /** 면접 안내 사항 — 일시·장소·링크 말고 지원자가 알아야 할 것(준비물·복장·문의처). */
+  interviewNotice?: string | null;
   isClosed?: boolean;
   venues?: string[] | null;
   /** 면접 당일 대기실 업무 이름들. 기수마다 다르다(src/recruit/duty-rules.ts 기본값). */
@@ -23,6 +27,8 @@ export async function updateCohortNoticeAndSettings(cohortId: string, input: Upd
   if (input.noticeImages !== undefined) updateData.noticeImages = input.noticeImages;
   if (input.congratsMessage !== undefined) updateData.congratsMessage = input.congratsMessage;
   if (input.postPassNotice !== undefined) updateData.postPassNotice = input.postPassNotice;
+  if (input.docPassMessage !== undefined) updateData.docPassMessage = input.docPassMessage;
+  if (input.interviewNotice !== undefined) updateData.interviewNotice = input.interviewNotice;
   if (input.isClosed !== undefined) updateData.isClosed = input.isClosed;
   if (input.venues !== undefined) updateData.venues = input.venues;
   if (input.dutyRoles !== undefined) updateData.dutyRoles = input.dutyRoles;

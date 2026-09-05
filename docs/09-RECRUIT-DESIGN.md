@@ -45,6 +45,8 @@ enum:
 - **`recruit_cohorts`** (id, label unique, `schedule_public` bool, `result_public` bool, `closed_at?`,
   `archived_stats?` jsonb, created_by, created_at)
   - 공개 스위치 2개가 여기 산다. 폐기 시 `closed_at` + `archived_stats`(익명 집계) 기록 후 하위 데이터 삭제.
+  - 공개 공고·안내 문구도 여기 산다: `notice_*`·`congrats_message`·`post_pass_notice` 와
+    **`doc_pass_message`·`interview_notice`**(0039 — 서류 합격자가 조회 화면에서 보는 면접 안내).
 - **`recruit_slots`** (id, cohort_id, `starts_at`, `duration_min` default 20, `link?`, created_by, created_at)
 - **`recruit_applicants`** (id, cohort_id, name, gender?, birth_date?(text), **phone**(notNull),
   school?, department?, email?, apply_route?, other_activities?, expected_frequency?,
@@ -329,6 +331,10 @@ CP949 되살리기(115), 빠진 행 알림(116), 중복쌍 표시(117·120), 주
    마지막 수정자·시각 표시. 접기/펼치기(기본 접힘). 개인 메모(recruit_memos)와 별개. 공용 컴포넌트로 구현.
 8. **지원자 조회 `/recruit`** (비로그인): 이름+전화 전체 입력, **정확 일치 시에만** 본인 상태 표시.
    표시 = 현재 상태 / 면접 일시·링크(schedule_public ON) / 최종 결과(result_public ON).
+   - **면접 안내 문구는 기수 설정에서 쓴다**(0039, 결정 167): `doc_pass_message`(서류 합격 멘트,
+     비우면 기본 문구) · `interview_notice`(준비물·복장·문의처 등, 비우면 칸이 안 나온다).
+     둘 다 일시·링크와 **같은 스위치**(schedule_public)를 타고, 합격 멘트는 `doc_pass` 단계에서만
+     쓴다. 슬롯이 아직 없어도 안내 사항만으로 면접 칸이 열린다 — 배정 전에도 할 말이 있다.
    하단 + 결과 화면에 고지: "지원 정보는 선발 목적으로만 이용하며, 모집 절차가 끝나는 즉시 모두 폐기합니다."
    **독립 레이아웃(앱 링크 없음), `noindex`, 실패 메시지 단일화**("입력 정보를 확인해주세요"),
    **IP당 분당 60회(총량) + 같은 이름 실패 10회/시간**(rate_limits 재사용, 입력값 미저장).

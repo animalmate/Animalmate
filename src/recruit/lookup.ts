@@ -18,6 +18,10 @@ export interface PublicLookupResult {
   assignedTeam?: string | null;
   congratsMessage?: string | null;
   postPassNotice?: string | null;
+  /** 서류 합격 안내 멘트(기수 설정). 없으면 화면이 기본 문구를 쓴다. */
+  docPassMessage?: string | null;
+  /** 면접 안내 사항(기수 설정) — 일시·장소·링크 밖의 준비물·유의사항. */
+  interviewNotice?: string | null;
   interviewSlot?: {
     startsAt: Date;
     durationMin: number;
@@ -84,6 +88,8 @@ export async function lookupApplicantResult(
       resultPublic: recruitCohorts.resultPublic,
       congratsMessage: recruitCohorts.congratsMessage,
       postPassNotice: recruitCohorts.postPassNotice,
+      docPassMessage: recruitCohorts.docPassMessage,
+      interviewNotice: recruitCohorts.interviewNotice,
     })
     .from(recruitCohorts)
     .where(eq(recruitCohorts.id, applicant.cohortId));
@@ -124,6 +130,11 @@ export async function lookupApplicantResult(
     assignedTeam: visible.showPassContent ? (applicant.assignedTeam || applicant.wishTeam1) : null,
     congratsMessage: visible.showPassContent ? cohort?.congratsMessage : null,
     postPassNotice: visible.showPassContent ? cohort?.postPassNotice : null,
+    // 면접 안내 문구도 같은 스위치(showInterview)를 탄다 — 문구 자체가 "너는 면접을 본다"는
+    // 사실을 알려 주므로, 공개 전에 내보내면 서류 결과가 새는 것과 같다.
+    // 서류 합격 멘트는 그 단계에서만 쓴다(면접이 끝난 사람에게 '면접을 안내합니다'는 옛 이야기다).
+    docPassMessage: visible.stage === 'doc_pass' ? cohort?.docPassMessage : null,
+    interviewNotice: visible.showInterview ? cohort?.interviewNotice : null,
     interviewSlot: slotInfo,
     interviewLink: visible.showInterview ? applicant.interviewLink : null,
   };

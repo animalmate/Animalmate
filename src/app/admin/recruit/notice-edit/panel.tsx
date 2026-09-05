@@ -29,6 +29,10 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
   const [noticeContent, setNoticeContent] = useState('');
   const [congratsMessage, setCongratsMessage] = useState('');
   const [postPassNotice, setPostPassNotice] = useState('');
+  // 서류 합격자가 조회 화면에서 보는 문구 2개. 일시·장소·링크는 배정에서 자동으로 들어가고,
+  // 그 밖에 해 줄 말(준비물·복장·문의처)을 적을 자리가 여기다.
+  const [docPassMessage, setDocPassMessage] = useState('');
+  const [interviewNotice, setInterviewNotice] = useState('');
   const [isClosed, setIsClosed] = useState(false);
   // 지원자 공개 스위치(면접 일정/링크, 최종 결과). 6번 화면에도 같은 스위치가 있고 같은 API 를 부른다 —
   // 홍보팀은 6번(회장단 전용)에 못 들어가므로 여기에도 둔다(결정 141).
@@ -80,6 +84,8 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       setNoticeImages(data.cohort.noticeImages || []);
       setCongratsMessage(data.cohort.congratsMessage || '');
       setPostPassNotice(data.cohort.postPassNotice || '');
+      setDocPassMessage(data.cohort.docPassMessage || '');
+      setInterviewNotice(data.cohort.interviewNotice || '');
       setIsClosed(!!data.cohort.isClosed);
       setSchedulePublic(!!data.cohort.schedulePublic);
       setResultPublic(!!data.cohort.resultPublic);
@@ -258,6 +264,8 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           applyForm,
           congratsMessage,
           postPassNotice,
+          docPassMessage,
+          interviewNotice,
           isClosed,
           venues,
           dutyRoles,
@@ -619,6 +627,40 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
         <div className="border-t border-cream-200 pt-6 space-y-4">
           <h2 className="text-base font-bold text-ink-900">지원서 양식 설정</h2>
           <ApplyFormEditor value={applyForm} onChange={setApplyForm} />
+        </div>
+
+        {/* 서류 합격자가 조회 화면(/recruit)에서 보는 면접 안내. **면접 일정/링크 지원자 공개**
+            스위치를 켰을 때만 지원자에게 보인다 — 문구 자체가 서류 결과를 알려 주기 때문이다.
+            일시·장소·링크는 3번 화면 배정에서 자동으로 채워지므로 여기 적지 않는다. */}
+        <div className="border-t border-cream-200 pt-6 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-ink-900">서류 합격자 면접 안내</h2>
+            <p className="mt-1 text-[11px] text-ink-500">
+              <strong>면접 일정/링크 지원자 공개</strong>를 켜면 서류 합격자에게 보이는 문구입니다.
+              면접 일시·장소·링크는 면접 배정 화면의 값이 자동으로 함께 표시됩니다.
+            </p>
+          </div>
+
+          <Field label="서류 합격 안내 멘트" hint="비워 두면 '서류 심사에 합격하셨습니다. 아래 면접 안내를 확인해 주세요.'가 나갑니다.">
+            <Input
+              type="text"
+              placeholder="서류 심사에 합격하셨습니다. 아래 면접 안내를 확인해 주세요."
+              value={docPassMessage}
+              onChange={(e) => setDocPassMessage(e.target.value)}
+            />
+          </Field>
+
+          <Field
+            label="면접 안내 사항 (준비물, 복장, 문의처 등)"
+            hint="일시·장소·링크 밖에 지원자가 알아야 할 것. 비워 두면 이 칸이 나오지 않습니다."
+          >
+            <textarea
+              className="w-full h-28 rounded-xl border border-ink-200 bg-white p-3.5 text-xs text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 font-sans leading-relaxed"
+              placeholder="1. 면접 10분 전까지 학생회관 3층 대기실로 와 주세요.&#10;2. 복장은 자유입니다.&#10;3. 일정 변경이 필요하면 운영진 메일로 알려 주세요."
+              value={interviewNotice}
+              onChange={(e) => setInterviewNotice(e.target.value)}
+            />
+          </Field>
         </div>
 
         <div className="border-t border-cream-200 pt-6 space-y-4">

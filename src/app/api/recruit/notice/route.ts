@@ -21,7 +21,8 @@ const MAX_NOTICE_IMAGES = 10;
 
 // GET 은 비로그인 공개 공고 페이지(/recruit/notice)가 쓴다.
 // 따라서 **공개해도 되는 필드만** 내보낸다. 합격 축하 멘트(congratsMessage)·합격 후 안내
-// (postPassNotice)·면접 장소 프리셋(venues)·공개 스위치는 내부 정보라 비로그인에 주지 않는다
+// (postPassNotice)·면접 안내 문구(docPassMessage·interviewNotice)·면접 장소 프리셋(venues)·
+// 공개 스위치는 내부 정보라 비로그인에 주지 않는다
 // — 예전엔 전부 나가서 발표 전에 합격자 안내문이 공개 URL 로 읽혔다.
 // 운영진 이상(공고 편집 화면)에는 전체를 준다.
 export async function GET(req: Request): Promise<Response> {
@@ -61,6 +62,8 @@ export async function GET(req: Request): Promise<Response> {
       ...publicFields,
       congratsMessage: cohort.congratsMessage,
       postPassNotice: cohort.postPassNotice,
+      docPassMessage: cohort.docPassMessage,
+      interviewNotice: cohort.interviewNotice,
       venues: cohort.venues ?? DEFAULT_VENUES,
       dutyRoles: resolveDutyRoles(cohort.dutyRoles),
       // 지원서 양식 설정은 편집 화면에서만 필요하다(공개 지원서 화면은 서버 컴포넌트가 DB 에서 직접 읽는다).
@@ -99,13 +102,27 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const body = await req.json();
-    const { cohortId, noticeContent, noticeImages, congratsMessage, postPassNotice, isClosed, venues, dutyRoles, applyForm } = body;
+    const {
+      cohortId,
+      noticeContent,
+      noticeImages,
+      congratsMessage,
+      postPassNotice,
+      docPassMessage,
+      interviewNotice,
+      isClosed,
+      venues,
+      dutyRoles,
+      applyForm,
+    } = body;
 
     if (!cohortId) return NextResponse.json({ error: 'missing_cohortId' }, { status: 400 });
 
     checkLength('모집 공고', noticeContent, LIMITS.contentMd);
     checkLength('합격 축하 멘트', congratsMessage, LIMITS.contentMd);
     checkLength('합격 후 안내', postPassNotice, LIMITS.contentMd);
+    checkLength('서류 합격 안내 멘트', docPassMessage, LIMITS.contentMd);
+    checkLength('면접 안내 사항', interviewNotice, LIMITS.contentMd);
 
     // 포스터 URL 은 요청 본문에서 그대로 DB 로 들어가고 있었다 — `isOwnStorageUrl` 이
     // 바로 이걸 막으려고 만들어졌는데 어디에도 연결돼 있지 않았다.
@@ -137,6 +154,8 @@ export async function POST(req: Request): Promise<Response> {
       noticeImages,
       congratsMessage,
       postPassNotice,
+      docPassMessage,
+      interviewNotice,
       isClosed,
       venues,
       // 업무 이름을 바꾸면 없어진 이름으로 남은 배정은 화면에 뜨지 않는다(유령 행) → 아래에서 정리.

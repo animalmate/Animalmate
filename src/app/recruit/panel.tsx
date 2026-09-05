@@ -13,6 +13,8 @@ interface LookupResult {
   assignedTeam?: string | null;
   congratsMessage?: string | null;
   postPassNotice?: string | null;
+  docPassMessage?: string | null;
+  interviewNotice?: string | null;
   interviewSlot?: {
     startsAt: string;
     durationMin: number;
@@ -46,6 +48,7 @@ const STAGE_META: Record<
     step: 2,
     label: '서류 합격',
     tone: 'pass',
+    // 기수 설정(0번 화면)에 서류 합격 안내 멘트를 적어 두면 그 문구가 이 자리를 대신한다.
     detail: '서류 심사에 합격하셨습니다. 아래 면접 안내를 확인해 주세요.',
   },
   doc_fail: {
@@ -224,37 +227,44 @@ export function PublicRecruitLookupPanel() {
                       '축하합니다! 애니멀메이트 신입 부원으로 최종 합격하셨습니다.'}
                   </p>
                 ) : (
-                  <p className="text-center text-[13px] leading-relaxed text-ink-700">{meta.detail}</p>
+                  // 서류 합격 멘트는 기수마다 다르게 적을 수 있다(0번 화면). 비워 두면 기본 문구.
+                  <p className="whitespace-pre-wrap text-center text-[13px] leading-relaxed text-ink-700">
+                    {(result.stage === 'doc_pass' && result.docPassMessage) || meta.detail}
+                  </p>
                 )}
 
-                {result.interviewSlot && (
+                {/* 일정이 아직 안 잡혔어도 안내 사항만으로 이 칸을 연다 — "면접이 있다"는 말과
+                    "언제 본다"는 말이 늘 같은 날 정해지지는 않는다. */}
+                {(result.interviewSlot || result.interviewNotice) && (
                   <div className="space-y-2 rounded-xl border border-blue-200 bg-white p-4">
                     <h2 className="flex items-center gap-1.5 text-sm font-bold text-ink-900">
                       <Icon name="calendar" size={16} className="text-blue-600" />
                       면접 안내
                     </h2>
-                    <dl className="space-y-1 text-[13px] text-ink-700">
-                      <div className="flex gap-2">
-                        <dt className="shrink-0 font-semibold text-ink-500">일시</dt>
-                        <dd className="font-medium">
-                          {new Date(result.interviewSlot.startsAt).toLocaleString('ko-KR', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                            weekday: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}{' '}
-                          ({result.interviewSlot.durationMin}분)
-                        </dd>
-                      </div>
-                      {result.interviewSlot.venue && (
+                    {result.interviewSlot && (
+                      <dl className="space-y-1 text-[13px] text-ink-700">
                         <div className="flex gap-2">
-                          <dt className="shrink-0 font-semibold text-ink-500">장소</dt>
-                          <dd className="font-medium">{result.interviewSlot.venue}</dd>
+                          <dt className="shrink-0 font-semibold text-ink-500">일시</dt>
+                          <dd className="font-medium">
+                            {new Date(result.interviewSlot.startsAt).toLocaleString('ko-KR', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                              weekday: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}{' '}
+                            ({result.interviewSlot.durationMin}분)
+                          </dd>
                         </div>
-                      )}
-                    </dl>
+                        {result.interviewSlot.venue && (
+                          <div className="flex gap-2">
+                            <dt className="shrink-0 font-semibold text-ink-500">장소</dt>
+                            <dd className="font-medium">{result.interviewSlot.venue}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    )}
                     {result.interviewLink && (
                       <a
                         href={result.interviewLink}
@@ -265,6 +275,12 @@ export function PublicRecruitLookupPanel() {
                         <Icon name="external" size={16} />
                         화상 면접 링크 열기
                       </a>
+                    )}
+                    {/* 준비물·복장·문의처처럼 일정·링크로는 못 적는 말. 기수 설정에서 적는다. */}
+                    {result.interviewNotice && (
+                      <p className="whitespace-pre-wrap border-t border-ink-100 pt-2 text-[13px] leading-relaxed text-ink-700">
+                        {result.interviewNotice}
+                      </p>
                     )}
                   </div>
                 )}

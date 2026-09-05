@@ -278,9 +278,13 @@
   열람 staff+/export board-only, cohort hard delete 로 보관을 제한한다. 조회는 이름+전화 정확 일치(해시 폐기),
   실패 시도값은 저장하지 않고 IP 레이트리밋으로만 막는다.
   - `recruit_cohorts` (id, label uq, schedule_public, result_public, notice_content?, notice_images? jsonb,
-    congrats_message?, post_pass_notice?, is_closed, venues? jsonb, duty_roles? jsonb, closed_at?, archived_stats? jsonb,
+    congrats_message?, post_pass_notice?, doc_pass_message?, interview_notice?, is_closed, venues? jsonb,
+    duty_roles? jsonb, closed_at?, archived_stats? jsonb,
     created_by, created_at) — 공개 스위치 2개(면접 일정/최종 결과)가 여기. `notice_*`/`congrats_message`/
     `post_pass_notice`/`is_closed`/`venues` 는 공개 공고·마감 스위치·면접 장소 프리셋용(0014).
+    `doc_pass_message`/`interview_notice`(0039) = 서류 합격자가 조회 화면에서 보는 **면접 안내 문구**
+    (합격 멘트 / 준비물·복장·문의처). 일시·장소·링크는 배정에서 오고 여기 적지 않는다.
+    둘 다 `schedule_public` 이 켜졌을 때만 나간다 — 문구 자체가 서류 결과를 알려 주기 때문이다(결정 167).
     `duty_roles` 는 면접 당일 대기실 업무 이름 목록(0019) — `recruit_duty_assignments` 의 열이 된다.
     `notice_images` 는 **Supabase Storage 공개 버킷 `recruit-notice` 의 URL 목록**이다(파일 본체는 DB 에 두지 않는다).
     예전에는 base64 문자열을 그대로 넣어 포스터 몇 장이면 행 하나가 수 MB 였고, 공고를 볼 때마다 그 행이 통째로 오갔다.

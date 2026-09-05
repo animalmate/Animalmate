@@ -19,6 +19,8 @@ const NEW_LABEL = 'QA-PUBLIC-이번기수';
 const EMAIL = 'qa-public@example.invalid';
 const NAME = 'QA재지원자';
 const PHONE = '01055556666';
+const GUIDE_NAME = 'QA면접안내';
+const GUIDE_PHONE = '01077778888';
 
 // 조회 **총량**은 IP 단위다(값은 `RULES.recruitLookup`). 호출마다 다른 값을 줘 서로의 한도를
 // 깎지 않게 한다 — 상한이 얼마든 이 테스트가 그 값에 매이지 않게 하려는 것이기도 하다.
@@ -33,7 +35,7 @@ let ipSeq = 0;
 const nextIp = () => `${RUN_TAG}-${++ipSeq}`;
 
 /** 이 테스트가 조회에 쓰는 이름 전부 — 실패 카운터 정리 대상. */
-const LOOKUP_NAMES = [NAME, '없는사람'];
+const LOOKUP_NAMES = [NAME, '없는사람', GUIDE_NAME];
 const SECRET = process.env.SESSION_SECRET ?? '';
 
 suite('공개 접수·조회 (실 DB)', () => {
@@ -296,6 +298,61 @@ suite('공개 접수·조회 (실 DB)', () => {
       const picked = await getPublicNoticeCohort();
       expect(picked?.label).toBe(PUBLISHED);
       expect(picked?.isClosed).toBe(true);
+    });
+  });
+
+  // 면접 안내 문구(0039)는 일정·링크와 **같은 스위치**를 탄다. 문구 자체가 "너는 면접을 본다"는
+  // 말이라, 스위치가 꺼진 채로 나가면 서류 결과가 새는 것과 다르지 않다.
+  describe('면접 안내 문구', () => {
+    const LABEL = 'QA-PUBLIC-면접안내기수';
+    const DOC_MSG = '서류에 합격하셨습니다. 아래 안내를 꼭 읽어 주세요.';
+    const NOTICE = '학생증을 챙겨 오시고 10분 전까지 3층 대기실로 와 주세요.';
+    let cohortId: string;
+
+    beforeAll(async () => {
+      const [c] = await db
+        .insert(recruitCohorts)
+        .values({ label: LABEL, createdBy: userId, docPassMessage: DOC_MSG, interviewNotice: NOTICE })
+        .returning();
+      cohortId = c!.id;
+      await db.insert(recruitApplicants).values({
+        cohortId,
+        name: GUIDE_NAME,
+        phone: GUIDE_PHONE,
+        status: 'doc_pass',
+      });
+    });
+
+    afterAll(async () => {
+      await db.delete(recruitCohorts).where(eq(recruitCohorts.id, cohortId));
+    });
+
+    it('공개 스위치가 꺼져 있으면 문구도 나가지 않는다', async () => {
+      const r = await lookupApplicantResult(GUIDE_NAME, GUIDE_PHONE, nextIp());
+      expect(r!.stage).toBe('under_review');
+      expect(r!.docPassMessage).toBeNull();
+      expect(r!.interviewNotice).toBeNull();
+    });
+
+    it('스위치를 켜면 서류 합격 멘트와 안내 사항이 함께 나간다', async () => {
+      await db.update(recruitCohorts).set({ schedulePublic: true }).where(eq(recruitCohorts.id, cohortId));
+
+      const r = await lookupApplicantResult(GUIDE_NAME, GUIDE_PHONE, nextIp());
+      expect(r!.stage).toBe('doc_pass');
+      expect(r!.docPassMessage).toBe(DOC_MSG);
+      expect(r!.interviewNotice).toBe(NOTICE);
+    });
+
+    it('면접이 끝나면 서류 합격 멘트는 빠지고 안내 사항만 남는다', async () => {
+      await db
+        .update(recruitApplicants)
+        .set({ status: 'interview_done' })
+        .where(and(eq(recruitApplicants.cohortId, cohortId), eq(recruitApplicants.name, GUIDE_NAME)));
+
+      const r = await lookupApplicantResult(GUIDE_NAME, GUIDE_PHONE, nextIp());
+      expect(r!.stage).toBe('interview_done');
+      expect(r!.docPassMessage).toBeNull();
+      expect(r!.interviewNotice).toBe(NOTICE);
     });
   });
 
