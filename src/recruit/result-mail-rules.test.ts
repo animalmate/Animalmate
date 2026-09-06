@@ -142,6 +142,24 @@ describe('결과 안내 메일 — 일정 지문과 변경 판정', () => {
     expect(NO_SCHEDULE).not.toBeNull();
   });
 
+  it('링크 표기만 다듬은 것은 변경이 아니다 — 지원자가 보는 주소가 같다', () => {
+    // 33기 추가모집 A조가 스킴 없이 붙여 넣은 주소를 쓰고 있었다(35명). 원문을 그대로 비교하면
+    // 누가 `https://` 를 붙여 고치는 순간 그 35명에게 "링크가 바뀌었다"가 나간다.
+    const bare = slotAt({ link: 'meet.google.com/abc-defg-hij', isRemote: true });
+    const full = slotAt({ link: 'https://meet.google.com/abc-defg-hij', isRemote: true });
+    expect(bare).toBe(full);
+    expect(scheduleChange(bare, full)).toBeNull();
+  });
+
+  it('링크가 실제로 다른 방으로 바뀌면 변경이다', () => {
+    expect(
+      scheduleChange(
+        slotAt({ link: 'https://meet.google.com/aaa-aaaa-aaa', isRemote: true }),
+        slotAt({ link: 'https://meet.google.com/bbb-bbbb-bbb', isRemote: true })
+      )
+    ).toBe('place');
+  });
+
   it('개인 링크가 슬롯 링크보다 우선한다 — 조회 화면과 같은 규칙', () => {
     const withPersonal = normalizeSchedule({
       startsAt: new Date('2026-09-06T02:00:00Z'),

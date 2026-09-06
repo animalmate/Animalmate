@@ -9,6 +9,7 @@
 
 import type { RecruitStatus } from './status';
 import { isValidEmail } from '../lib/email';
+import { pickInterviewLink } from './interview-link';
 
 export type ResultMailStage = 'document' | 'interview' | 'final';
 
@@ -65,8 +66,11 @@ export interface AnnouncedSchedule {
 /**
  * 슬롯 행 + 지원자 개인 링크를 **조회 화면이 보여 주는 모양**으로 정규화한다.
  *
- * 개인 링크가 슬롯 링크보다 우선하는 것은 `lookup.ts` 와 같은 규칙이다 — 여기서 다르게 계산하면
- * "바뀌었다"고 보낸 메일과 화면에 뜨는 값이 어긋난다.
+ * 링크는 `pickInterviewLink` 를 **그대로 쓴다**(조회 화면과 같은 함수). 직접 고르면 안 된다:
+ * 그 함수는 개인 링크를 슬롯 링크보다 우선할 뿐 아니라 **주소를 다듬는다**(스킴 없이 붙여 넣은
+ * `meet.google.com/…` 에 `https://` 를 붙이고, http·https 가 아니면 버린다).
+ * 원문을 그대로 비교하면 **표기만 고쳐도 "링크가 바뀌었다"가 된다** — 지원자가 보는 주소는
+ * 그대로인데 메일이 나간다. 33기 추가모집에 실제로 그런 조가 있었다(35명, 스킴 없는 주소).
  */
 export function normalizeSchedule(
   input: {
@@ -84,7 +88,7 @@ export function normalizeSchedule(
     startsAt: startsAt.toISOString(),
     durationMin: input.durationMin,
     venue: (input.venue ?? '').trim(),
-    link: ((input.personalLink ?? '').trim() || (input.link ?? '').trim()),
+    link: pickInterviewLink(input.personalLink, input.link) ?? '',
     isRemote: input.isRemote,
   };
 }
