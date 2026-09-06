@@ -33,9 +33,102 @@ export const STAGE_LABEL: Record<ResultMailStage, string> = {
 /** 화면에서 라벨 밑에 붙는 한 줄 — 누구에게 가는 안내인지. 셋을 다 눌러야 하는 것처럼 보이면 안 된다. */
 export const STAGE_DESC: Record<ResultMailStage, string> = {
   document: '서류 결과가 정해진 지원자 전원에게',
-  interview: '발표 뒤 면접 배정이 바뀐 사람에게만 다시',
+  interview: '앞서 안내한 면접 일시·장소가 그 뒤로 바뀐 사람에게만 다시',
   final: '최종 결과가 정해진 지원자 전원에게',
 };
+
+/**
+ * 메일 본문에 **면접 일정이 실려 나가는** 단계. 이 단계로 나간 메일은 "그때 이 일정을 알렸다"는
+ * 기록이 되고, 다음 변경 판정의 기준선이 된다. `final` 은 일정을 말하지 않으므로 기준선이 아니다.
+ */
+export const SCHEDULE_STAGES: readonly ResultMailStage[] = ['document', 'interview'];
+
+/**
+ * "일정이 없다"는 것을 알렸다는 지문.
+ *
+ * 컬럼의 NULL 과 **반드시 달라야 한다**: NULL 은 "무엇을 알렸는지 모른다"(이 기능 이전에 나간
+ * 옛 행)이고, 이 값은 "일정이 아직 없다고 알렸다"이다. 둘을 같게 두면, 배정이 없던 사람에게
+ * 자리가 잡혔을 때 알려야 할지 말지 구분할 수 없다.
+ */
+export const NO_SCHEDULE = 'none';
+
+/** 지원자가 조회 화면에서 실제로 보는 면접 일정 — 이것이 곧 "우리가 알린 내용"이다. */
+export interface AnnouncedSchedule {
+  /** ISO 문자열. Date 를 그대로 두면 비교가 참조 비교가 된다. */
+  startsAt: string;
+  durationMin: number;
+  venue: string;
+  link: string;
+  isRemote: boolean;
+}
+
+/**
+ * 슬롯 행 + 지원자 개인 링크를 **조회 화면이 보여 주는 모양**으로 정규화한다.
+ *
+ * 개인 링크가 슬롯 링크보다 우선하는 것은 `lookup.ts` 와 같은 규칙이다 — 여기서 다르게 계산하면
+ * "바뀌었다"고 보낸 메일과 화면에 뜨는 값이 어긋난다.
+ */
+export function normalizeSchedule(
+  input: {
+    startsAt: Date | string;
+    durationMin: number;
+    venue: string | null;
+    link: string | null;
+    isRemote: boolean;
+    personalLink?: string | null;
+  } | null
+): AnnouncedSchedule | null {
+  if (!input) return null;
+  const startsAt = input.startsAt instanceof Date ? input.startsAt : new Date(input.startsAt);
+  return {
+    startsAt: startsAt.toISOString(),
+    durationMin: input.durationMin,
+    venue: (input.venue ?? '').trim(),
+    link: ((input.personalLink ?? '').trim() || (input.link ?? '').trim()),
+    isRemote: input.isRemote,
+  };
+}
+
+/**
+ * 비교·저장에 쓰는 지문. 배열로 굳혀 두면 **키 순서에 흔들리지 않고**, 나중에 되짚을 때
+ * 무엇을 알렸는지 사람이 읽을 수도 있다(값은 PII 가 아니다 — 시각·장소·링크뿐).
+ */
+export function scheduleFingerprint(s: AnnouncedSchedule | null): string {
+  if (!s) return NO_SCHEDULE;
+  return JSON.stringify([s.startsAt, s.durationMin, s.venue, s.link, s.isRemote]);
+}
+
+/** 무엇이 바뀌어서 다시 알려야 하는가. null = 다시 알릴 이유가 없다. */
+export type ScheduleChange = 'assigned' | 'time' | 'place';
+
+/**
+ * 앞서 알린 일정(`before`)과 지금 일정(`after`)을 견줘 **다시 알릴 이유**를 낸다.
+ *
+ * null 을 내는 세 경우가 각각 다른 이유로 중요하다.
+ *  · `before === null` — 첫 안내가 나간 적이 없다. 받은 적 없는 사람에게 "바뀌었습니다"라고
+ *    할 수는 없다. 이 사람에게 필요한 것은 변경 안내가 아니라 **서류 결과 안내**다.
+ *  · 같은 값 — 안 바뀌었다. 이 판정이 이 파일의 존재 이유다(2026-09-06). 예전엔 `doc_pass`+
+ *    슬롯이면 전부 대상이라, 아무것도 안 바뀐 64명에게 "일정이 바뀌었습니다"가 나갈 뻔했다.
+ *  · `after === NO_SCHEDULE` — 자리가 사라졌다. 메일은 "조회 화면에서 보세요"라고 하는데
+ *    화면에 보여 줄 것이 없다. 자동으로 보내지 않고 운영진이 직접 연락할 일이다.
+ */
+export function scheduleChange(before: string | null, after: string): ScheduleChange | null {
+  if (before === null || before === after || after === NO_SCHEDULE) return null;
+  if (before === NO_SCHEDULE) return 'assigned';
+
+  // 지문은 우리가 쓴 값이라 정상이면 배열이다. 깨진 값이 들어와도 판정 자체는 이미 "바뀜"으로
+  // 끝났으므로, 이유 이름만 고르면 된다 — 더 무겁게 읽히는 '일시'로 둔다.
+  const at = (fp: string, i: number): unknown => {
+    try {
+      const v: unknown = JSON.parse(fp);
+      return Array.isArray(v) ? v[i] : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const timeChanged = at(before, 0) !== at(after, 0) || at(before, 1) !== at(after, 1);
+  return timeChanged ? 'time' : 'place';
+}
 
 /**
  * 서류 결과가 정해진 상태 — `lookup-visibility.ts` 의 DOC_DECIDED 와 **같은 집합**이다.
@@ -58,19 +151,31 @@ export function requiredSwitch(stage: ResultMailStage): 'schedulePublic' | 'resu
   return stage === 'final' ? 'resultPublic' : 'schedulePublic';
 }
 
+export interface MailTargetInput {
+  status: RecruitStatus;
+  slotId: string | null;
+  email: string | null;
+  /** 지금 이 사람에게 잡혀 있는 일정의 지문(`scheduleFingerprint`). 자리가 없으면 NO_SCHEDULE. */
+  schedule: string;
+  /** 이 사람이 **마지막으로 안내받은** 일정의 지문. null = 안내가 나간 적 없거나 옛 행. */
+  notifiedSchedule: string | null;
+}
+
 /**
  * 이 지원자가 이 단계 안내 메일의 대상인가.
  *
  * - `document` — 서류 결과가 정해진 사람 전원(합격·불합격 모두). 조회 화면 기준과 같다.
  *   면접 일정 안내를 겸하므로(STAGE_LABEL 주석) 이 한 통이면 발표가 끝난다.
- * - `interview` — **아직 면접 전이면서 자리가 잡힌 사람**(`doc_pass` + 슬롯 배정).
- *   발표 뒤 배정이 바뀐 사람에게 다시 알리는 용도다. 면접이 끝난 사람에게는 보내지 않는다.
+ * - `interview` — **앞서 알린 일정이 그 뒤로 바뀐 사람**. 아직 면접 전이고(`doc_pass`)
+ *   지금 자리가 잡혀 있어야 한다.
  * - `final` — 최종 결과가 정해진 사람 전원(합격·불합격 모두).
+ *
+ * ⚠ `interview` 에서 `scheduleChange` 를 빼면 안 된다(2026-09-06 실사고 직전). 예전 조건은
+ *   "`doc_pass` + 슬롯 배정"뿐이었는데, 그것은 **면접 결과가 아직 안 들어간 사람 전원**이라는
+ *   뜻이지 일정이 바뀐 사람이 아니다. 33기 추가모집에서 아무것도 바뀌지 않은 64명이 대상으로
+ *   잡혔고, 그들은 하루 전 서류 안내로 같은 일정을 이미 받은 사람들이었다.
  */
-export function isResultMailTarget(
-  stage: ResultMailStage,
-  applicant: { status: RecruitStatus; slotId: string | null; email: string | null }
-): boolean {
+export function isResultMailTarget(stage: ResultMailStage, applicant: MailTargetInput): boolean {
   // 이메일이 없으면 보낼 곳이 없다. 지원서에서 이메일 문항을 끈 기수도 있다(결정 146).
   // **형식까지 본다**: 접수 라우트가 막기 전에 저장된 행에는 주소가 아닌 값이 들어 있을 수 있고,
   // 그 값은 곧장 nodemailer 의 `to` 가 된다(src/lib/email.ts). 대상에서 빼면 대기열에 담기지도
@@ -81,7 +186,11 @@ export function isResultMailTarget(
     case 'document':
       return DOC_DECIDED.has(applicant.status);
     case 'interview':
-      return applicant.status === 'doc_pass' && applicant.slotId !== null;
+      return (
+        applicant.status === 'doc_pass' &&
+        applicant.slotId !== null &&
+        scheduleChange(applicant.notifiedSchedule, applicant.schedule) !== null
+      );
     case 'final':
       return FINAL_DECIDED.has(applicant.status);
   }

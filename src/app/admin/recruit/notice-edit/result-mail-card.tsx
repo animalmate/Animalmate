@@ -12,6 +12,10 @@ interface Preview {
   noEmail: number;
   switchOn: boolean;
   requiredSwitch: 'schedulePublic' | 'resultPublic';
+  /** 면접 변경 안내에서만 온다 — 무엇이 바뀌어서 대상이 됐는지. */
+  changed?: { assigned: number; time: number; place: number };
+  unchanged?: number;
+  neverNotified?: number;
 }
 
 interface StatusRow {
@@ -165,6 +169,27 @@ export function ResultMailCard({
             <li>
               새로 보낼 사람 <strong className="text-blue-700">{preview.toQueue}명</strong>
             </li>
+            {/* 변경 안내는 **왜** 대상인지가 곧 안전장치다. 이유 없이 숫자만 크면 누르면 안 된다. */}
+            {preview.changed && (
+              <>
+                {preview.changed.time > 0 && <li className="pl-3">· 면접 일시가 바뀐 사람 {preview.changed.time}명</li>}
+                {preview.changed.place > 0 && (
+                  <li className="pl-3">· 장소·접속 링크가 바뀐 사람 {preview.changed.place}명</li>
+                )}
+                {preview.changed.assigned > 0 && (
+                  <li className="pl-3">· 안내 뒤 새로 자리가 잡힌 사람 {preview.changed.assigned}명</li>
+                )}
+                {(preview.unchanged ?? 0) > 0 && (
+                  <li className="text-ink-500">안내한 일정 그대로라 보내지 않는 사람 {preview.unchanged}명</li>
+                )}
+                {(preview.neverNotified ?? 0) > 0 && (
+                  <li className="font-semibold text-coral-600">
+                    서류 결과 안내를 아직 못 받은 사람 {preview.neverNotified}명 — 변경 안내가 아니라 위쪽 &ldquo;
+                    {STAGE_LABEL.document}&rdquo;를 보내 주세요
+                  </li>
+                )}
+              </>
+            )}
             {preview.alreadyQueued > 0 && <li className="text-ink-500">이미 보냈거나 대기 중 {preview.alreadyQueued}명 (제외)</li>}
             {preview.noEmail > 0 && (
               <li className="font-semibold text-coral-600">
@@ -172,6 +197,12 @@ export function ResultMailCard({
               </li>
             )}
           </ul>
+          {preview.stage === 'interview' && preview.toQueue === 0 && (
+            <p className="text-[12px] text-ink-600">
+              서류 결과 안내를 보낸 뒤로 <strong>면접 일시·장소가 바뀐 사람이 없습니다.</strong> 보낼 안내가 없으니
+              그대로 두시면 됩니다.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button type="button" disabled={busy || preview.toQueue === 0} onClick={() => void confirmSend()}>
               {busy ? '보내는 중…' : `${preview.toQueue}명에게 보내기`}

@@ -281,6 +281,13 @@
       "when": 1788576267982,
       "tag": "0039_aspiring_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788662787221,
+      "tag": "0040_glamorous_sabra",
+      "breakpoints": true
     }
   ]
 }

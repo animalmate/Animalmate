@@ -677,13 +677,33 @@ export const recruitResultMails = pgTable(
     queuedBy: uuid('queued_by').references(() => users.id, { onDelete: 'set null' }),
     queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
+    /**
+     * **이 메일이 알린 면접 일정의 지문**(`scheduleFingerprint`, 0040).
+     *
+     * 다음 변경 판정의 기준선이다 — 지금 일정이 이 값과 다른 사람에게만 변경 안내가 나간다.
+     * 이 값이 없던 시절에는 "바뀌었는지"를 알 방법이 없어 `doc_pass`+슬롯이면 전부 대상이었다.
+     *
+     * · NULL          = 0040 이전에 나간 행. 무엇을 알렸는지 모른다 → 변경 판정에서 제외한다
+     *                   (모르면 보내지 않는다. 잘못 보내는 쪽이 훨씬 비싸다).
+     * · `'none'`      = 그때는 잡힌 일정이 없다고 알렸다.
+     * · JSON 배열 문자열 = 그때 알린 시각·시간·장소·링크.
+     *
+     * PII 가 아니다 — 시각과 장소·링크뿐이고 이름·연락처는 들어가지 않는다(위 주석과 같은 이유).
+     */
+    notifiedSchedule: text('notified_schedule'),
   },
   (t) => [
-    unique('recruit_result_mails_uq').on(t.applicantId, t.stage),
     // 크론이 매번 "보낼 것"과 "최근 24시간에 보낸 수"를 찾는다. 둘 다 status 로 시작한다.
     index('recruit_result_mails_status_idx').on(t.status, t.sentAt),
   ]
 );
+// ⚠ 중복 방어 UNIQUE 두 개는 **부분 인덱스**라 drizzle 로 선언할 수 없어 마이그레이션 0040 에
+// 손으로 넣었다(`recruit_slots_cohort_idx` 와 같은 사정 — 여기서 다시 선언하지 말 것):
+//   · recruit_result_mails_once_uq      (applicant_id, stage) WHERE stage <> 'interview'
+//       서류·최종은 사람당 딱 한 통. 예전 `recruit_result_mails_uq` 가 하던 일 그대로다.
+//   · recruit_result_mails_interview_uq (applicant_id, notified_schedule) WHERE stage = 'interview'
+//       변경 안내는 **일정이 바뀔 때마다** 나가야 하므로 사람당 한 통으로 묶으면 안 된다.
+//       대신 같은 일정을 두 번 알리는 것은 막는다 — 버튼을 두 번 눌러도 두 통이 되지 않는다.
 
 // 지원자별 개인 메모(작성자 1인당 1개). 면접 콘솔에서 질문 미리 적는 용도, 자동 저장.
 export const recruitMemos = pgTable(

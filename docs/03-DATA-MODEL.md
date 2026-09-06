@@ -356,9 +356,21 @@
     — 화면별 **공용** 메모지. (`recruit_mapping_presets` = CSV 매핑 프리셋. **0029 로 드롭**했다 —
     업로드 화면이 없어지면서 읽고 쓰는 코드가 사라졌고, 운영·테스트 모두 0행이었다.)
   - `recruit_result_mails` (id, applicant_id, stage[document|interview|final], status[queued|sent|failed],
-    attempts, last_error?, queued_by?, queued_at, sent_at?) **UNIQUE(applicant_id, stage)** + INDEX(status, sent_at).
-    결과 안내 메일의 대기열 겸 이력(0033, 결정 148). UNIQUE 가 곧 중복 발송 방어다 — 버튼을 두 번 눌러도,
-    공개 스위치를 껐다 켜도 같은 안내가 두 번 가지 않는다.
+    attempts, last_error?, queued_by?, queued_at, sent_at?, **notified_schedule?**) + INDEX(status, sent_at).
+    결과 안내 메일의 대기열 겸 이력(0033, 결정 148). 중복 발송 방어는 **부분 UNIQUE 인덱스 두 개**다(0040):
+    `(applicant_id, stage) WHERE stage <> 'interview'` — 서류·최종은 사람당 딱 한 통,
+    `(applicant_id, notified_schedule) WHERE stage = 'interview'` — 변경 안내는 **일정당** 한 통.
+    버튼을 두 번 눌러도, 공개 스위치를 껐다 켜도 같은 안내가 두 번 가지 않는다.
+    - `notified_schedule` = **그 메일이 알린 면접 일정의 지문**(0040). 다음 변경 판정의 기준선이다 —
+      지금 일정이 이 값과 다른 사람에게만 `interview`(면접 일정 변경 안내)가 나간다. 형식은
+      `src/recruit/result-mail-rules.ts` 의 `scheduleFingerprint`(JSON 배열 `[시작시각ISO, 소요분, 장소,
+      링크, 비대면여부]`, 개인 링크가 슬롯 링크보다 우선 — `lookup.ts` 와 같은 규칙).
+      NULL = 0040 이전에 나간 행(무엇을 알렸는지 모름 → 변경 판정에서 제외), `'none'` = 그때는 잡힌
+      일정이 없다고 알림. `final` 은 일정을 말하지 않는 메일이라 NULL 이다.
+      왜 필요했나: 예전 `interview` 조건은 "doc_pass + 슬롯 배정"이었는데 그것은 **면접 결과가 아직
+      안 들어간 사람 전원**이라는 뜻이지 일정이 바뀐 사람이 아니다. 33기 추가모집에서 아무것도 안 바뀐
+      64명이 대상으로 잡혔고, 하루 전 서류 안내로 같은 일정을 이미 받은 사람들이었다(2026-09-06).
+      시각·장소·링크뿐이라 PII 가 아니다.
     ⚠ **이메일 주소를 여기 복사하지 않는다.** 보낼 때 지원자 행에서 읽는다 — 주소를 두면 기수 파기가
     지운 PII 의 사본이 남는다. 지원자가 지워지면 이 행도 cascade 로 함께 사라진다.
   - **상태 자동 전환**: 면접 점수 최초 저장 시 doc_pass→interview_done, 점수 0개로 감소 시 interview_done→doc_pass

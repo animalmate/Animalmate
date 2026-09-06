@@ -81,6 +81,8 @@ describe('모집 결과 안내 메일 — 대기열·발송 워커 (실 DB)', ()
   let cohortId: string;
   let otherCohortId: string;
   let bulkCohortId: string;
+  /** 면접 자리 하나. 변경 안내 테스트가 이 슬롯의 시각을 옮긴다. */
+  let slotId: string;
 
   /** 이 기수에서 document 단계 대상이 되는 사람들의 주소(정답지). */
   const docTargetEmails = [
@@ -174,7 +176,7 @@ describe('모집 결과 안내 메일 — 대기열·발송 워커 (실 DB)', ()
       .insert(recruitSlots)
       .values({ cohortId, panel: 'A조', startsAt: new Date('2026-09-05T01:00:00Z'), createdBy: actorId })
       .returning();
-    const slotId = slot!.id;
+    slotId = slot!.id;
 
     // 상태·이메일 조합을 실제 기수 모양대로 깐다.
     await makeApplicant({ name: 'QA면접배정1', status: 'doc_pass', email: docTargetEmails[0]!, slotId });
@@ -218,6 +220,11 @@ describe('모집 결과 안내 메일 — 대기열·발송 워커 (실 DB)', ()
   beforeEach(async () => {
     // 워커는 전역 대기열을 집는다 — 앞 테스트의 잔여 행이 통수를 바꾼다.
     await db.delete(recruitResultMails);
+    // 변경 안내 테스트가 슬롯 시각을 옮긴다. 되돌려 두지 않으면 다음 테스트의 기준선이 달라진다.
+    await db
+      .update(recruitSlots)
+      .set({ startsAt: new Date('2026-09-05T01:00:00Z') })
+      .where(eq(recruitSlots.id, slotId));
   });
 
   afterAll(async () => {
@@ -300,14 +307,81 @@ describe('모집 결과 안내 메일 — 대기열·발송 워커 (실 DB)', ()
     });
   });
 
-  it('면접 일정 안내는 자리가 잡힌 서류 합격자에게만 간다', async () => {
-    const preview = await previewResultMails(cohortId, 'interview');
-    expect(preview.eligible).toBe(interviewTargetEmails.length); // 슬롯 없는 서류 합격자는 빠진다
-    await queueResultMails(cohortId, 'interview', actorId);
+  /**
+   * 변경 안내의 본질 — **앞서 알린 일정과 지금 일정이 다른 사람에게만** 나간다.
+   *
+   * 이 테스트가 막는 사고(2026-09-06): 예전 조건은 "`doc_pass` + 슬롯 배정"이라 아무것도 안 바뀐
+   * 사람이 전부 대상이었다. 33기 추가모집에서 64명이 잡혔고, 그들은 하루 전 서류 안내로 같은
+   * 일정을 이미 받은 사람들이었다. 순수 규칙만으로는 부족하다 — 기준선이 DB(발송 이력)에 있어서
+   * "무엇을 알렸는지"가 SQL 층을 거쳐야 비로소 판정이 된다.
+   */
+  it('면접 변경 안내는 서류 안내 뒤 일정이 바뀐 사람에게만 간다', async () => {
+    // 1) 서류 안내조차 나가기 전 — 받은 적 없는 사람에게 "바뀌었다"고 할 수는 없다.
+    const before = await previewResultMails(cohortId, 'interview');
+    expect(before.eligible).toBe(0);
+    expect(before.neverNotified).toBe(interviewTargetEmails.length);
 
+    // 2) 서류 안내가 나가면 그때의 일정이 기준선이 된다.
+    await queueResultMails(cohortId, 'document', actorId);
+    await runResultMailWorker({ mailer: stubMailer().mailer, appUrl: 'https://qa.example.invalid' });
+
+    // 3) 아무것도 바꾸지 않았다 → 보낼 사람이 없다. 예전 규칙이면 여기서 2명이 잡혔다.
+    const unchanged = await previewResultMails(cohortId, 'interview');
+    expect(unchanged.eligible).toBe(0);
+    expect(unchanged.unchanged).toBe(interviewTargetEmails.length);
+    expect(unchanged.neverNotified).toBe(0);
+    expect(await queueResultMails(cohortId, 'interview', actorId)).toEqual({ queued: 0, skipped: 0 });
+
+    // 4) 슬롯 시각을 옮긴다 → 그 자리에 앉은 사람만 대상이 된다.
+    //    slot_id 는 그대로다 — 배정이 아니라 **슬롯의 시각**이 바뀌는 경우까지 잡아야 한다.
+    await db
+      .update(recruitSlots)
+      .set({ startsAt: new Date('2026-09-05T03:00:00Z') })
+      .where(eq(recruitSlots.id, slotId));
+
+    const moved = await previewResultMails(cohortId, 'interview');
+    expect(moved.eligible).toBe(interviewTargetEmails.length);
+    expect(moved.changed).toMatchObject({ time: interviewTargetEmails.length, place: 0, assigned: 0 });
+    expect(moved.unchanged).toBe(0);
+
+    await queueResultMails(cohortId, 'interview', actorId);
     const { mailer, sent } = stubMailer();
     await runResultMailWorker({ mailer, appUrl: 'https://qa.example.invalid' });
     expect(sent.map((m) => m.to).sort()).toEqual([...interviewTargetEmails].sort());
+
+    // 5) 같은 일정으로는 두 번 나가지 않는다.
+    expect((await previewResultMails(cohortId, 'interview')).eligible).toBe(0);
+
+    // 6) 한 번 더 옮기면 다시 나간다. 사람당 한 통으로 묶여 있으면 여기서 막힌다 —
+    //    두 번째 변경을 못 알리는 것은 이 커밋이 고치는 것과 같은 종류의 버그다.
+    await db
+      .update(recruitSlots)
+      .set({ startsAt: new Date('2026-09-05T04:00:00Z') })
+      .where(eq(recruitSlots.id, slotId));
+    expect((await previewResultMails(cohortId, 'interview')).eligible).toBe(interviewTargetEmails.length);
+    expect((await queueResultMails(cohortId, 'interview', actorId)).queued).toBe(interviewTargetEmails.length);
+  });
+
+  it('안내 뒤 새로 자리가 잡힌 사람도 변경 안내를 받는다 — 미배정이라고 알렸던 사람', async () => {
+    await queueResultMails(cohortId, 'document', actorId);
+    await runResultMailWorker({ mailer: stubMailer().mailer, appUrl: 'https://qa.example.invalid' });
+
+    // 서류 안내 때는 자리가 없다고 알린 사람에게 자리를 준다.
+    const noSlotYet = and(eq(recruitApplicants.cohortId, cohortId), eq(recruitApplicants.email, docTargetEmails[2]!));
+    await db.update(recruitApplicants).set({ slotId }).where(noSlotYet);
+    try {
+      const preview = await previewResultMails(cohortId, 'interview');
+      expect(preview.eligible).toBe(1);
+      expect(preview.changed).toMatchObject({ assigned: 1, time: 0, place: 0 });
+
+      await queueResultMails(cohortId, 'interview', actorId);
+      const { mailer, sent } = stubMailer();
+      await runResultMailWorker({ mailer, appUrl: 'https://qa.example.invalid' });
+      expect(sent.map((m) => m.to)).toEqual([docTargetEmails[2]!]);
+    } finally {
+      // 픽스처를 원래대로. 뒤 테스트가 '슬롯 없는 서류 합격자' 를 그대로 기대한다.
+      await db.update(recruitApplicants).set({ slotId: null }).where(noSlotYet);
+    }
   });
 
   it('최종 결과 공개 스위치가 꺼져 있으면 한 통도 담기지 않는다', async () => {
@@ -355,24 +429,26 @@ describe('모집 결과 안내 메일 — 대기열·발송 워커 (실 DB)', ()
       .where(eq(recruitApplicants.id, applicant[0]!.id));
   });
 
+  // 재시도는 단계와 무관한 워커의 성질이라 아무 단계로나 검증하면 된다. 예전엔 대상이 2명이라
+  // `interview` 를 썼는데, 변경 안내는 이제 **일정이 바뀌어야** 담기므로 서류 안내로 옮긴다.
   it('발송이 실패하면 다시 시도하고, 세 번째에 실패로 확정한다', async () => {
-    await queueResultMails(cohortId, 'interview', actorId);
+    await queueResultMails(cohortId, 'document', actorId);
     const { mailer, calls } = failingMailer();
 
     let summary = await runResultMailWorker({ mailer, appUrl: 'https://qa.example.invalid' });
     expect(summary.sent).toBe(0);
     expect(summary.failed).toBe(0); // 아직 확정 아님 — 다음 사이클에 다시 집는다
-    expect((await rowsFor('interview')).every((r) => r.status === 'queued' && r.attempts === 1)).toBe(true);
+    expect((await rowsFor('document')).every((r) => r.status === 'queued' && r.attempts === 1)).toBe(true);
 
     summary = await runResultMailWorker({ mailer, appUrl: 'https://qa.example.invalid' });
-    expect((await rowsFor('interview')).every((r) => r.status === 'queued' && r.attempts === 2)).toBe(true);
+    expect((await rowsFor('document')).every((r) => r.status === 'queued' && r.attempts === 2)).toBe(true);
 
     summary = await runResultMailWorker({ mailer, appUrl: 'https://qa.example.invalid' });
-    expect(summary.failed).toBe(interviewTargetEmails.length);
-    const rows = await rowsFor('interview');
+    expect(summary.failed).toBe(docTargetEmails.length);
+    const rows = await rowsFor('document');
     expect(rows.every((r) => r.status === 'failed' && r.attempts === 3)).toBe(true);
     expect(rows[0]!.lastError).toContain('SMTP');
-    expect(calls()).toBe(interviewTargetEmails.length * 3);
+    expect(calls()).toBe(docTargetEmails.length * 3);
 
     // 확정된 뒤에는 워커가 다시 집지 않는다.
     const after = await runResultMailWorker({ mailer, appUrl: 'https://qa.example.invalid' });

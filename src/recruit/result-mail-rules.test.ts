@@ -5,18 +5,41 @@ import {
   isExhausted,
   isResultMailTarget,
   MAX_ATTEMPTS,
+  NO_SCHEDULE,
+  normalizeSchedule,
   requiredSwitch,
   RESULT_MAIL_STAGES,
   resultMailContent,
+  scheduleChange,
+  scheduleFingerprint,
   sendableNow,
   STAGE_LABEL,
 } from './result-mail-rules';
 import type { RecruitStatus } from './status';
 
-const who = (status: RecruitStatus, extra: { slotId?: string | null; email?: string | null } = {}) => ({
+/** 슬롯 한 자리 — 필요한 칸만 바꿔 가며 쓴다. */
+const slotAt = (over: Partial<Parameters<typeof normalizeSchedule>[0] & object> = {}) =>
+  scheduleFingerprint(
+    normalizeSchedule({
+      startsAt: new Date('2026-09-06T02:00:00Z'),
+      durationMin: 20,
+      venue: '학생회관 301호',
+      link: null,
+      isRemote: false,
+      ...over,
+    })
+  );
+
+const who = (
+  status: RecruitStatus,
+  extra: { slotId?: string | null; email?: string | null; schedule?: string; notifiedSchedule?: string | null } = {}
+) => ({
   status,
   slotId: extra.slotId ?? null,
   email: extra.email === undefined ? 'a@example.invalid' : extra.email,
+  // 기본값은 "자리가 없고, 안내가 나간 적도 없다" — 서류·최종 판정은 이 값을 보지 않는다.
+  schedule: extra.schedule ?? NO_SCHEDULE,
+  notifiedSchedule: extra.notifiedSchedule === undefined ? null : extra.notifiedSchedule,
 });
 
 describe('결과 안내 메일 — 대상 판정', () => {
@@ -34,11 +57,59 @@ describe('결과 안내 메일 — 대상 판정', () => {
     }
   });
 
-  it('면접 일정 안내는 자리가 잡힌 사람에게만 — 면접이 끝난 사람에게는 안 보낸다', () => {
-    expect(isResultMailTarget('interview', who('doc_pass', { slotId: 'slot-1' }))).toBe(true);
-    expect(isResultMailTarget('interview', who('doc_pass', { slotId: null }))).toBe(false); // 미배정
-    expect(isResultMailTarget('interview', who('interview_done', { slotId: 'slot-1' }))).toBe(false);
-    expect(isResultMailTarget('interview', who('doc_fail', { slotId: 'slot-1' }))).toBe(false);
+  it('면접 변경 안내는 자리가 잡힌 사람에게만 — 면접이 끝난 사람에게는 안 보낸다', () => {
+    const moved = { slotId: 'slot-1', schedule: slotAt(), notifiedSchedule: slotAt({ startsAt: new Date('2026-09-06T05:00:00Z') }) };
+    expect(isResultMailTarget('interview', who('doc_pass', moved))).toBe(true);
+    expect(isResultMailTarget('interview', who('doc_pass', { ...moved, slotId: null }))).toBe(false); // 미배정
+    expect(isResultMailTarget('interview', who('interview_done', moved))).toBe(false);
+    expect(isResultMailTarget('interview', who('doc_fail', moved))).toBe(false);
+  });
+
+  // ── 변경 판정(2026-09-06) ─────────────────────────────────────────────────────────
+  // 이 블록이 막는 사고: 33기 추가모집에서 아무것도 안 바뀐 64명이 대상으로 잡혔다. 그들은 하루 전
+  // 서류 안내로 **같은 일정**을 이미 받은 사람들이고, 그중 10명은 면접까지 끝난 뒤였다.
+  it('일정이 그대로면 대상이 아니다 — 같은 안내를 두 번 보내지 않는다', () => {
+    const same = slotAt();
+    expect(isResultMailTarget('interview', who('doc_pass', { slotId: 'slot-1', schedule: same, notifiedSchedule: same }))).toBe(
+      false
+    );
+  });
+
+  it('일시가 바뀌면 대상이다', () => {
+    expect(
+      isResultMailTarget(
+        'interview',
+        who('doc_pass', {
+          slotId: 'slot-1',
+          notifiedSchedule: slotAt(),
+          schedule: slotAt({ startsAt: new Date('2026-09-06T02:30:00Z') }),
+        })
+      )
+    ).toBe(true);
+  });
+
+  it('장소·링크만 바뀌어도 대상이다 — 지원자가 다른 방으로 간다', () => {
+    expect(
+      isResultMailTarget(
+        'interview',
+        who('doc_pass', { slotId: 'slot-1', notifiedSchedule: slotAt(), schedule: slotAt({ venue: '학생회관 302호' }) })
+      )
+    ).toBe(true);
+  });
+
+  it('안내 뒤 새로 자리가 잡힌 사람도 대상이다 — 미배정이라고 알렸던 사람', () => {
+    expect(
+      isResultMailTarget(
+        'interview',
+        who('doc_pass', { slotId: 'slot-1', notifiedSchedule: NO_SCHEDULE, schedule: slotAt() })
+      )
+    ).toBe(true);
+  });
+
+  it('첫 안내가 나간 적 없으면 대상이 아니다 — 받은 적 없는 사람에게 "바뀌었다"고 할 수 없다', () => {
+    expect(
+      isResultMailTarget('interview', who('doc_pass', { slotId: 'slot-1', notifiedSchedule: null, schedule: slotAt() }))
+    ).toBe(false);
   });
 
   it('최종 안내는 최종 결과가 정해진 사람 전원에게', () => {
@@ -51,6 +122,56 @@ describe('결과 안내 메일 — 대상 판정', () => {
     expect(isResultMailTarget('document', who('doc_pass', { email: null }))).toBe(false);
     expect(isResultMailTarget('document', who('doc_pass', { email: '   ' }))).toBe(false);
     expect(isResultMailTarget('final', who('final_pass', { email: '' }))).toBe(false);
+    // 일정이 바뀌었어도 보낼 곳이 없으면 대상이 아니다(미리보기의 '못 보내는 사람' 으로 잡힌다).
+    expect(
+      isResultMailTarget(
+        'interview',
+        who('doc_pass', { slotId: 'slot-1', email: null, notifiedSchedule: NO_SCHEDULE, schedule: slotAt() })
+      )
+    ).toBe(false);
+  });
+});
+
+describe('결과 안내 메일 — 일정 지문과 변경 판정', () => {
+  it('같은 일정은 같은 지문이 된다 — Date 객체가 달라도', () => {
+    expect(slotAt()).toBe(slotAt({ startsAt: '2026-09-06T02:00:00.000Z' }));
+  });
+
+  it('자리가 없으면 NO_SCHEDULE — NULL(모름)과 달라야 한다', () => {
+    expect(scheduleFingerprint(normalizeSchedule(null))).toBe(NO_SCHEDULE);
+    expect(NO_SCHEDULE).not.toBeNull();
+  });
+
+  it('개인 링크가 슬롯 링크보다 우선한다 — 조회 화면과 같은 규칙', () => {
+    const withPersonal = normalizeSchedule({
+      startsAt: new Date('2026-09-06T02:00:00Z'),
+      durationMin: 20,
+      venue: null,
+      link: 'https://slot.invalid/room',
+      isRemote: true,
+      personalLink: 'https://personal.invalid/room',
+    });
+    expect(withPersonal?.link).toBe('https://personal.invalid/room');
+  });
+
+  it('무엇이 바뀌었는지 이유를 낸다 — 화면이 "왜 대상인지" 를 보여 준다', () => {
+    expect(scheduleChange(slotAt(), slotAt())).toBeNull();
+    expect(scheduleChange(slotAt(), slotAt({ startsAt: new Date('2026-09-06T05:00:00Z') }))).toBe('time');
+    expect(scheduleChange(slotAt(), slotAt({ durationMin: 30 }))).toBe('time');
+    expect(scheduleChange(slotAt(), slotAt({ venue: '학생회관 302호' }))).toBe('place');
+    expect(scheduleChange(NO_SCHEDULE, slotAt())).toBe('assigned');
+  });
+
+  it('알린 적이 없으면(null) 변경으로 보지 않는다', () => {
+    expect(scheduleChange(null, slotAt())).toBeNull();
+  });
+
+  it('자리가 사라진 경우도 보내지 않는다 — 조회 화면에 보여 줄 것이 없다', () => {
+    expect(scheduleChange(slotAt(), NO_SCHEDULE)).toBeNull();
+  });
+
+  it('지문이 깨져 있어도 판정이 터지지 않는다 — 변경으로 보고 이유만 고른다', () => {
+    expect(scheduleChange('망가진값', slotAt())).toBe('time');
   });
 });
 
