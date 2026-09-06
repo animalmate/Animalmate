@@ -482,8 +482,8 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
 
       {/* 지원자 공개 스위치. 6번 최종 결정 화면(회장단 전용)에도 같은 스위치가 있고 같은 API 를
           부른다 — 어느 쪽에서 켜도 결과는 같다. 홍보팀은 6번에 못 들어가므로 여기에 둔다(결정 141).
-          ⚠ "최종 합격 결과 공개"는 켜는 순간 지원자가 합격 여부를 보고, 되돌려도 이미 본 사람은
-             되돌릴 수 없다. 그래서 경고를 옆에 붙이고 서버는 audit 에 [high] 로 남긴다. */}
+          "최종 합격 결과 공개"는 켜는 순간 지원자가 합격 여부를 보고 되돌릴 수 없다 — 화면에 붙이던
+          경고는 도움말(recruit-notice)로 옮겼고, 서버는 audit 에 [high] 로 남긴다. */}
       <Card className="space-y-3">
         <div>
           <h2 className="text-base font-bold text-ink-900">지원자 공개 설정</h2>
@@ -516,10 +516,6 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
             <span>최종 합격 결과 지원자 공개</span>
           </label>
         </div>
-        <p className="text-[11px] text-ink-500">
-          <strong className="text-coral-700">최종 합격 결과 공개</strong>는 켜는 즉시 지원자가 합격 여부를 봅니다.
-          다시 꺼도 이미 본 사람에게는 되돌려지지 않아요. 회장단이 최종 확정을 마친 뒤에 켜세요.
-        </p>
       </Card>
 
       {/* 결과 안내 메일 — 공개 스위치 바로 아래. 스위치를 켠 다음에 하는 일이라 순서대로 놓는다.
@@ -538,7 +534,7 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           <h2 className="text-base font-bold text-ink-900">공개 모집 공고 내용 및 이미지</h2>
         </div>
 
-        <Field label="모집 공고 상세 안내글 (마크다운 / 일반 텍스트)" hint="공개 공고 페이지(/recruit/notice)에 표시될 전체 안내글">
+        <Field label="모집 공고 상세 안내글" hint="공개 공고 페이지(/recruit/notice)에 표시될 전체 안내글">
           <textarea
             className="w-full h-44 rounded-xl border border-ink-200 bg-white p-3.5 text-xs text-ink-900 outline-none placeholder:text-ink-400 focus:border-blue-500 font-sans leading-relaxed"
             placeholder="[동아리 신입 부원 모집 안내]&#10;안녕하세요, 유기동물 봉사 동아리 애니멀메이트입니다..."
@@ -619,11 +615,10 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
             </Field>
         </div>
 
-        {/* 공개 지원서(/recruit/apply)의 선택지·문항. 예전에는 화면 코드에 박혀 있어
-            바꾸려면 배포가 필요했다. 지망 팀 목록은 여기가 아니라 "회원 관리"의 팀이 그대로 쓰인다. */}
         {/* 공개 지원서(/recruit/apply)의 문항·안내·선택지. 예전에는 화면 코드에 박혀 있어
             바꾸려면 배포가 필요했다. 항목 구성 자체는 recruit_applicants 컬럼과 묶여 있어 고정이고,
-            여기서 바꾸는 것은 문구·안내·선택지·필수 여부다. */}
+            여기서 바꾸는 것은 문구·안내·선택지·필수 여부다. 지망 팀 목록은 여기가 아니라
+            "회원 관리"의 팀이 그대로 쓰인다. */}
         <div className="border-t border-cream-200 pt-6 space-y-4">
           <h2 className="text-base font-bold text-ink-900">지원서 양식 설정</h2>
           <ApplyFormEditor value={applyForm} onChange={setApplyForm} />

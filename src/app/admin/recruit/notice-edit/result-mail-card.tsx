@@ -124,7 +124,7 @@ export function ResultMailCard({
         <h2 className="text-base font-bold text-ink-900">결과 안내 메일</h2>
         <p className="mt-1 text-xs text-ink-500">
           지원서에 적힌 이메일로 <strong>&ldquo;결과가 나왔으니 홈페이지에서 확인해 주세요&rdquo;</strong> 안내를
-          보냅니다. <strong>메일에 당락은 쓰지 않습니다</strong> — 결과는 조회 화면에서만 보여 줍니다.
+          보냅니다. 결과는 조회 화면에서만 보여 줍니다.
         </p>
       </div>
 

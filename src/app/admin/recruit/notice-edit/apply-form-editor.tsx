@@ -65,10 +65,9 @@ export function ApplyFormEditor({
   return (
     <div className="space-y-6">
       <p className="text-[13px] leading-relaxed text-ink-500">
-        공개 지원서(/recruit/apply)에 나오는 문항 문구·안내·선택지입니다. 안내 문구는 줄바꿈이 그대로 보입니다.
+        공개 지원서(/recruit/apply)에 나오는 문항 문구·안내·선택지입니다.
         <br />
         <strong className="text-ink-900">문항의 &lsquo;사용&rsquo; 스위치를 끄면 그 항목은 지원서에서 빠집니다.</strong>{' '}
-        꺼도 제목과 안내 문구는 그대로 남아 있어, 다음 기수에 다시 켜면 쓰던 문구를 그대로 씁니다.
         (이름·전화번호는 결과 조회에 필요해 항상 받습니다.)
       </p>
 
