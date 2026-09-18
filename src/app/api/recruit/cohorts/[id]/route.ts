@@ -3,6 +3,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { canEditRecruitNotice, isPrivileged, isStaffPlus } from '@/auth/permissions';
 import { deleteCohort, getCohortById, updateCohortPublicSwitches } from '@/recruit/cohorts';
 import { listApplicantsByCohort } from '@/recruit/applicants';
+import { resolvePublicSwitches } from '@/recruit/public-switch-rules';
 import { internalError } from '@/http/errors';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { db } from '@/db/client';
@@ -46,10 +47,21 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     const before = await getCohortById(id);
     if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-    const updated = await updateCohortPublicSwitches(id, {
-      schedulePublic: typeof body.schedulePublic === 'boolean' ? body.schedulePublic : undefined,
-      resultPublic: typeof body.resultPublic === 'boolean' ? body.resultPublic : undefined,
-    });
+    // 두 스위치는 독립이 아니다 — 최종 결과를 공개하려면 면접 공개가 켜져 있어야 한다.
+    // 어긋나면 결과가 없는 지원자(서류 불합격·면접 불참)가 조회 화면에서 "심사 중"으로 보인다.
+    // 화면에서도 막지만 판단은 여기서 끝낸다(규칙 #6).
+    const resolved = resolvePublicSwitches(
+      { schedulePublic: before.schedulePublic, resultPublic: before.resultPublic },
+      {
+        schedulePublic: typeof body.schedulePublic === 'boolean' ? body.schedulePublic : undefined,
+        resultPublic: typeof body.resultPublic === 'boolean' ? body.resultPublic : undefined,
+      }
+    );
+    if (!resolved.ok) {
+      return NextResponse.json({ error: 'invalid_switch_combination', message: resolved.message }, { status: 409 });
+    }
+
+    const updated = await updateCohortPublicSwitches(id, resolved.next);
 
     // 결과 공개 전환은 지원자에게 즉시 보이는 되돌리기 어려운 결정 — 항상 audit(규칙 #4).
     await recordAudit(

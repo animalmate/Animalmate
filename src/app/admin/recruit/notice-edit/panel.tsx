@@ -8,6 +8,7 @@ import { isPrivileged } from '@/auth/permissions';
 import { RecruitNav } from '@/components/recruit-nav';
 import { Button, Card, DangerButton, Field, Input, SecondaryButton, Select, StatusMessage } from '@/components/ui';
 import { DEFAULT_APPLY_FORM, resolveApplyForm, type ApplyFormConfig } from '@/recruit/apply-form';
+import { coercePublicSwitches, isScheduleSwitchLocked } from '@/recruit/public-switch-rules';
 import { ApplyFormEditor } from './apply-form-editor';
 import { ResultMailCard } from './result-mail-card';
 
@@ -325,11 +326,17 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
    * 실패하면 **화면 값을 되돌린다**. 안 그러면 체크박스는 켜졌는데 지원자에게는 안 보이는,
    * 가장 알아채기 어려운 어긋남이 생긴다(마감 스위치와 같은 처리).
    */
-  const handleUpdateSwitches = async (nextSchedule: boolean, nextResult: boolean) => {
+  const handleUpdateSwitches = async (wantSchedule: boolean, wantResult: boolean) => {
     if (!selectedCohortId) {
       setMessage('❌ 모집 기수를 먼저 선택해 주세요.');
       return;
     }
+    // 최종 결과를 켜면 면접 공개도 함께 켜진다 — 서버가 거절하는 조합을 애초에 만들지 않는다.
+    const { schedulePublic: nextSchedule, resultPublic: nextResult } = coercePublicSwitches({
+      schedulePublic: wantSchedule,
+      resultPublic: wantResult,
+    });
+    const alsoTurnedOnSchedule = nextSchedule && !wantSchedule;
     const prev = { schedule: schedulePublic, result: resultPublic };
     setSchedulePublic(nextSchedule);
     setResultPublic(nextResult);
@@ -343,7 +350,11 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setMessage('✅ 지원자 공개 설정이 변경되었습니다.');
+        setMessage(
+          alsoTurnedOnSchedule
+            ? '✅ 지원자 공개 설정이 변경되었습니다. 최종 결과를 공개하므로 면접 일정/링크 공개도 함께 켰습니다.'
+            : '✅ 지원자 공개 설정이 변경되었습니다.'
+        );
       } else {
         setSchedulePublic(prev.schedule);
         setResultPublic(prev.result);
@@ -357,6 +368,10 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
       setSaving(false);
     }
   };
+
+  // 면접 공개를 "끔 수 없는" 상태인가. 이미 꺼진 채 결과만 켜져 있는 기수(규칙 이전 값)은
+  // 잠금에서 제외한다 — 거기서 잠금면 고칠 길까지 막힌다.
+  const scheduleSwitchLocked = isScheduleSwitchLocked({ schedulePublic, resultPublic });
 
   return (
     <div className="space-y-6">
@@ -492,15 +507,28 @@ export function RecruitNoticeEditPanel({ role }: { role: Role }) {
           </p>
         </div>
         <div className="flex flex-col gap-2 rounded-2xl border border-cream-200 bg-cream-50 p-3 px-5 sm:flex-row sm:items-center sm:gap-6">
-          <label className="flex min-h-tap cursor-pointer items-center gap-2.5 text-xs font-bold text-ink-900">
+          {/* 최종 결과를 공개하는 동안에는 이 스위치를 잠근다. 둘의 어긋난 조합이 바로
+              지원자 화면의 거짓말로 이어졌다 — 면접 비공개 + 결과 공개 상태에서는 최종 결과가 없는
+              사람(서류 불합격·면접 불참)이 전부 "심사 중"으로 보인다. 판단 자체는 서버가 한다(규칙 #6). */}
+          <label
+            className={`flex min-h-tap items-center gap-2.5 text-xs font-bold text-ink-900 ${
+              scheduleSwitchLocked ? 'cursor-not-allowed' : 'cursor-pointer'
+            }`}
+            title={scheduleSwitchLocked ? '최종 합격 결과를 공개하는 동안에는 끌 수 없습니다.' : undefined}
+          >
             <input
               type="checkbox"
               checked={schedulePublic}
-              disabled={saving || !selectedCohortId}
+              disabled={saving || !selectedCohortId || scheduleSwitchLocked}
               onChange={(e) => handleUpdateSwitches(e.target.checked, resultPublic)}
-              className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+              className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500 disabled:opacity-60"
             />
             <span>면접 일정/링크 지원자 공개</span>
+            {scheduleSwitchLocked && (
+              <span className="rounded-full bg-cream-200 px-2 py-0.5 text-[10px] font-semibold text-ink-600">
+                결과 공개 중 — 끌 수 없음
+              </span>
+            )}
           </label>
 
           <div className="hidden h-4 w-px bg-cream-200 sm:block" />

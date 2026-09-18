@@ -15,6 +15,7 @@ import {
 } from '@/recruit/final-decision';
 import type { ApplicantAggregate } from '@/recruit/aggregate';
 import { formatScore } from '@/recruit/display';
+import { coercePublicSwitches, isScheduleSwitchLocked } from '@/recruit/public-switch-rules';
 import { RecruitNav } from '@/components/recruit-nav';
 import {
   Button,
@@ -113,7 +114,13 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     }
   }, [selectedCohortId, fetchCohortAndApplicants]);
 
-  const handleUpdateSwitches = async (newSchedule: boolean, newResult: boolean) => {
+  const handleUpdateSwitches = async (wantSchedule: boolean, wantResult: boolean) => {
+    // 최종 결과를 켜면 면접 공개도 함께 켜진다(공개 규칙은 public-switch-rules 에 한 번만 적는다).
+    const { schedulePublic: newSchedule, resultPublic: newResult } = coercePublicSwitches({
+      schedulePublic: wantSchedule,
+      resultPublic: wantResult,
+    });
+    const alsoTurnedOnSchedule = newSchedule && !wantSchedule;
     setLoading(true);
     try {
       const res = await fetch(`/api/recruit/cohorts/${selectedCohortId}`, {
@@ -125,7 +132,11 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
       if (res.ok) {
         setSchedulePublic(newSchedule);
         setResultPublic(newResult);
-        setMessage('✅ 공개 스위치 설정이 변경되었습니다.');
+        setMessage(
+          alsoTurnedOnSchedule
+            ? '✅ 공개 스위치 설정이 변경되었습니다. 최종 결과를 공개하므로 면접 일정/링크 공개도 함께 켰습니다.'
+            : '✅ 공개 스위치 설정이 변경되었습니다.'
+        );
       } else {
         // 실패를 알리지 않으면 스위치가 그대로 있는 이유를 알 수 없다.
         setMessage(`❌ ${data.message || data.error || '공개 설정을 변경하지 못했습니다.'}`);
@@ -318,6 +329,9 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
     }
   };
 
+  // 면접 공개를 끔 수 없는 상태(= 결과 공개 중 + 면접도 공개 중)인가. 0번 화면과 같은 규칙을 쓴다.
+  const scheduleSwitchLocked = isScheduleSwitchLocked({ schedulePublic, resultPublic });
+
   const confirmDisabled = loading || decidableTotal === 0 || summary.moveTeamUnset.length > 0;
   const confirmLabel =
     decidableTotal === 0
@@ -372,18 +386,35 @@ export function RecruitFinalPanel({ role }: { role: Role }) {
           <p className="mt-1 text-xs text-ink-500">
             켜면 지원자가 <strong>/recruit</strong> 조회에서 바로 볼 수 있습니다. 끄면 결과를 알 수 없습니다.
           </p>
+          <p className="mt-1 text-[11px] text-ink-500">
+            최종 결과를 켜면 <strong>면접 일정/링크 공개도 함께 켜지고</strong>, 결과를 다시 끄기 전까지는
+            끌 수 없습니다.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           {/* 공개 스위치 두 개는 문구가 길다. 좁으면 세로로 쌓고, 가운데 구분선은 그때 감춘다. */}
           <div className="flex flex-col gap-2 rounded-2xl border border-cream-200 bg-cream-50 p-3 px-5 sm:flex-row sm:items-center sm:gap-6">
-            <label className="flex min-h-tap items-center gap-2.5 cursor-pointer font-bold text-xs text-ink-900">
+            {/* 결과 공개 중에는 잠긴다 — [면접 비공개 + 결과 공개] 조합에서는 최종 결과가 없는
+                지원자(서류 불합격·면접 불참)가 조회 화면에서 "심사 중"으로 보인다. */}
+            <label
+              className={`flex min-h-tap items-center gap-2.5 font-bold text-xs text-ink-900 ${
+                scheduleSwitchLocked ? 'cursor-not-allowed' : 'cursor-pointer'
+              }`}
+              title={scheduleSwitchLocked ? '최종 합격 결과를 공개하는 동안에는 끌 수 없습니다.' : undefined}
+            >
               <input
                 type="checkbox"
                 checked={schedulePublic}
+                disabled={scheduleSwitchLocked}
                 onChange={(e) => handleUpdateSwitches(e.target.checked, resultPublic)}
-                className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
+                className="h-5 w-5 rounded border-ink-300 text-blue-600 focus:ring-blue-500 disabled:opacity-60"
               />
               <span>면접 일정/링크 지원자 공개</span>
+              {scheduleSwitchLocked && (
+                <span className="rounded-full bg-cream-200 px-2 py-0.5 text-[10px] font-semibold text-ink-600">
+                  결과 공개 중 — 끌 수 없음
+                </span>
+              )}
             </label>
 
             <div className="hidden h-4 w-px bg-cream-200 sm:block" />
