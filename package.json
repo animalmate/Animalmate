@@ -19,6 +19,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:migrate:test": "drizzle-kit migrate --config drizzle.test.config.ts",
+    "db:ping:test": "tsx scripts/ping-test-db.ts",
     "db:reset:test": "node scripts/reset-test-db.mjs"
   },
   "dependencies": {

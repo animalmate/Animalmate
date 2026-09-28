@@ -277,7 +277,8 @@
 | pg_cron `draft-generate` (jobid 4) | 매일 | ① D-3/D-1 미완성 점검 ② **1년 미접속** 만료 강등 ③ 레이트리밋 정리 ④ **답하지 못한 질문 리포트(7일마다 회장단 메일)** |
 | pg_cron `result-mails` (jobid 5) | 5분마다 | F9 결과 안내 메일 발송 워커. 대기열에서 최대 25통씩, 최근 24시간 400통 한도(Gmail 500통을 인증 메일과 나눠 쓴다). 넘친 것은 다음 날로 |
 | Actions `backup.yml` | 주 1회 + 매월 1일 | pg_dump → GPG(AES256) → 비공개 리포. 실패 시 이슈 자동 생성 |
-| Actions `keepalive.yml` | — | 60일 비활성으로 스케줄이 꺼지는 것 방지 |
+| Actions `keepalive.yml` | 매월 15일 | 60일 비활성으로 스케줄이 꺼지는 것 방지(45일 넘으면 빈 커밋) |
+| Actions `keepalive-test-db.yml` | 3일마다 | 테스트 DB 에 select 하나 — 7일 미사용 정지 방지. 실패 시 이슈 자동 생성(**정지는 사람이 Restore**) |
 
 > Vercel Cron 은 **금지**(Hobby 는 하루 1회 + 시각 미보장). `vercel.json` 에 crons 없음.
 > 라우트 이름 `draft-generate` 는 옛 기능에서 온 것으로 **하는 일과 다르다**(잡 재등록 회피).

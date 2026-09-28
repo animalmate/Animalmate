@@ -1,0 +1,132 @@
+name: 테스트 DB 유지
+
+# 테스트 Supabase 프로젝트(`animalmate-test`)에 3일마다 가벼운 쿼리 하나를 던져
+# **7일 미사용 일시정지를 막는다.**
+#
+# 왜 필요한가: 운영 프로젝트는 UptimeRobot 이 5분마다 `/api/health` 를 불러 깨워 두지만
+# (규칙 #9) 테스트 프로젝트에는 그런 장치가 없었다. CI 는 main 푸시에만 돌기 때문에 개발이
+# 한 주 조용하면 그대로 정지된다. 2026-09-18 CI 가 실제로 이렇게 죽었다 — 마지막 성공이
+# 09-10, 8일 공백이었다. 타입체크·린트·단위 테스트는 통과했고 `db:migrate:test` 만
+# `tenant/user postgres.<테스트ref> not found` 로 실패한 뒤 **통합 테스트가 skip 됐다.**
+# 그 커밋(c4e7a41)은 통합 테스트를 한 번도 통과하지 못한 채 열흘 동안 방치됐다.
+#
+# ── 알아둘 것 ──────────────────────────────────────────────────────────────
+#  - **정지를 막을 뿐 깨우지는 못한다.** 이미 정지된 프로젝트의 Restore 는 API 로 안 되고
+#    사람이 대시보드에서 눌러야 한다. 그래서 정지를 만나면 실패시키고 아래 alert 잡이
+#    이슈를 만든다 — "CI 가 빨간 채로 열흘" 을 다시 겪지 않기 위한 것이다.
+#  - **이 잡은 커밋을 만들지 않는다.** GitHub 은 커밋이 60일간 없는 리포의 schedule 트리거를
+#    자동으로 끄는데, 그것을 막는 것은 `keepalive.yml`(매월 15일, 45일 넘으면 빈 커밋) 이다.
+#    즉 이 잡의 생명줄이 그 잡이다. **`keepalive.yml` 을 지우면 두 달 뒤 이 잡도 같이 멈추고,
+#    그 다음 주에 테스트 DB 가 정지된다.**
+#  - 운영 DB 는 건드리지 않는다. 주입하는 시크릿은 `TEST_DATABASE_URL` 하나뿐이고,
+#    `test/db-url.ts` 가 그 값이 운영 ref 를 가리키면 하드 실패시킨다.
+
+on:
+  schedule:
+    # 3일마다 03:40 UTC(= 12:40 KST). 한 번 건너뛰어도 공백이 6일이라 7일 안에 든다.
+    # 분을 0 으로 두지 않은 이유: 정시는 큐가 몰려 스케줄 실행이 지연된다.
+    # 날짜는 1·4·7…28·31 — 백업(일요일·1일 18:00 UTC)과 시각이 다르고,
+    # `keepalive.yml`(15일 03:00 UTC)과는 날짜가 겹치지 않는다(13·16 로 지나간다).
+    - cron: '40 3 */3 * *'
+  workflow_dispatch: # 정지를 Restore 한 직후 되살아났는지 확인할 때
+
+concurrency:
+  group: keepalive-test-db
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    # 이 잡이 하는 일은 이 리포를 읽고 테스트 DB 에 select 하나를 던지는 것뿐이다.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # select 하나에 npm ci 는 과해 보이지만, psql 로 때우면 운영 ref 가드(test/db-url.ts)와
+      # 정지 진단이 빠진다. 시크릿이 잘못 꽂혀 운영을 깨우고 있는데 초록으로 도는 것이
+      # 이 잡에서 가장 나쁜 실패다 — 판별 로직을 리포와 공유하는 값이 더 크다.
+      - name: 테스트 DB 깨우기
+        run: npm run db:ping:test
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+
+  # ── 조용한 실패 금지 ────────────────────────────────────────────────────────
+  # 실패하면 이슈가 생기고 담당자에게 배정된다. 배정 알림은 리포 워치 설정과 무관하게 가므로
+  # "테스트 DB 가 죽은 걸 다음 푸시 때 CI 가 빨개져서야 알았다" 가 구조적으로 사라진다.
+  # 구조·토큰 선택 이유는 backup.yml 의 alert 잡 주석과 같다(GITHUB_TOKEN + issues:write).
+  #
+  # ⚠ 이 리포는 public 이라 **이슈도 공개된다.** 본문에 연결 문자열·ref·PII 를 넣지 않는다.
+  alert:
+    needs: ping
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 실패 이슈 생성·배정
+        uses: actions/github-script@v7
+        env:
+          # 인수인계 때 리포 변수 ALERT_ASSIGNEE 만 바꾸면 담당자가 옮겨간다.
+          ALERT_ASSIGNEE: ${{ vars.ALERT_ASSIGNEE || 'animalmate1' }}
+        with:
+          script: |
+            const label = 'test-db-paused';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`
+              + `/actions/runs/${context.runId}`;
+            const body = [
+              '테스트 DB(`animalmate-test`) 유지 잡이 **실패**했습니다.',
+              '',
+              `- 실행 로그: ${runUrl}`,
+              `- 트리거: \`${context.eventName}\``,
+              '',
+              '십중팔구 **무료 티어 7일 미사용 일시정지**입니다. 로그에',
+              '`tenant/user ... not found` 가 찍혀 있으면 확정입니다.',
+              '',
+              '**이 잡은 정지를 막을 뿐 깨우지는 못합니다** — 사람이 눌러야 합니다:',
+              '1. Supabase 대시보드 → `animalmate-test` → **Restore project / Resume** (1~2분)',
+              '2. 되살아났는지 확인: 이 워크플로를 `Run workflow` 로 수동 실행',
+              '3. 스키마 확인: `npm run db:migrate:test`',
+              '',
+              '정지가 아닌 경우 자주 나오는 원인:',
+              '- `TEST_DATABASE_URL` 시크릿 만료·비밀번호 변경 (세션 풀러 5432 여야 합니다)',
+              '- public 스키마가 비어 있음 → `npm run db:reset:test`',
+              '',
+              '자세한 사정은 `docs/05-ASSET-REGISTRY.md` 의 「테스트 DB」 절에 있습니다.',
+            ].join('\n');
+
+            // 3일마다 실패하면 이슈가 사흘마다 쌓인다. 열려 있는 것이 있으면 코멘트로 붙여
+            // "같은 문제 N번째" 가 한 스레드에서 보이게 한다.
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo, state: 'open', labels: label, per_page: 1,
+            });
+
+            if (open.length > 0) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: open[0].number, body,
+              });
+              core.notice(`기존 이슈 #${open[0].number} 에 코멘트를 달았다.`);
+              return;
+            }
+
+            const title = `⚠️ 테스트 DB 유지 실패 (${new Date().toISOString().slice(0, 10)})`;
+            const assignee = process.env.ALERT_ASSIGNEE;
+            try {
+              const { data: issue } = await github.rest.issues.create({
+                ...context.repo, title, body, labels: [label], assignees: [assignee],
+              });
+              core.notice(`이슈 #${issue.number} 생성 (담당 @${assignee}).`);
+            } catch (e) {
+              // 담당자 계정이 사라졌거나 권한이 없으면 배정만 실패한다. 알림 자체를 포기하면
+              // 이 잡을 만든 이유가 없어지므로, 배정 없이라도 이슈는 남긴다.
+              core.warning(`배정 실패(${e.message}) — 배정 없이 이슈만 만든다.`);
+              const { data: issue } = await github.rest.issues.create({
+                ...context.repo, title, body, labels: [label],
+              });
+              core.notice(`이슈 #${issue.number} 생성 (배정 없음).`);
+            }

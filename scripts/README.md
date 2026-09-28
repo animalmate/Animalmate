@@ -78,3 +78,19 @@ node scripts/recruit-scale-report.mjs 33기     # 기수 이름으로 지정
 쓰는 때: 기수 인원이 이전과 크게 다를 때, "화면이 느리다"는 말이 나왔을 때 코드를 고치기 전에.
 33기(203명)에서 무거웠던 것은 조회 자체가 아니라 **채점할 때마다 명단을 다시 받던 반복**이었다
 (07-DECISIONS 119).
+
+
+### `ping-test-db.ts` — 테스트 DB 를 깨워 둔다(7일 미사용 정지 방지)
+```bash
+npm run db:ping:test
+```
+테스트 Supabase 프로젝트에 `select now()` 하나를 던진다. **사람이 부를 일은 거의 없다** —
+`.github/workflows/keepalive-test-db.yml` 이 3일마다 대신 부른다. 손으로 치는 때는 딱 둘이다:
+정지된 프로젝트를 Restore 한 직후 되살아났는지 볼 때, 그리고 CI 가 DB 연결로 죽었을 때
+원인이 정지인지 가릴 때.
+
+- 대상은 `TEST_DATABASE_URL` 하나뿐이다. 판별은 `test/db-url.ts` 에 맡기므로 값이 없거나
+  **운영 ref** 를 가리키면 붙기 전에 하드 실패한다(ref 비교를 여기서 다시 구현하지 않는다).
+- `tenant/user postgres.<ref> not found` 가 오면 **이미 정지된 것**이다. 이 스크립트는
+  정지를 막을 뿐 깨우지 못한다 — Supabase 대시보드에서 사람이 `Restore` 를 눌러야 한다.
+- public 테이블이 0개면 경고한다(연결은 되는데 통합 테스트만 깨지는 상태 → `npm run db:reset:test`).
