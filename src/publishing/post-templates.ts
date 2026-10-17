@@ -38,6 +38,8 @@ export type UpdateTemplatePatch = Partial<
 // global 은 회장단만, team/personal 은 소유권(소유자/회장단) 검사.
 function authorizeTemplate(actor: Actor, ownerType: TemplateOwnerType, ownerId: string | null | undefined): void {
   if (ownerType === 'global') {
+    // 이 분기는 authorize 를 거치지 않으므로 "쓰기는 활성 멤버십 먼저"(authorize 첫 줄)를 여기서도 지킨다.
+    if (!actor.membershipActive) throw new PermissionError('membership_inactive');
     if (!isPrivileged(actor.role)) throw new PermissionError('role_insufficient');
     return;
   }

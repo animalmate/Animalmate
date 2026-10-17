@@ -89,7 +89,10 @@ const MANAGE_KEYS = new Set(BOARD_MANAGE.map((m) => m.match ?? m.href));
 function isBoard(role: string): boolean {
   return role === 'board' || role === 'sysadmin';
 }
-function menuFor(role: string): NavItem[] {
+function menuFor(role: string, membershipActive: boolean): NavItem[] {
+  // 멤버십이 꺼진 계정은 내부 화면이 홈으로 돌려보낸다(requireActiveActor) — 눌러도 제자리인
+  // 메뉴를 띄우지 않는다. 그런 계정의 역할은 항상 member 라 남는 것은 홈·내 정보뿐이다.
+  if (!membershipActive) return [];
   if (isBoard(role)) return BOARD_MENU;
   if (role === 'staff') return STAFF_MENU;
   return MEMBER_MENU; // 부원은 챗봇 + 번개 + 캘린더 + 가이드북
@@ -118,14 +121,14 @@ function activeKey(pathname: string): string {
   return '/';
 }
 
-export function ConsoleNav({ role }: { role: string }) {
+export function ConsoleNav({ role, membershipActive = true }: { role: string; membershipActive?: boolean }) {
   const router = useRouter();
   const pathname = usePathname() ?? '/';
   const [open, setOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const manageRef = useRef<HTMLDivElement | null>(null);
   const manageBtnRef = useRef<HTMLButtonElement | null>(null);
-  const menus = menuFor(role);
+  const menus = menuFor(role, membershipActive);
   const manage = manageFor(role);
   const active = activeKey(pathname);
   const manageActive = MANAGE_KEYS.has(active);

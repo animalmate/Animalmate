@@ -144,20 +144,64 @@ export async function downloadGuidebook(path: string): Promise<ArrayBuffer> {
  * 브라우저가 "다 올렸어요"라고만 말하고 실제로는 안 올렸을 수도, 상한을 넘겼을 수도 있다.
  * 서버가 스스로 확인하지 않으면 클라이언트 말을 그대로 믿는 셈이 된다.
  */
-export async function headGuidebook(path: string): Promise<{ ok: boolean; bytes: number; contentType: string }> {
+export async function headGuidebook(
+  path: string
+): Promise<{ ok: boolean; bytes: number; contentType: string; head: Uint8Array }> {
   const { base, key } = storageBase();
-  // HEAD 는 일부 게이트웨이에서 헤더가 비어 오므로 Range 로 1바이트만 받아 확인한다.
+  // HEAD 는 일부 게이트웨이에서 헤더가 비어 오므로 Range 로 앞부분만 받아 확인한다.
+  // 앞 1KB 를 받는 이유는 파일 서명(%PDF-)을 보기 위해서다 — 아래 looksLikePdf 주석.
   const res = await fetch(`${base}/storage/v1/object/${GUIDEBOOK_BUCKET}/${path}`, {
     method: 'GET',
-    headers: { ...authHeaders(key), Range: 'bytes=0-0' },
+    headers: { ...authHeaders(key), Range: `bytes=0-${PDF_SIGNATURE_WINDOW - 1}` },
   });
-  if (!res.ok) return { ok: false, bytes: 0, contentType: '' };
+  if (!res.ok) return { ok: false, bytes: 0, contentType: '', head: new Uint8Array() };
 
   const contentType = res.headers.get('content-type') ?? '';
-  // 206 이면 Content-Range: bytes 0-0/12345 의 마지막 값이 전체 크기다.
+  // 206 이면 Content-Range: bytes 0-1023/12345 의 마지막 값이 전체 크기다.
   const range = res.headers.get('content-range') ?? '';
   const total = Number(range.split('/')[1] ?? res.headers.get('content-length') ?? 0);
-  return { ok: true, bytes: Number.isFinite(total) ? total : 0, contentType };
+  return { ok: true, bytes: Number.isFinite(total) ? total : 0, contentType, head: await readPrefix(res, PDF_SIGNATURE_WINDOW) };
+}
+
+/** PDF 서명을 찾아볼 앞부분 크기. 명세는 서명이 첫 1024바이트 안에 있으면 된다고 허용한다. */
+const PDF_SIGNATURE_WINDOW = 1024;
+
+/**
+ * 응답 본문을 앞에서 n 바이트까지만 읽고 나머지는 버린다. 게이트웨이가 Range 를 무시하고 파일 전체
+ * (최대 50MB)를 보내더라도 메모리에 다 올리지 않기 위해서다.
+ */
+async function readPrefix(res: Response, n: number): Promise<Uint8Array> {
+  if (!res.body) return new Uint8Array(await res.arrayBuffer()).slice(0, n);
+  const reader = res.body.getReader();
+  const out = new Uint8Array(n);
+  let filled = 0;
+  try {
+    while (filled < n) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      const take = Math.min(value.length, n - filled);
+      out.set(value.subarray(0, take), filled);
+      filled += take;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return out.slice(0, filled);
+}
+
+/**
+ * 파일 앞부분에 PDF 서명(`%PDF-`)이 있는가.
+ *
+ * 왜 Content-Type 만으로 부족한가(2026-10-17 보안 감사): 그 값은 **브라우저가 올리면서 붙인 것**이다.
+ * 서명 URL 로 직접 올리므로 서버는 내용을 보지 못하고, PDF 라고 우기는 아무 파일(HTML 포함)이
+ * 그대로 회원들에게 서명 URL 로 배포될 수 있었다. 앞부분만 받아 진짜 PDF 인지 확인한다.
+ */
+export function looksLikePdf(head: Uint8Array): boolean {
+  const sig = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
+  for (let i = 0; i + sig.length <= head.length; i++) {
+    if (sig.every((b, j) => head[i + j] === b)) return true;
+  }
+  return false;
 }
 
 /**

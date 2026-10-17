@@ -8,7 +8,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { getFlashDetail, updateFlashMeetup, FlashInputError } from '@/flash/flash';
 import { PermissionError } from '@/auth/guard';
-import { internalError } from '@/http/errors';
+import { internalError, membershipInactive } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +16,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!actor.membershipActive) return membershipInactive();
   const { id } = await ctx.params;
   const detail = await getFlashDetail(db, actor, id);
   if (!detail) return NextResponse.json({ error: 'not_found' }, { status: 404 });

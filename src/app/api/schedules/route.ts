@@ -10,7 +10,7 @@ import { getCurrentActor } from '@/auth/current-user';
 import { listSchedules, createSchedule, ScheduleInputError } from '@/schedules/schedules';
 import { toScheduleView } from '@/schedules/view';
 import { PermissionError } from '@/auth/guard';
-import { internalError } from '@/http/errors';
+import { internalError, membershipInactive } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +21,7 @@ const dateParam = (v: string | null): string | undefined => (v && DATE_RE.test(v
 export async function GET(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!actor.membershipActive) return membershipInactive();
   const url = new URL(req.url);
   const rows = await listSchedules(db, actor, {
     from: dateParam(url.searchParams.get('from')),

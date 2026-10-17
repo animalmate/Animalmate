@@ -14,3 +14,14 @@ export function internalError(scope: string, e: unknown): NextResponse {
   console.error(`[api] ${scope}`, e);
   return NextResponse.json({ error: 'internal' }, { status: 500 });
 }
+
+/**
+ * 멤버십이 꺼진 계정(비활성화·장기 미접속 만료)의 내부 자료 조회 거부(403).
+ *
+ * 이런 계정도 로그인은 된다 — 홈 배너와 내 정보(본인 탈퇴)는 열려 있어야 해서다. 그러나 동아리
+ * 내부 자료까지 열리면 "비활성화 = 지금 접근을 끊는다"(결정 13)가 다시 로그인하는 것만으로
+ * 무너진다(2026-10-17 보안 감사). 화면은 requireActiveActor, API 는 이 응답으로 막는다.
+ */
+export function membershipInactive(): NextResponse {
+  return NextResponse.json({ error: 'membership_inactive' }, { status: 403 });
+}

@@ -197,11 +197,44 @@ async function activeSysadminCount(db: Db): Promise<number> {
   return row?.n ?? 0;
 }
 
+/**
+ * 여러 멤버십 행 중 최고 역할. board 와 sysadmin 은 등급이 같지만 **sysadmin 이 이긴다** —
+ * 행 순서에 따라 board 로 읽히면 sysadmin 전용 보호를 그대로 지나가 버린다.
+ */
+function topRole(rows: { role: Role }[]): Role | null {
+  if (rows.length === 0) return null;
+  return rows.reduce<Role>((max, m) => (m.role === 'sysadmin' || ROLE_RANK[m.role] > ROLE_RANK[max] ? m.role : max), 'member');
+}
+
 /** 대상 회원의 활성 최고 역할. 활성 멤버십이 없으면 null. */
 async function activeRoleOf(db: Db, userId: string): Promise<Role | null> {
-  const rows = await db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.status, 'active')));
-  if (rows.length === 0) return null;
-  return rows.reduce<Role>((max, m) => (ROLE_RANK[m.role] > ROLE_RANK[max] ? m.role : max), 'member');
+  return topRole(
+    await db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.status, 'active')))
+  );
+}
+
+/**
+ * 대상 회원이 **만료된 것까지 포함해** 가진 최고 역할. 멤버십이 아예 없으면 null.
+ *
+ * "누가 이 계정을 건드릴 수 있는가"는 이 값으로 판단한다. 활성 역할(activeRoleOf)로만 보면
+ * 비활성화된 시스템관리자는 역할이 null 로 읽혀, 회장단이 sysadmin 전용 보호를 그대로 지나
+ * 되살리거나 강제 탈퇴시킬 수 있었고 `[high]` 표시와 회장단 알림도 빠졌다(2026-10-17 보안 감사).
+ * "마지막 권한자" 계산은 여전히 활성 역할로 한다 — 그것은 **지금** 콘솔을 쥔 사람 수의 문제다.
+ */
+async function highestRoleOf(db: Db, userId: string): Promise<Role | null> {
+  return topRole(await db.select({ role: memberships.role }).from(memberships).where(eq(memberships.userId, userId)));
+}
+
+/**
+ * 회원 권한을 바꾸는 작업을 **한 줄로 세운다**(트랜잭션 단위 잠금, 커밋과 함께 풀린다).
+ *
+ * 마지막 회장단·시스템관리자 보호는 "세고 → 판단하고 → 쓰는" 구조라, 회장단 둘이 동시에 서로를
+ * 내리면 둘 다 "아직 2명"을 보고 통과해 0명이 될 수 있었다(2026-10-17 보안 감사). 콘솔이 잠기면
+ * DB 에 직접 들어가야 풀린다. 이 작업들은 사람이 버튼으로 하는 드문 일이라 직렬화 비용이 없다.
+ * 트랜잭션 단위 잠금은 트랜잭션 풀러(pgbouncer)에서도 쓸 수 있다(세션 단위는 못 쓴다).
+ */
+export async function lockMembershipChanges(tx: Db): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('membership.manage'))`);
 }
 
 /** 회원 역할 지정(회장단/시스템관리자). 활성 멤버십의 역할을 교체. */
@@ -210,49 +243,56 @@ export async function setMemberRole(db: Db, actor: Actor, targetUserId: string, 
   ensureValidRole(newRole);
   if (targetUserId === actor.userId) throw new MemberError('self_forbidden');
 
-  const [target] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
-  if (!target) throw new MemberError('not_found');
+  const changed = await db.transaction(async (tx) => {
+    await lockMembershipChanges(tx);
 
-  const currentRole = await activeRoleOf(db, targetUserId);
-  if (currentRole === null) throw new MemberError('no_membership');
+    const [target] = await tx.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
+    if (!target) throw new MemberError('not_found');
 
-  // sysadmin 부여/회수는 sysadmin 만.
-  if ((newRole === 'sysadmin' || currentRole === 'sysadmin') && actor.role !== 'sysadmin') throw new MemberError('sysadmin_only');
-  // 마지막 활성 sysadmin 강등 금지.
-  if (currentRole === 'sysadmin' && newRole !== 'sysadmin' && (await activeSysadminCount(db)) <= 1) throw new MemberError('last_sysadmin');
-  // 마지막 권한자(회장단·시스템관리자)를 강등하면 아무도 권한을 되돌릴 수 없다 — 전원 잠금 방지.
-  if (wouldRemoveLastPrivileged(currentRole, newRole, await activePrivilegedCount(db))) {
-    throw new MemberError('last_privileged');
-  }
+    const currentRole = await activeRoleOf(tx, targetUserId);
+    if (currentRole === null) throw new MemberError('no_membership');
 
-  if (currentRole === newRole) return;
+    // sysadmin 부여/회수는 sysadmin 만.
+    if ((newRole === 'sysadmin' || currentRole === 'sysadmin') && actor.role !== 'sysadmin') throw new MemberError('sysadmin_only');
+    // 마지막 활성 sysadmin 강등 금지.
+    if (currentRole === 'sysadmin' && newRole !== 'sysadmin' && (await activeSysadminCount(tx)) <= 1) throw new MemberError('last_sysadmin');
+    // 마지막 권한자(회장단·시스템관리자)를 강등하면 아무도 권한을 되돌릴 수 없다 — 전원 잠금 방지.
+    if (wouldRemoveLastPrivileged(currentRole, newRole, await activePrivilegedCount(tx))) {
+      throw new MemberError('last_privileged');
+    }
 
-  await db.update(memberships).set({ role: newRole }).where(and(eq(memberships.userId, targetUserId), eq(memberships.status, 'active')));
+    if (currentRole === newRole) return null;
 
-  // 강등이면 세션도 끊는다 — 역할이 줄었는데 이전 역할로 발급된 토큰이 살아 있을 이유가 없다.
-  // (인가는 이미 매 요청 DB 에서 역할을 다시 읽으므로 권한 상승이 남아 있진 않지만,
-  //  퇴출·계정 이상 상황에서 읽기 접근이 그대로 유지되는 것 자체가 리스크다. 2026-07-24 결정 13)
-  const demoted = isDemotion(currentRole, newRole);
-  if (demoted) await bumpSessionVersion(db, targetUserId);
+    await tx.update(memberships).set({ role: newRole }).where(and(eq(memberships.userId, targetUserId), eq(memberships.status, 'active')));
 
-  // 회장단이 관여된 변경(강등이든 승격이든)은 눈에 띄게 남긴다.
-  const touchesPrivileged = isPrivileged(currentRole) || isPrivileged(newRole);
-  await recordAudit(
-    db,
-    buildAuditEntry({
-      actorUserId: actor.userId,
-      action: 'membership.set_role',
-      targetTable: 'memberships',
-      targetId: targetUserId,
-      before: { role: currentRole },
-      after: { role: newRole, sessionsRevoked: demoted },
-      severity: touchesPrivileged ? 'high' : undefined,
-    })
-  );
-  if (touchesPrivileged) {
+    // 강등이면 세션도 끊는다 — 역할이 줄었는데 이전 역할로 발급된 토큰이 살아 있을 이유가 없다.
+    // (인가는 이미 매 요청 DB 에서 역할을 다시 읽으므로 권한 상승이 남아 있진 않지만,
+    //  퇴출·계정 이상 상황에서 읽기 접근이 그대로 유지되는 것 자체가 리스크다. 2026-07-24 결정 13)
+    const demoted = isDemotion(currentRole, newRole);
+    if (demoted) await bumpSessionVersion(tx, targetUserId);
+
+    // 회장단이 관여된 변경(강등이든 승격이든)은 눈에 띄게 남긴다.
+    const touchesPrivileged = isPrivileged(currentRole) || isPrivileged(newRole);
+    await recordAudit(
+      tx,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: 'membership.set_role',
+        targetTable: 'memberships',
+        targetId: targetUserId,
+        before: { role: currentRole },
+        after: { role: newRole, sessionsRevoked: demoted },
+        severity: touchesPrivileged ? 'high' : undefined,
+      })
+    );
+    return { currentRole, touchesPrivileged };
+  });
+
+  // 알림은 커밋 **뒤에** 보낸다 — 메일을 보내 놓고 롤백되면 일어나지 않은 변경을 알리게 된다.
+  if (changed?.touchesPrivileged) {
     await notifyPrivilegedChange(db, actor, {
       targetUserId,
-      summary: `회장단 권한이 변경되었습니다: ${currentRole} → ${newRole}`,
+      summary: `회장단 권한이 변경되었습니다: ${changed.currentRole} → ${newRole}`,
     });
   }
 }
@@ -283,7 +323,8 @@ export async function revokeSessions(db: Db, actor: Actor, targetUserId: string)
   const [target] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
   if (!target) throw new MemberError('not_found');
 
-  const currentRole = await activeRoleOf(db, targetUserId);
+  // 만료된 멤버십까지 본다 — 비활성화된 시스템관리자도 시스템관리자다(highestRoleOf 주석).
+  const currentRole = await highestRoleOf(db, targetUserId);
   // sysadmin 의 세션을 끊는 것은 sysadmin 만(회장단이 시스템관리자를 밀어내지 못하게).
   if (currentRole === 'sysadmin' && actor.role !== 'sysadmin') throw new MemberError('sysadmin_only');
 
@@ -316,39 +357,47 @@ export async function setMemberActive(db: Db, actor: Actor, targetUserId: string
   requireAuthorized(actor, { kind: 'membership.manage' });
   if (targetUserId === actor.userId) throw new MemberError('self_forbidden');
 
-  const [target] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
-  if (!target) throw new MemberError('not_found');
+  const touchesPrivileged = await db.transaction(async (tx) => {
+    await lockMembershipChanges(tx);
 
-  const currentRole = await activeRoleOf(db, targetUserId);
-  // sysadmin 비활성화는 sysadmin 만 + 마지막 보호.
-  if (currentRole === 'sysadmin') {
-    if (actor.role !== 'sysadmin') throw new MemberError('sysadmin_only');
-    if (!active && (await activeSysadminCount(db)) <= 1) throw new MemberError('last_sysadmin');
-  }
-  // 마지막 남은 권한자를 비활성화하면 콘솔에서 아무도 되돌릴 수 없다 — 전원 잠금 방지.
-  if (!active && wouldRemoveLastPrivileged(currentRole, null, await activePrivilegedCount(db))) {
-    throw new MemberError('last_privileged');
-  }
+    const [target] = await tx.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
+    if (!target) throw new MemberError('not_found');
 
-  await db.update(memberships).set({ status: active ? 'active' : 'expired' }).where(eq(memberships.userId, targetUserId));
+    // 두 값을 갈라 쓴다: **누가 건드릴 수 있는가**는 만료 포함 최고 역할로(비활성 sysadmin 을
+    // 회장단이 되살리던 구멍 — highestRoleOf 주석), **마지막 권한자인가**는 지금 활성인 역할로.
+    const currentRole = await activeRoleOf(tx, targetUserId);
+    const highestRole = await highestRoleOf(tx, targetUserId);
+    // sysadmin 비활성화·재활성화는 sysadmin 만 + 마지막 보호.
+    if (highestRole === 'sysadmin' && actor.role !== 'sysadmin') throw new MemberError('sysadmin_only');
+    if (currentRole === 'sysadmin' && !active && (await activeSysadminCount(tx)) <= 1) throw new MemberError('last_sysadmin');
+    // 마지막 남은 권한자를 비활성화하면 콘솔에서 아무도 되돌릴 수 없다 — 전원 잠금 방지.
+    if (!active && wouldRemoveLastPrivileged(currentRole, null, await activePrivilegedCount(tx))) {
+      throw new MemberError('last_privileged');
+    }
 
-  // 비활성화의 의도는 "이 사람의 접근을 지금 끊는다" 다. 세션을 남겨 두면 쓰기는 막혀도
-  // 화면 열람이 계속되어 의도와 어긋난다 — 특히 운영진 퇴출·계정 이상 상황에서 읽기 접근이
-  // 그대로면 그 자체가 리스크다. 재활성화는 끊을 이유가 없으므로 올리지 않는다. (결정 13)
-  if (!active) await bumpSessionVersion(db, targetUserId);
+    await tx.update(memberships).set({ status: active ? 'active' : 'expired' }).where(eq(memberships.userId, targetUserId));
 
-  const touchesPrivileged = currentRole != null && isPrivileged(currentRole);
-  await recordAudit(
-    db,
-    buildAuditEntry({
-      actorUserId: actor.userId,
-      action: active ? 'membership.activate' : 'membership.deactivate',
-      targetTable: 'memberships',
-      targetId: targetUserId,
-      after: { active, sessionsRevoked: !active },
-      severity: touchesPrivileged ? 'high' : undefined,
-    })
-  );
+    // 비활성화의 의도는 "이 사람의 접근을 지금 끊는다" 다. 세션을 남겨 두면 쓰기는 막혀도
+    // 화면 열람이 계속되어 의도와 어긋난다 — 특히 운영진 퇴출·계정 이상 상황에서 읽기 접근이
+    // 그대로면 그 자체가 리스크다. 재활성화는 끊을 이유가 없으므로 올리지 않는다. (결정 13)
+    if (!active) await bumpSessionVersion(tx, targetUserId);
+
+    // 회장단·시스템관리자 계정을 **되살리는** 것도 눈에 띄어야 한다 — 그래서 만료 포함 역할로 본다.
+    const privileged = highestRole != null && isPrivileged(highestRole);
+    await recordAudit(
+      tx,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: active ? 'membership.activate' : 'membership.deactivate',
+        targetTable: 'memberships',
+        targetId: targetUserId,
+        after: { active, sessionsRevoked: !active },
+        severity: privileged ? 'high' : undefined,
+      })
+    );
+    return privileged;
+  });
+
   if (touchesPrivileged) {
     await notifyPrivilegedChange(db, actor, {
       targetUserId,
@@ -369,13 +418,21 @@ export async function setMemberActive(db: Db, actor: Actor, targetUserId: string
 export function withdrawBlockReason(input: {
   isSelf: boolean;
   actorRole: Role;
+  /** 대상의 **활성** 최고 역할(마지막 권한자 판단용). 활성 멤버십이 없으면 null. */
   targetRole: Role | null;
+  /**
+   * 대상이 만료된 것까지 포함해 가진 최고 역할(누가 내보낼 수 있는가 판단용).
+   * 안 주면 targetRole 과 같다고 본다. 비활성 sysadmin 은 targetRole 이 null 이라, 이 값이 없으면
+   * 회장단이 sysadmin 전용 보호를 지나 영구 삭제할 수 있었다(2026-10-17 보안 감사).
+   */
+  targetHighestRole?: Role | null;
   activePrivileged: number;
   activeSysadmin: number;
 }): 'sysadmin_only' | 'last_sysadmin' | 'last_privileged' | null {
   const { isSelf, actorRole, targetRole, activePrivileged, activeSysadmin } = input;
-  // 남을 내보내는 경우, 시스템관리자는 시스템관리자만 건드릴 수 있다.
-  if (!isSelf && targetRole === 'sysadmin' && actorRole !== 'sysadmin') return 'sysadmin_only';
+  const targetHighestRole = input.targetHighestRole ?? targetRole;
+  // 남을 내보내는 경우, 시스템관리자는 시스템관리자만 건드릴 수 있다(비활성이어도 마찬가지).
+  if (!isSelf && targetHighestRole === 'sysadmin' && actorRole !== 'sysadmin') return 'sysadmin_only';
   if (targetRole === 'sysadmin' && activeSysadmin <= 1) return 'last_sysadmin';
   if (wouldRemoveLastPrivileged(targetRole, null, activePrivileged)) return 'last_privileged';
   return null;
@@ -408,59 +465,70 @@ export async function withdrawMember(db: Db, actor: Actor, targetUserId: string)
   // 남을 내보내는 것은 권한 회수와 같은 무게다. 본인 탈퇴는 누구나 할 수 있다.
   if (!isSelf) requireAuthorized(actor, { kind: 'membership.manage' });
 
-  const [target] = await db
-    .select({ id: users.id, withdrawnAt: users.withdrawnAt, name: users.name, email: users.email })
-    .from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
-  if (!target) throw new MemberError('not_found');
-  if (target.withdrawnAt) throw new MemberError('already_withdrawn');
-  // 지우기 전에 붙잡아 둔다 — 회장단 탈퇴 알림에 "탈퇴한 회원"만 찍히면 탈취 탐지에 쓸모가 없다.
-  const targetLabel = `${target.name} <${target.email}>`;
+  // 다섯 번의 쓰기를 **한 트랜잭션**으로 묶는다. 예전에는 따로 커밋돼, 중간에 실패하면 멤버십만
+  // 내려가고 개인정보는 남은 반쪽 탈퇴가 됐다. 마지막 권한자 판정과 경합하지 않게 잠금도 건다.
+  const done = await db.transaction(async (tx) => {
+    await lockMembershipChanges(tx);
 
-  const targetRole = await activeRoleOf(db, targetUserId);
-  const blocked = withdrawBlockReason({
-    isSelf,
-    actorRole: actor.role,
-    targetRole,
-    activePrivileged: await activePrivilegedCount(db),
-    activeSysadmin: await activeSysadminCount(db),
+    const [target] = await tx
+      .select({ id: users.id, withdrawnAt: users.withdrawnAt, name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    if (!target) throw new MemberError('not_found');
+    if (target.withdrawnAt) throw new MemberError('already_withdrawn');
+    // 지우기 전에 붙잡아 둔다 — 회장단 탈퇴 알림에 "탈퇴한 회원"만 찍히면 탈취 탐지에 쓸모가 없다.
+    const targetLabel = `${target.name} <${target.email}>`;
+
+    const targetRole = await activeRoleOf(tx, targetUserId);
+    const targetHighestRole = await highestRoleOf(tx, targetUserId);
+    const blocked = withdrawBlockReason({
+      isSelf,
+      actorRole: actor.role,
+      targetRole,
+      targetHighestRole,
+      activePrivileged: await activePrivilegedCount(tx),
+      activeSysadmin: await activeSysadminCount(tx),
+    });
+    if (blocked) throw new MemberError(blocked);
+
+    await tx.update(memberships).set({ status: 'expired' }).where(eq(memberships.userId, targetUserId));
+    await tx.delete(teamMembers).where(eq(teamMembers.userId, targetUserId));
+    await tx
+      .update(users)
+      .set({
+        name: WITHDRAWN_NAME,
+        email: withdrawnEmail(targetUserId),
+        phone: null,
+        withdrawnAt: new Date(),
+        sessionVersion: sql`${users.sessionVersion} + 1`,
+      })
+      .where(eq(users.id, targetUserId));
+
+    // 비활성 상태였던 회장단·시스템관리자의 탈퇴도 알린다 — 그래서 만료 포함 역할로 본다.
+    const privileged = targetHighestRole != null && isPrivileged(targetHighestRole);
+    // ⚠ audit 에 이름·이메일·전화를 남기지 않는다. 방금 지운 개인정보를 감사 기록에 옮겨
+    // 적으면 탈퇴가 아무 의미가 없어진다(규칙 #4 는 "무엇을 했는지"를 요구하지 계정 주인의
+    // 인적사항을 요구하지 않는다). 누가·언제·어떤 계정인지는 actor/targetId/시각으로 충분하다.
+    await recordAudit(
+      tx,
+      buildAuditEntry({
+        actorUserId: actor.userId,
+        action: isSelf ? 'membership.withdraw_self' : 'membership.withdraw_forced',
+        targetTable: 'users',
+        targetId: targetUserId,
+        before: { role: targetRole ?? targetHighestRole },
+        after: { withdrawn: true, personalDataErased: true },
+        severity: privileged ? 'high' : undefined,
+      })
+    );
+    return { privileged, targetLabel };
   });
-  if (blocked) throw new MemberError(blocked);
 
-  await db.update(memberships).set({ status: 'expired' }).where(eq(memberships.userId, targetUserId));
-  await db.delete(teamMembers).where(eq(teamMembers.userId, targetUserId));
-  await db
-    .update(users)
-    .set({
-      name: WITHDRAWN_NAME,
-      email: withdrawnEmail(targetUserId),
-      phone: null,
-      withdrawnAt: new Date(),
-      sessionVersion: sql`${users.sessionVersion} + 1`,
-    })
-    .where(eq(users.id, targetUserId));
-
-  // ⚠ audit 에 이름·이메일·전화를 남기지 않는다. 방금 지운 개인정보를 감사 기록에 옮겨
-  // 적으면 탈퇴가 아무 의미가 없어진다(규칙 #4 는 "무엇을 했는지"를 요구하지 계정 주인의
-  // 인적사항을 요구하지 않는다). 누가·언제·어떤 계정인지는 actor/targetId/시각으로 충분하다.
-  await recordAudit(
-    db,
-    buildAuditEntry({
-      actorUserId: actor.userId,
-      action: isSelf ? 'membership.withdraw_self' : 'membership.withdraw_forced',
-      targetTable: 'users',
-      targetId: targetUserId,
-      before: { role: targetRole },
-      after: { withdrawn: true, personalDataErased: true },
-      severity: targetRole != null && isPrivileged(targetRole) ? 'high' : undefined,
-    })
-  );
-
-  if (targetRole != null && isPrivileged(targetRole)) {
+  if (done.privileged) {
     await notifyPrivilegedChange(db, actor, {
       targetUserId,
-      targetLabel,
+      targetLabel: done.targetLabel,
       summary: isSelf ? '회장단 계정이 스스로 탈퇴했습니다.' : '회장단 계정이 강제 탈퇴 처리되었습니다.',
       detail: '탈퇴는 되돌릴 수 없습니다. 인수인계가 끝나지 않았다면 즉시 확인해 주세요.',
     });

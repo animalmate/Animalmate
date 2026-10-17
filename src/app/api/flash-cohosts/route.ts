@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { searchCoHostCandidates } from '@/flash/flash';
-import { internalError } from '@/http/errors';
+import { internalError, membershipInactive } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!actor.membershipActive) return membershipInactive();
   try {
     const q = (new URL(req.url).searchParams.get('q') ?? '').slice(0, 50);
     return NextResponse.json({ candidates: await searchCoHostCandidates(db, actor, q) });

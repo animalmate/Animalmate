@@ -9,7 +9,7 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { listFlashMeetups, createFlashMeetup, countPendingFlash, FlashInputError } from '@/flash/flash';
 import { PermissionError } from '@/auth/guard';
-import { internalError } from '@/http/errors';
+import { internalError, membershipInactive } from '@/http/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!actor.membershipActive) return membershipInactive();
   const scope = new URL(req.url).searchParams.get('scope') === 'past' ? 'past' : 'upcoming';
   const [items, pending] = await Promise.all([
     listFlashMeetups(db, actor, { scope }),

@@ -5,14 +5,14 @@
 //
 // 버튼을 그릴지 말지는 서버가 팀마다 판정해 `canManage` 로 내려준다. 그것은 표시용일 뿐이고
 // 실제 검증은 API·서비스가 다시 한다(규칙 #6).
-import { requireActor } from '@/auth/current-user';
+import { requireActiveActor } from '@/auth/current-user';
 import { ConsoleShell } from '@/components/console-shell';
 import { GuidebooksPanel } from './panel';
 
 export const dynamic = 'force-dynamic';
 
 export default async function GuidebooksPage() {
-  const actor = await requireActor();
+  const actor = await requireActiveActor();
   return (
     <ConsoleShell actor={actor}>
       <GuidebooksPanel />

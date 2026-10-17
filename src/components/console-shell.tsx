@@ -13,7 +13,7 @@ import { ConsoleNav } from './console-nav';
 export function ConsoleShell({ actor, children, wide = false }: { actor: Actor; children: ReactNode; wide?: boolean }) {
   return (
     <div className="flex min-h-screen flex-col">
-      <ConsoleNav role={actor.role} />
+      <ConsoleNav role={actor.role} membershipActive={actor.membershipActive} />
       <main className={`mx-auto w-full px-4 pb-14 pt-6 sm:px-6 ${wide ? 'max-w-[1400px]' : 'max-w-[1000px]'}`}>
         {children}
       </main>

@@ -13,7 +13,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { CLUB_GUIDEBOOK_ID, clubGuidebooks, teamGuidebooks, teams, users, documents } from '@/db/schema';
 import type { Actor } from '@/auth/permissions';
-import { isPrivileged, leadsTeam } from '@/auth/permissions';
+import { authorize } from '@/auth/permissions';
 import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { extractPdfMarkdown } from '@/rag/gemini';
@@ -29,9 +29,19 @@ import {
   downloadGuidebook,
   guidebookPath,
   headGuidebook,
+  looksLikePdf,
 } from '@/storage/guidebooks';
 
 export type Guidebook = typeof teamGuidebooks.$inferSelect;
+
+/**
+ * 확인해 올리는 가이드북 본문의 길이 상한. 지금 올라와 있는 것은 수백~수천 자다(2026-10-17 실측 최대 785자).
+ *
+ * 다른 본문은 전부 길이를 묶는데(LIMITS.contentMd) 여기만 상한이 없어, 수 MB 를 밀어 넣으면 그대로
+ * 청킹·임베딩(외부 API 비용)과 DB 용량으로 이어졌다(2026-10-17 보안 감사). 공지 한 편 기준인 2만 자는
+ * 수십 쪽 PDF 에서 뽑은 글에는 좁을 수 있어, 그보다 넉넉하게 잡는다.
+ */
+export const MAX_GUIDEBOOK_TEXT = 100_000;
 
 /** 올린 파일이 규칙에 안 맞음(형식·크기). 라우트에서 400 으로 매핑. */
 export class GuidebookRejectedError extends Error {
@@ -76,7 +86,8 @@ async function verifyUploaded(path: string): Promise<{ bytes: number }> {
     await deleteGuidebook(path);
     throw new GuidebookRejectedError(TOO_BIG_MESSAGE);
   }
-  if (head.contentType && !head.contentType.startsWith('application/pdf')) {
+  // 붙어 온 형식(Content-Type)은 올린 쪽이 정한 값이라 내용까지 본다(looksLikePdf 주석).
+  if ((head.contentType && !head.contentType.startsWith('application/pdf')) || !looksLikePdf(head.head)) {
     await deleteGuidebook(path);
     throw new GuidebookRejectedError('PDF 파일만 올릴 수 있습니다.');
   }
@@ -239,6 +250,9 @@ export async function confirmGuidebookText(
 
   const contentMd = input.contentMd.trim();
   if (contentMd.length < 20) throw new GuidebookRejectedError('본문이 너무 짧습니다.');
+  if (contentMd.length > MAX_GUIDEBOOK_TEXT) {
+    throw new GuidebookRejectedError(`본문이 너무 깁니다(최대 ${MAX_GUIDEBOOK_TEXT.toLocaleString('ko-KR')}자). 꼭 필요한 부분만 남겨 주세요.`);
+  }
 
   const [team] = await db.select().from(teams).where(eq(teams.id, input.teamId)).limit(1);
 
@@ -353,7 +367,10 @@ export async function listGuidebooks(db: Db, actor: Actor): Promise<GuidebookVie
 
   const out: GuidebookView[] = [];
   for (const r of rows) {
-    const canManage = isPrivileged(actor.role) || leadsTeam(actor, r.teamId);
+    // 쓰기 라우트가 실제로 검사하는 규칙(guidebook.manage)을 그대로 쓴다. 예전에는 역할·팀장 여부만
+    // 따로 봐서, 멤버십이 꺼졌거나 부원으로 내려간 전직 팀장에게도 확인 전 본문(pendingText)이
+    // 실렸다(2026-10-17 보안 감사). 규칙을 두 벌 두면 이렇게 갈라진다.
+    const canManage = authorize(actor, { kind: 'guidebook.manage', owner: { ownerType: 'team', ownerId: r.teamId } }).allowed;
     let guidebook: GuidebookView['guidebook'] = null;
     if (r.gb) {
       guidebook = {

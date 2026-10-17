@@ -6,7 +6,7 @@
 //  - 앱 미가입자만 팀별 "수동 팀장단"(teams.leaders: 이름·전화)으로 공지에 덧붙인다(setTeamManualLeaders).
 //  - 팀에 배정되면 member→staff 승격, 마지막 팀에서 빠지면 staff→member 강등(board/sysadmin 유지).
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type * as schema from '@/db/schema';
 import { teamMembers, teams, users, memberships, type TeamLeader } from '@/db/schema';
@@ -77,7 +77,10 @@ async function demoteIfOrphan(tx: Db, userId: string, actorUserId: string): Prom
     .where(and(eq(memberships.userId, userId), eq(memberships.status, 'active'), eq(memberships.role, 'staff')))
     .returning({ id: memberships.id });
   if (demoted.length > 0) {
-    await recordAudit(tx, buildAuditEntry({ actorUserId, action: 'membership.demote', targetTable: 'memberships', targetId: userId, after: { role: 'member', reason: 'team_unassigned' } }));
+    // 강등이면 세션도 끊는다 — 회원 관리의 역할 변경(setMemberRole)과 같은 규칙이다(결정 13).
+    // 이 길만 빠져 있어, 팀에서 빠져 부원이 된 사람이 운영진 시절 세션을 그대로 들고 있었다.
+    await tx.update(users).set({ sessionVersion: sql`${users.sessionVersion} + 1` }).where(eq(users.id, userId));
+    await recordAudit(tx, buildAuditEntry({ actorUserId, action: 'membership.demote', targetTable: 'memberships', targetId: userId, after: { role: 'member', reason: 'team_unassigned', sessionsRevoked: true } }));
   }
 }
 

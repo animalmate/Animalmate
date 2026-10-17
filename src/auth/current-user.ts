@@ -24,6 +24,22 @@ export async function requireActor(): Promise<Actor> {
   return actor;
 }
 
+/**
+ * 로그인 + **활성 멤버십** 필수(서버 컴포넌트). 멤버십이 꺼졌으면 홈으로 — 홈이 "멤버십이 아직
+ * 활성화되지 않았어요" 배너로 회장단에게 문의하라고 안내한다.
+ *
+ * requireActor 와 갈라 둔 이유: 비활성화된 계정도 로그인은 된다. 홈·내 정보(전화 수정, 본인 탈퇴 —
+ * 개인정보처리방침이 약속한 길)는 열려 있어야 하기 때문이다. 그러나 동아리 내부 자료(캘린더·번개·
+ * 가이드북·챗봇)까지 열려 있으면 "비활성화 = 지금 접근을 끊는다"(결정 13)가 다시 로그인하는 것만으로
+ * 무너진다(2026-10-17 보안 감사). 운영진 이상 화면은 requireStaff 가 이미 막는다 — 비활성 계정의
+ * 역할은 활성 멤버십에서만 나오므로 항상 member 다.
+ */
+export async function requireActiveActor(): Promise<Actor> {
+  const actor = await requireActor();
+  if (!actor.membershipActive) redirect('/');
+  return actor;
+}
+
 /** 운영진 이상 필수. 부족하면 홈으로. */
 export async function requireStaff(): Promise<Actor> {
   const actor = await requireActor();

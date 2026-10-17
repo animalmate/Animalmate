@@ -5,11 +5,13 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { chatLogs } from '@/db/schema';
 import { getCurrentActor } from '@/auth/current-user';
+import { authorize } from '@/auth/permissions';
 import { askChatbot } from '@/rag/chatbot';
 import { checkQuota, type QuotaReason } from '@/rag/quota';
 import { findSensitiveIds } from '@/rag/pii';
 import { internalError } from '@/http/errors';
 import { LIMITS, InputTooLongError, checkLength } from '@/http/input';
+import { consumeRateLimit, RateLimitError, RULES } from '@/http/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,7 +25,18 @@ const QUOTA_MSG: Record<QuotaReason, string> = {
 export async function POST(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
   if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 }); // 비로그인 차단(결정: 로그인 전용)
+  // permissions.ts 에 정의된 chatbot.ask 를 실제로 태운다 — 비활성화·장기 미접속 계정은 여기서 끊긴다.
+  // 예전에는 로그인 여부만 봐서, 비활성화된 계정도 다시 로그인해 질문하고 쿼터를 쓸 수 있었다
+  // (2026-10-17 보안 감사). 이 경로는 Google 로 질문이 나가는 길이라 특히 그렇다.
+  if (!authorize(actor, { kind: 'chatbot.ask' }).allowed) {
+    return NextResponse.json(
+      { error: 'membership_inactive', message: '멤버십이 활성화되지 않은 계정은 챗봇을 쓸 수 없어요. 회장단에게 문의해 주세요.' },
+      { status: 403 }
+    );
+  }
   try {
+    // 동시에 여러 질문을 띄워 일일 쿼터를 건너뛰지 못하게 원자적 상한을 먼저 건다(rate-limit.ts chatbotAsk).
+    await consumeRateLimit(db, RULES.chatbotAsk, actor.userId);
     const { question } = await req.json();
     const q = String(question ?? '').trim();
     if (!q) return NextResponse.json({ error: 'empty_question' }, { status: 400 });
@@ -74,6 +87,12 @@ export async function POST(req: Request): Promise<Response> {
     });
   } catch (e) {
     if (e instanceof InputTooLongError) return NextResponse.json({ error: 'too_long', field: e.field, max: e.max }, { status: 400 });
+    if (e instanceof RateLimitError) {
+      return NextResponse.json(
+        { error: 'rate_limited', retryAfter: e.retryAfter, message: '질문이 너무 빨라요. 잠시 후 다시 물어봐 주세요.' },
+        { status: 429, headers: { 'Retry-After': String(e.retryAfter) } }
+      );
+    }
     return internalError('POST /api/chatbot/ask', e);
   }
 }

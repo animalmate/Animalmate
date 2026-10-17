@@ -97,4 +97,17 @@ describe('withdrawBlockReason — 탈퇴 차단 규칙', () => {
   it('활성 멤버십이 없는 계정(targetRole=null)은 막을 이유가 없다', () => {
     expect(withdrawBlockReason({ ...base, targetRole: null })).toBeNull();
   });
+
+  // 비활성화된 시스템관리자는 활성 역할이 null 로 읽힌다. 그 값만 보면 회장단이 sysadmin 전용
+  // 보호를 지나 영구 삭제할 수 있었다(2026-10-17 보안 감사).
+  it('비활성 시스템관리자도 시스템관리자다 — 회장단은 내보낼 수 없다', () => {
+    expect(withdrawBlockReason({ ...base, targetRole: null, targetHighestRole: 'sysadmin' })).toBe('sysadmin_only');
+    expect(withdrawBlockReason({ ...base, actorRole: 'sysadmin', targetRole: null, targetHighestRole: 'sysadmin' })).toBeNull();
+  });
+
+  it('비활성 계정은 마지막 권한자 계산에 들어가지 않는다(지금 콘솔을 쥔 사람이 아니다)', () => {
+    expect(
+      withdrawBlockReason({ ...base, actorRole: 'sysadmin', targetRole: null, targetHighestRole: 'board', activePrivileged: 1 })
+    ).toBeNull();
+  });
 });

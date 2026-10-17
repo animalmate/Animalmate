@@ -138,7 +138,10 @@ export default async function HomePage() {
   const actor = await requireActor();
   const staff = isStaffPlus(actor.role);
   const board = isPrivileged(actor.role);
-  const shortcuts = [
+  // 멤버십이 꺼진 계정은 내부 화면(챗봇·캘린더·번개·가이드북)이 홈으로 돌려보낸다(requireActiveActor).
+  // 들어갈 수 없는 카드를 띄워 두면 눌러도 제자리라 고장 난 것처럼 보이므로 아예 그리지 않는다.
+  const active = actor.membershipActive;
+  const shortcuts = !active ? [] : [
     ...(staff ? STAFF_SHORTCUTS : MEMBER_SHORTCUTS),
     // 공개 공고 보기는 여기 없다 — 아래 "바로가기"의 모집 공고 카드가 같은 곳으로 간다(2026-08-29).
     // 예전엔 운영진에게만 상단에도 두었는데, 부원까지 보이는 카드가 생기면서 한 화면에 같은
@@ -153,7 +156,9 @@ export default async function HomePage() {
   // 자리가 이 배지뿐이라, 홈에서 한 번에 읽어 카드에 얹는다. 두 값을 하나의 칸에 겹쳐 쓰되
   // **안 읽은 쪽지를 먼저** 보여 준다: 승인은 며칠 미뤄도 되지만 답을 기다리는 사람은 오늘 있다.
   // `countPendingFlash` 는 운영진이 아니면 서버에서 0 을 돌려주므로 여기서 역할을 묻지 않는다.
-  const [flashUnread, flashPending] = await Promise.all([countFlashUnread(db, actor), countPendingFlash(db, actor)]);
+  const [flashUnread, flashPending] = active
+    ? await Promise.all([countFlashUnread(db, actor), countPendingFlash(db, actor)])
+    : [0, 0];
   const withFlashBadge = (s: Shortcut): Shortcut => {
     if (s.href !== '/flash') return s;
     if (flashUnread > 0) return { ...s, desc: `안 읽은 메시지 ${flashUnread}건`, badge: flashUnread };
@@ -175,7 +180,7 @@ export default async function HomePage() {
       <div className="space-y-7">
         {!actor.membershipActive ? (
           <Banner kind="warning" title="이번 학기 멤버십이 아직 활성화되지 않았어요">
-            운영진 지정이 필요하면 회장단에게 문의해 주세요.
+            멤버십이 활성화되면 챗봇·캘린더·번개·가이드북을 쓸 수 있어요. 회장단에게 문의해 주세요.
           </Banner>
         ) : null}
 
@@ -186,25 +191,28 @@ export default async function HomePage() {
           </p>
         </div>
 
-        {/* 챗봇 = 메인 기능. 전원에게 가장 크게 노출한다. 인사말과 간격을 넉넉히 둔다. */}
-        <a href="/chatbot" className="group block no-underline !mt-9 sm:!mt-11">
-          <Card className="flex items-center gap-4 border-blue-200 bg-gradient-to-r from-blue-50 to-cream-50 transition-colors group-hover:border-blue-400 sm:gap-5">
-            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white shadow-card ring-1 ring-blue-100">
-              <ChatDog mood="idle" size={50} />
-            </span>
-            <div className="min-w-0">
-              <strong className="block text-[18px] font-bold text-ink-900">동아리 챗봇에게 물어보기</strong>
-              <span className="mt-0.5 block text-[14px] leading-relaxed text-ink-500">
-                봉사 일정·회비·규정, 무엇이든 물어보면 바로 답해줘요.
+        {/* 챗봇 = 메인 기능. 전원에게 가장 크게 노출한다. 인사말과 간격을 넉넉히 둔다.
+            (멤버십이 꺼진 계정은 챗봇을 쓸 수 없으므로 그리지 않는다 — 위 `active` 주석.) */}
+        {active ? (
+          <a href="/chatbot" className="group block no-underline !mt-9 sm:!mt-11">
+            <Card className="flex items-center gap-4 border-blue-200 bg-gradient-to-r from-blue-50 to-cream-50 transition-colors group-hover:border-blue-400 sm:gap-5">
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white shadow-card ring-1 ring-blue-100">
+                <ChatDog mood="idle" size={50} />
               </span>
-            </div>
-            <span className="ml-auto hidden shrink-0 items-center gap-1 rounded-full bg-blue-600 px-4 py-2 text-[14px] font-semibold text-white transition-colors group-hover:bg-blue-700 sm:inline-flex">
-              물어보기
-              <Icon name="chevronRight" size={16} />
-            </span>
-            <Icon name="chevronRight" size={20} className="ml-auto shrink-0 text-blue-400 sm:hidden" />
-          </Card>
-        </a>
+              <div className="min-w-0">
+                <strong className="block text-[18px] font-bold text-ink-900">동아리 챗봇에게 물어보기</strong>
+                <span className="mt-0.5 block text-[14px] leading-relaxed text-ink-500">
+                  봉사 일정·회비·규정, 무엇이든 물어보면 바로 답해줘요.
+                </span>
+              </div>
+              <span className="ml-auto hidden shrink-0 items-center gap-1 rounded-full bg-blue-600 px-4 py-2 text-[14px] font-semibold text-white transition-colors group-hover:bg-blue-700 sm:inline-flex">
+                물어보기
+                <Icon name="chevronRight" size={16} />
+              </span>
+              <Icon name="chevronRight" size={20} className="ml-auto shrink-0 text-blue-400 sm:hidden" />
+            </Card>
+          </a>
+        ) : null}
 
         {shortcuts.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
