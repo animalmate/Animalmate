@@ -7,9 +7,9 @@
 // 중복 방지(핵심): 수동으로 넣어 둔 사람이 나중에 가입·팀 배정되면 같은 사람이 두 번 나올 수 있다.
 // → 전화번호(숫자만)로 같은 사람을 판정해, 자동 명단에 이미 있으면 수동 항목을 버린다.
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, exists, isNull } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { teamMembers, teams, users, type TeamLeader } from '@/db/schema';
+import { memberships, teamMembers, teams, users, type TeamLeader } from '@/db/schema';
 import { leadersBlock } from '@/publishing/placeholders';
 
 /** 전화번호 비교용 정규화 — 숫자만 남긴다('010-1234-5678' → '01012345678'). 빈 값이면 빈 문자열. */
@@ -60,7 +60,21 @@ export async function composeTeamLeaders(db: Db, teamId: string): Promise<string
       .select({ label: teamMembers.label, name: users.name, phone: users.phone })
       .from(teamMembers)
       .innerJoin(users, eq(users.id, teamMembers.userId))
-      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.position, 'leader'))),
+      .where(
+        and(
+          eq(teamMembers.teamId, teamId),
+          eq(teamMembers.position, 'leader'),
+          // 멤버십이 살아 있는 사람만 — 비활성화·장기 미접속으로 내려간 전직 팀장의 **이름과 전화번호**가
+          // 카페 공지로 계속 나가고 있었다(2026-10-17 보안 감사). 카페 글은 지울 수 없어 한 번 나가면 끝이다.
+          isNull(users.withdrawnAt),
+          exists(
+            db
+              .select({ one: memberships.id })
+              .from(memberships)
+              .where(and(eq(memberships.userId, users.id), eq(memberships.status, 'active')))
+          )
+        )
+      ),
     db.select({ leaders: teams.leaders }).from(teams).where(eq(teams.id, teamId)).limit(1),
   ]);
   const members: TeamLeader[] = memberRows.map((r) => ({

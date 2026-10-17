@@ -3,7 +3,7 @@
 // 이스케이프한다. LLM 응답을 화면에 그리는 경로라 XSS 싱크가 없어야 한다(07-DECISIONS 10 DoD).
 
 import { Fragment, type ReactNode } from 'react';
-import { parseMarkdown, type Block, type Inline } from '@/lib/markdown';
+import { isInternalHref, parseMarkdown, type Block, type Inline } from '@/lib/markdown';
 
 function renderInline(nodes: Inline[]): ReactNode {
   return nodes.map((n, i) => {
@@ -21,8 +21,13 @@ function renderInline(nodes: Inline[]): ReactNode {
           </code>
         );
       case 'link':
-        return (
-          // href 는 파서에서 http/https 만 통과. 새 탭 + noopener.
+        // href 는 파서에서 http/https 와 사이트 안 경로만 통과. 바깥 주소는 새 탭 + noopener,
+        // 사이트 안 경로(/guidebooks)는 지금 탭에서 연다 — 챗봇 대화에서 가이드북으로 넘어가는 길이다.
+        return isInternalHref(n.href) ? (
+          <a key={i} href={n.href} className="text-blue-600 underline">
+            {renderInline(n.c)}
+          </a>
+        ) : (
           <a key={i} href={n.href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
             {renderInline(n.c)}
           </a>

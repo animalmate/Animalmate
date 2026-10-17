@@ -7,7 +7,11 @@ import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
 import { isPrivileged } from '@/auth/permissions';
 import { listAuditActors, listAuditLogs, DEFAULT_LIMIT } from '@/auth/audit-query';
+import { AUDIT_GROUPS } from '@/auth/audit-view';
 import { internalError } from '@/http/errors';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GROUP_KEYS = new Set(AUDIT_GROUPS.map((g) => g.key));
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,12 +27,20 @@ export async function GET(req: Request): Promise<Response> {
       return Number.isFinite(v) && v > 0 ? v : undefined;
     };
 
+    // 필터 값은 화면이 고르는 목록 안에서만 받는다. 분류는 LIKE 접두사로 쓰이므로 `%`·`_` 가 섞이면
+    // 조건이 무력해지고, 행위자는 uuid 칸이라 모양이 틀리면 DB 오류(500)가 났다(2026-10-17 보안 감사).
+    const group = url.searchParams.get('group') || undefined;
+    const actorParam = url.searchParams.get('actor') || undefined;
+    if ((group && !GROUP_KEYS.has(group)) || (actorParam && !UUID_RE.test(actorParam))) {
+      return NextResponse.json({ error: 'bad_request' }, { status: 400 });
+    }
+
     const page = await listAuditLogs(db, {
-      group: url.searchParams.get('group') || undefined,
+      group,
       highOnly: url.searchParams.get('high') === '1',
       includeAutomated: url.searchParams.get('auto') === '1',
       days: num('days'),
-      actorUserId: url.searchParams.get('actor') || undefined,
+      actorUserId: actorParam,
       cursor: url.searchParams.get('cursor'),
       limit: num('limit') ?? DEFAULT_LIMIT,
     });

@@ -164,6 +164,22 @@ export function normalizePlaceIds(ids: string[] | null | undefined): string[] {
   return out;
 }
 
+/**
+ * 공동 개최자 상한. 번개는 몇 명이 함께 여는 소모임이라 열 명이면 넉넉하다.
+ *
+ * 상한이 없으면 회원 전원을 공동 개최자로 넣을 수 있었다(2026-10-17 보안 감사) — 개최자는 그 번개에
+ * 신청할 수 없으니 신청 자체를 막는 셈이고, 승인 전(pending) 번개는 개최자에게만 보이므로 아직
+ * 승인되지 않은 글을 전원의 목록에 띄우는 길이기도 했다.
+ */
+export const CO_HOSTS_MAX = 10;
+
+/** 공동 개최자 id 목록 정리(순수) — 공백·중복·본인 제거 후 상한 확인. */
+export function normalizeCoHostIds(ids: string[] | null | undefined, selfId: string): string[] {
+  const out = [...new Set((ids ?? []).map((v) => String(v ?? '').trim()).filter((v) => v && v !== selfId))];
+  if (out.length > CO_HOSTS_MAX) throw new FlashInputError(`공동 개최자는 ${CO_HOSTS_MAX}명까지 넣을 수 있어요.`);
+  return out;
+}
+
 /** 쪽지 본문 정리(순수). **신청의 첫 줄도 이 검사를 지난다** — 메시지가 곧 신청이라서다. */
 export function normalizeMessage(body: string | null | undefined): string {
   const s = (body ?? '').trim();
@@ -677,12 +693,12 @@ async function hostIdsOf(db: Database, flashId: string): Promise<string[]> {
 }
 
 /**
- * 공동 개최자 후보 정리 — 실제로 존재하고 **탈퇴하지 않은** 계정만 남긴다.
+ * 공동 개최자 후보 정리 — 실제로 존재하고 **탈퇴하지 않은** 계정만 남긴다(상한은 normalizeCoHostIds).
  * 없는 id 를 조용히 버리는 이유: 화면에서 고르는 값이라 사람이 손으로 넣을 일이 없고,
  * 넣었다면 그건 공격이거나 낡은 목록이다. 어느 쪽이든 번개 개최를 막을 이유는 아니다.
  */
 async function validCoHosts(db: Database, ids: string[], selfId: string): Promise<string[]> {
-  const wanted = [...new Set(ids)].filter((v) => v && v !== selfId);
+  const wanted = normalizeCoHostIds(ids, selfId);
   if (wanted.length === 0) return [];
   const rows = await db
     .select({ id: users.id })
@@ -774,6 +790,8 @@ export async function updateFlashMeetup(db: Db, actor: Actor, id: string, input:
   const v = normalizeFlashInput(input);
 
   return db.transaction(async (tx) => {
+    // 이 UPDATE 가 번개 행을 잠그므로 신청(signUpToFlash 의 FOR UPDATE)은 커밋까지 기다린다 —
+    // 정원을 바꾸며 자리를 다시 계산하는 사이에 신청이 끼어들지 못한다.
     const [row] = await tx
       .update(flashMeetups)
       .set({ ...v, updatedAt: new Date() })
@@ -1149,6 +1167,9 @@ export async function cancelFlashSignup(db: Db, actor: Actor, signupId: string):
     // 본인 취소는 권한 검사 대상이 아니다(자기 신청이다). 남의 신청을 내보내는 것만 개최자 권한.
     if (!mine) requireAuthorized(actor, { kind: 'flash.manage', hosts });
     if (signup.status === 'canceled') return; // 이미 없는 것과 성공을 구분할 이유가 없다
+    // 자리 재계산은 신청(signUpToFlash)과 같은 줄에 선다 — 번개 행을 잠그지 않으면, 취소로 비는 자리를
+    // 다시 계산하는 사이에 들어온 신청이 옛 상태를 보고 확정돼 정원을 넘을 수 있었다(2026-10-17 감사).
+    await tx.select({ id: flashMeetups.id }).from(flashMeetups).where(eq(flashMeetups.id, signup.flashId)).for('update');
 
     await tx
       .update(flashSignups)

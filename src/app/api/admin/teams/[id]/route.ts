@@ -27,7 +27,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const team = await setTeamNoticeEditing(db, actor, id, b.canEditNotice);
       return NextResponse.json({ team });
     }
-    const team = await setTeamActive(db, actor, id, Boolean(b.isActive));
+    // 마지막 분기도 값이 실제로 왔는지 본다. `Boolean(undefined)` 는 false 라, 아무 필드도 없는(또는
+    // 오타 난) 요청이 그대로 **팀 비활성화**가 됐다(2026-10-17 보안 감사).
+    if (typeof b.isActive !== 'boolean') return NextResponse.json({ error: 'bad_request' }, { status: 400 });
+    const team = await setTeamActive(db, actor, id, b.isActive);
     return NextResponse.json({ team });
   } catch (e) {
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });

@@ -3,7 +3,7 @@
 // (dangerouslySetInnerHTML 미사용). LLM 응답을 화면에 그리는 유일한 경로이므로 XSS 싱크가 없어야 한다.
 //
 // 지원: 문단, 헤딩(#~###), 순서/비순서 목록, 굵게(**), 기울임(*/_), 인라인 코드(`), 링크([]()).
-// 링크는 http/https 만 허용(javascript: 등 위험 스킴 차단). 미지원 문법은 평문으로 남는다.
+// 링크는 http/https 와 사이트 안 경로만 허용(javascript: 등 위험 스킴 차단). 미지원 문법은 평문으로 남는다.
 
 export type Inline =
   | { t: 'text'; v: string }
@@ -18,7 +18,20 @@ export type Block =
   | { t: 'ul'; items: Inline[][] }
   | { t: 'ol'; items: Inline[][] };
 
-const SAFE_HREF = /^https?:\/\//i;
+/**
+ * 링크로 만들 수 있는 주소: http(s) 절대 주소, 또는 **우리 사이트 안의 경로**(`/guidebooks`).
+ *
+ * 사이트 안 경로를 받는 이유: 챗봇 시스템 프롬프트가 "`[2팀 가이드북](/guidebooks)` 로 안내하라"고
+ * 시키는데 예전 규칙은 http(s) 만 받아서, 그 안내가 대괄호째 평문으로 찍혔다(2026-10-17 보안 감사가
+ * 짚은 모순). `//evil.example` 과 `/\evil.example` 은 브라우저가 **다른 사이트 주소**로 읽으므로
+ * 경로로 보지 않는다 — 슬래시 하나로 시작하고 바로 뒤가 슬래시·역슬래시가 아닐 때만 내부 경로다.
+ */
+const SAFE_HREF = /^(?:https?:\/\/|\/(?![/\\]))/i;
+
+/** 우리 사이트 안의 경로인가(렌더러가 새 탭으로 열지 않는다). */
+export function isInternalHref(href: string): boolean {
+  return href.startsWith('/') && !/^\/[/\\]/.test(href);
+}
 
 /** 인라인 파싱 — 굵게/기울임/코드/링크. 재귀로 중첩(굵게 안의 링크 등)을 처리한다. */
 export function parseInline(text: string): Inline[] {

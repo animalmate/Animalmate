@@ -18,6 +18,7 @@ import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { chunkDocument } from './chunking';
 import { embedTexts } from './gemini';
 import { detectPii, type PiiFinding } from './pii';
+import { VISIBILITY_RANK } from '@/auth/visibility';
 
 export type Document = typeof documents.$inferSelect;
 export type Visibility = Document['visibility'];
@@ -40,6 +41,14 @@ export class PiiBlockedError extends Error {
     this.name = 'PiiBlockedError';
   }
 }
+
+/**
+ * PII 검사 대상 = **제목 + 본문**. 청킹이 모든 조각 앞에 제목을 붙이므로(chunkDocument) 제목도 그대로
+ * 검색 인덱스와 챗봇 답변 재료가 된다. 예전에는 본문만 봐서 제목에 넣은 연락처는 그냥 지나갔다
+ * (2026-10-17 보안 감사, 규칙 #5).
+ */
+const piiTarget = (title: string, contentMd: string) => `${title}
+${contentMd}`;
 
 const ownershipOf = (d: { ownerType: string; ownerId: string }) => ({
   ownerType: d.ownerType as OwnerType,
@@ -65,7 +74,7 @@ async function writeChunks(tx: Db, documentId: string, rows: { index: number; co
 export async function createDocument(db: Db, actor: Actor, input: DocumentInput): Promise<Document> {
   requireAuthorized(actor, { kind: 'document.modify', owner: { ownerType: input.ownerType, ownerId: input.ownerId } });
 
-  const findings = detectPii(input.contentMd);
+  const findings = detectPii(piiTarget(input.title, input.contentMd));
   if (findings.length > 0 && !input.piiAck) throw new PiiBlockedError(findings);
 
   const chunkRows = await embedChunks(input.title, input.contentMd);
@@ -112,7 +121,7 @@ export async function saveGuidebookDocument(
   const owner = { ownerType: 'team' as const, ownerId: input.teamId };
   requireAuthorized(actor, { kind: 'guidebook.manage', owner });
 
-  const findings = detectPii(input.contentMd);
+  const findings = detectPii(piiTarget(input.title, input.contentMd));
   if (findings.length > 0 && !input.piiAck) throw new PiiBlockedError(findings);
 
   const chunkRows = await embedChunks(input.title, input.contentMd);
@@ -181,8 +190,12 @@ export async function updateDocument(db: Db, actor: Actor, id: string, patch: Do
   const contentChanged = patch.contentMd !== undefined && patch.contentMd !== before.contentMd;
   const titleChanged = patch.title !== undefined && patch.title !== before.title;
 
-  if (contentChanged) {
-    const findings = detectPii(contentMd);
+  // 공개 범위를 **넓히는** 것도 검사한다(board → member 등). 본문을 그대로 둔 채 범위만 낮추면 예전에는
+  // 검사를 건너뛰어, 회장단 전용으로 확인받은 연락처가 확인 없이 부원 전체의 검색 대상이 됐다
+  // (2026-10-17 보안 감사). 확인은 "이 내용을 이 범위에 둔다"는 판단이라 범위가 바뀌면 다시 받는다.
+  const widened = patch.visibility !== undefined && VISIBILITY_RANK[patch.visibility] < VISIBILITY_RANK[before.visibility];
+  if (contentChanged || titleChanged || widened) {
+    const findings = detectPii(piiTarget(title, contentMd));
     if (findings.length > 0 && !patch.piiAck) throw new PiiBlockedError(findings);
   }
 
@@ -194,7 +207,7 @@ export async function updateDocument(db: Db, actor: Actor, id: string, patch: Do
     if (patch.title !== undefined) set.title = patch.title;
     if (patch.contentMd !== undefined) set.contentMd = patch.contentMd;
     if (patch.visibility !== undefined) set.visibility = patch.visibility;
-    if (contentChanged) set.piiChecked = detectPii(contentMd).length > 0;
+    if (contentChanged || titleChanged) set.piiChecked = detectPii(piiTarget(title, contentMd)).length > 0;
     const [row] = await tx.update(documents).set(set).where(eq(documents.id, id)).returning();
     if (chunkRows) await writeChunks(tx, id, chunkRows);
     return row!;

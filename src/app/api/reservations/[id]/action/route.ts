@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getCurrentActor } from '@/auth/current-user';
-import { markReady, schedulePost, cancelPost, cancelEvent, NotReadyError, NoEventError } from '@/publishing/scheduled-posts';
+import {
+  markReady,
+  schedulePost,
+  cancelPost,
+  cancelEvent,
+  NotReadyError,
+  NoEventError,
+  PostNotCancelableError,
+} from '@/publishing/scheduled-posts';
 import { PermissionError } from '@/auth/guard';
 import { internalError } from '@/http/errors';
 
@@ -31,6 +39,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (e instanceof PermissionError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof NotReadyError) return NextResponse.json({ error: 'not_ready', missing: e.missing }, { status: 422 });
     if (e instanceof NoEventError) return NextResponse.json({ error: 'no_event', message: e.message }, { status: 400 });
+    if (e instanceof PostNotCancelableError) return NextResponse.json({ error: 'not_cancelable', message: e.message }, { status: 409 });
     return internalError('POST /api/reservations/[id]/action', e);
   }
 }

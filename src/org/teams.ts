@@ -3,10 +3,11 @@
 
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Db } from '@/db/types';
-import { teams, events, scheduledPosts } from '@/db/schema';
+import { teams, events, scheduledPosts, teamGuidebooks, documents } from '@/db/schema';
 import { isPrivileged, type Actor } from '@/auth/permissions';
 import { PermissionError } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
+import { deleteGuidebook } from '@/storage/guidebooks';
 
 export type Team = typeof teams.$inferSelect;
 export type TeamKind = 'activity' | 'functional';
@@ -81,6 +82,29 @@ export async function deleteTeam(db: Db, actor: Actor, id: string): Promise<void
   ]);
   const counts = { events: ev?.n ?? 0, reservations: rv?.n ?? 0 };
   if (counts.events + counts.reservations > 0) throw new TeamInUseError(counts);
-  await db.delete(teams).where(eq(teams.id, id)); // team_members 는 cascade
-  await recordAudit(db, buildAuditEntry({ actorUserId: actor.userId, action: 'team.delete', targetTable: 'teams', targetId: id }));
+
+  // 팀 가이드북은 행만 cascade 로 사라지고 **챗봇 문서와 파일은 남았다**(2026-10-17 보안 감사).
+  // documents.document_id 는 set null 이라 문서 행이 그대로 남아, 없어진 팀의 가이드북이 계속
+  // 챗봇 검색에 걸렸다. 가이드북을 지울 때(deleteTeamGuidebook)와 같은 순서로 함께 치운다.
+  const [guidebook] = await db
+    .select({ documentId: teamGuidebooks.documentId, storagePath: teamGuidebooks.storagePath })
+    .from(teamGuidebooks)
+    .where(eq(teamGuidebooks.teamId, id))
+    .limit(1);
+  await db.transaction(async (tx) => {
+    await tx.delete(teams).where(eq(teams.id, id)); // team_members·team_guidebooks 는 cascade
+    if (guidebook?.documentId) await tx.delete(documents).where(eq(documents.id, guidebook.documentId)); // doc_chunks cascade
+  });
+  // 파일은 DB 가 정리된 뒤에 지운다 — 실패해도 예외를 던지지 않는다(deleteGuidebook 주석).
+  if (guidebook) await deleteGuidebook(guidebook.storagePath);
+  await recordAudit(
+    db,
+    buildAuditEntry({
+      actorUserId: actor.userId,
+      action: 'team.delete',
+      targetTable: 'teams',
+      targetId: id,
+      after: guidebook ? { guidebookRemoved: true } : undefined,
+    })
+  );
 }

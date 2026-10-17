@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMarkdown, parseInline } from './markdown';
+import { parseMarkdown, parseInline, isInternalHref } from './markdown';
 
 describe('parseInline', () => {
   it('굵게·기울임·인라인 코드', () => {
@@ -15,6 +15,21 @@ describe('parseInline', () => {
     // javascript: 스킴은 링크로 만들지 않는다 → 평문
     const danger = parseInline('[클릭](javascript:alert(1))');
     expect(danger.some((n) => n.t === 'link')).toBe(false);
+  });
+
+  it('사이트 안 경로는 링크로 만든다 — 챗봇이 안내하는 /guidebooks 가 평문으로 찍히지 않게', () => {
+    expect(parseInline('[2팀 가이드북](/guidebooks)')).toEqual([
+      { t: 'link', href: '/guidebooks', c: [{ t: 'text', v: '2팀 가이드북' }] },
+    ]);
+    expect(isInternalHref('/guidebooks')).toBe(true);
+    expect(isInternalHref('https://naver.com')).toBe(false);
+  });
+
+  it('슬래시로 시작해도 다른 사이트로 읽히는 주소(//, /\\)는 링크로 만들지 않는다', () => {
+    for (const href of ['//evil.example', '/\\evil.example']) {
+      expect(parseInline(`[클릭](${href})`).some((n) => n.t === 'link'), href).toBe(false);
+      expect(isInternalHref(href)).toBe(false);
+    }
   });
 
   it('평문과 서식이 섞여도 순서를 지킨다', () => {

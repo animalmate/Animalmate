@@ -4,7 +4,7 @@
 // 이메일·전화번호는 싣지 않는다(규칙 #4 — 개인 연락처를 공개 표면에 올리지 않는다).
 // 지원자가 실제로 연락하는 창구는 인스타그램 DM·카카오톡 채널이고, 그 둘은 화면에 있다.
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, exists, isNull } from 'drizzle-orm';
 import type { Db } from '@/db/types';
 import { memberships, teamMembers, teams, users } from '@/db/schema';
 import { rankLabel } from './team-leaders';
@@ -81,8 +81,17 @@ export async function loadPublicContacts(db: Db): Promise<ContactGroup[]> {
       .where(
         and(
           eq(teams.name, OUTREACH_TEAM_NAME),
+          eq(teams.isActive, true),
           eq(teamMembers.position, 'leader'),
-          isNull(users.withdrawnAt)
+          isNull(users.withdrawnAt),
+          // 머리 주석이 약속한 "만료된 멤버십은 제외"가 이 줄에는 빠져 있었다(2026-10-17 보안 감사).
+          // 비활성화·장기 미접속으로 내려간 전직 팀장의 실명이 비로그인 공개 화면에 계속 올라갔다.
+          exists(
+            db
+              .select({ one: memberships.id })
+              .from(memberships)
+              .where(and(eq(memberships.userId, users.id), eq(memberships.status, 'active')))
+          )
         )
       ),
   ]);

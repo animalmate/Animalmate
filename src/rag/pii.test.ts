@@ -17,6 +17,16 @@ describe('detectPii', () => {
     expect(detectPii('주문번호 1102345678901234').some((f) => f.kind === 'account')).toBe(false);
   });
 
+  it('은행 이름만 있고 "계좌"라는 말이 없어도 잡는다(회비 안내의 흔한 꼴)', () => {
+    for (const t of ['카카오뱅크 3333-01-1234567 (예금주 홍길동)', '국민은행 123456-01-123456', '농협 302-1234-5678-91', '예금주 홍길동 110234567890']) {
+      expect(detectPii(t).some((f) => f.kind === 'account'), t).toBe(true);
+    }
+  });
+
+  it('문맥 단어 다음 줄에 적은 번호도 잡는다', () => {
+    expect(detectPii('회비 입금 계좌:\n110-234-567890').some((f) => f.kind === 'account')).toBe(true);
+  });
+
   // 이 케이스가 없으면 계좌 패턴의 `g` 플래그 회귀를 못 잡는다: `RegExp.exec` 은 `lastIndex` 를
   // 호출 사이에 들고 있어서, **첫 호출은 잡고 두 번째 호출부터 앞쪽 계좌번호를 놓친다.**
   // 한 번만 부르는 테스트는 전부 초록이라 버그가 그대로 남는다(pii.ts ACCOUNT_CTX_RE 주석).
@@ -87,6 +97,8 @@ describe('findSensitiveIds (챗봇 질문 차단 대상)', () => {
       '2026년 1학기 회칙 알려주세요',
       '8월 29일 봉사 장소가 어디죠?',
       '정원 20명 맞나요?',
+      '우리 동아리 회비 계좌 알려줘',
+      '카카오뱅크로 입금해도 되나요?',
     ]) {
       expect(findSensitiveIds(q), `막히면 안 되는 질문: ${q}`).toEqual([]);
     }

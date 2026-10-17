@@ -16,6 +16,8 @@ import {
   isPublicFlash,
   normalizeSignupOpenAt,
   normalizePlaceIds,
+  normalizeCoHostIds,
+  CO_HOSTS_MAX,
   signupWindow,
   PLACE_PEOPLE_MAX,
   FlashInputError,
@@ -247,5 +249,19 @@ describe('상태 판정', () => {
     expect(isPublicFlash('pending')).toBe(false);
     expect(isPublicFlash('rejected')).toBe(false);
     expect(isPublicFlash('canceled')).toBe(false);
+  });
+});
+
+// 상한이 없으면 회원 전원을 공동 개최자로 넣어 신청을 막거나, 승인 전 글을 전원 목록에 띄울 수 있었다.
+describe('normalizeCoHostIds (공동 개최자 상한)', () => {
+  it('공백·중복·본인을 걷어 낸다(본인은 이미 개최자다)', () => {
+    expect(normalizeCoHostIds([' a ', 'a', 'me', '', 'b'], 'me')).toEqual(['a', 'b']);
+    expect(normalizeCoHostIds(undefined, 'me')).toEqual([]);
+  });
+
+  it(`${CO_HOSTS_MAX}명까지는 받고, 넘으면 사람 말로 거부한다`, () => {
+    const ok = Array.from({ length: CO_HOSTS_MAX }, (_, i) => `u${i}`);
+    expect(normalizeCoHostIds(ok, 'me')).toHaveLength(CO_HOSTS_MAX);
+    expect(() => normalizeCoHostIds([...ok, 'one-more'], 'me')).toThrow(FlashInputError);
   });
 });

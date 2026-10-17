@@ -1,7 +1,7 @@
 // scheduled_posts 서비스 — 예약 글 작성/상태 전이 + 발행 결과 적용.
 // 상태머신(state-machine.ts)을 DB 에 반영한다. 사용자 행위는 권한+audit, 발행 워커 적용은 시스템(무액터).
 
-import { and, asc, eq, inArray, lt, lte, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, lte, notInArray, or } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { scheduledPosts, events } from '@/db/schema';
 import type * as schema from '@/db/schema';
@@ -10,6 +10,8 @@ import { requireAuthorized } from '@/auth/guard';
 import { buildAuditEntry, recordAudit } from '@/auth/audit';
 import { assertTransition, nextStateForResult, type PublishResult } from './state-machine';
 import { renderForPublish } from './final-render';
+import { computeMissing } from './reservations';
+import { getWritableBoard } from '@/boards/service';
 
 type DB = PostgresJsDatabase<typeof schema>;
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
@@ -102,6 +104,19 @@ export async function markReady(db: DB, actor: Actor, id: string): Promise<Sched
   return updateStatus(db, id, { status: 'ready' }, actor, 'post.ready', post);
 }
 
+/** 지금은 취소할 수 없는 예약(이미 발행됐거나 워커가 카페에 쓰는 중). 라우트에서 409 로 매핑. */
+export class PostNotCancelableError extends Error {
+  readonly status = 409;
+  constructor(readonly postStatus: 'published' | 'publishing') {
+    super(
+      postStatus === 'published'
+        ? '이미 발행된 예약은 취소할 수 없습니다.'
+        : '지금 카페에 올리는 중이라 취소할 수 없습니다. 잠시 뒤 결과를 확인해 주세요.'
+    );
+    this.name = 'PostNotCancelableError';
+  }
+}
+
 /**
  * 예약 취소 — published 전까지 소유자/회장단이 하드 삭제.
  * 연결된 event 가 다른 예약글을 더 갖지 않으면 event.status 도 canceled 로 전이한다(고아 방지).
@@ -112,10 +127,20 @@ export async function cancelPost(db: DB, actor: Actor, id: string): Promise<void
   const post = await getPost(db, id);
   if (!post) throw new Error(`scheduled_post not found: ${id}`);
   requireAuthorized(actor, { kind: 'post.modify', owner: ownershipOf(post) });
-  if (post.status === 'published') throw new Error('이미 발행된 예약은 취소할 수 없습니다.');
+  if (post.status === 'published' || post.status === 'publishing') throw new PostNotCancelableError(post.status);
 
   await db.transaction(async (tx) => {
-    await tx.delete(scheduledPosts).where(eq(scheduledPosts.id, id));
+    // **워커가 점유하지 않았을 때만** 지운다(조건부 DELETE). 'publishing' 은 워커가 지금 카페에 쓰는 중이라,
+    // 그때 행을 지우면 카페에는 글이 올라가는데 DB 행과 발행 감사 기록은 사라진 고아 글이 된다
+    // (2026-10-17 보안 감사). 위 검사와 이 삭제 사이에 워커가 집어 가는 경합도 여기서 걸린다.
+    const removed = await tx
+      .delete(scheduledPosts)
+      .where(and(eq(scheduledPosts.id, id), notInArray(scheduledPosts.status, ['published', 'publishing'])))
+      .returning({ id: scheduledPosts.id });
+    if (removed.length === 0) {
+      const now = await getPost(tx, id);
+      throw new PostNotCancelableError(now?.status === 'published' ? 'published' : 'publishing');
+    }
     let eventCanceled = false;
     if (post.eventId) {
       // 이 event 를 참조하는 예약글이 더 남아 있는지(없으면 고아 → canceled).
@@ -191,12 +216,29 @@ export async function cancelEvent(db: DB, actor: Actor, id: string): Promise<voi
   });
 }
 
-/** ready → scheduled(발행 대기 큐 진입). */
+/**
+ * → scheduled(발행 대기 큐 진입). 화면에서는 실패한 예약의 "재시도"가 이 길이다.
+ *
+ * **ready 로 올릴 때와 같은 완성 검사를 다시 한다.** 상태머신이 draft·failed → scheduled 를 바로
+ * 허용하는데, 예전에는 여기서 아무것도 보지 않아 API 를 직접 부르면 일시·장소·정원·본문이 빈
+ * 초안을 곧장 발행 대기로 올릴 수 있었다(2026-10-17 보안 감사 — 규칙 #6 "빈 공지가 카페에 나가면
+ * 안 된다"). 판정은 예약 화면이 쓰는 computeMissing 그대로다(문구가 화면의 '부족한 항목'과 같다).
+ * 게시판도 지금 쓸 수 있는지 본다 — 실패 뒤 재시도 사이에 게시판이 꺼졌을 수 있다.
+ */
 export async function schedulePost(db: DB, actor: Actor, id: string): Promise<ScheduledPost> {
   const post = await getPost(db, id);
   if (!post) throw new Error(`scheduled_post not found: ${id}`);
   requireAuthorized(actor, { kind: 'post.modify', owner: ownershipOf(post) });
   assertTransition(post.status, 'scheduled');
+
+  const [ev] = post.eventId ? await db.select().from(events).where(eq(events.id, post.eventId)).limit(1) : [];
+  const rendered = await renderForPublish(db, post);
+  const missing = computeMissing(post, ev ?? null, rendered.unresolved);
+  if (post.boardMenuid != null && !(await getWritableBoard(db, post.boardMenuid)) && !missing.includes('게시판')) {
+    missing.push('게시판');
+  }
+  if (missing.length) throw new NotReadyError(missing);
+
   return updateStatus(db, id, { status: 'scheduled' }, actor, 'post.schedule', post);
 }
 
