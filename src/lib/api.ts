@@ -49,10 +49,10 @@ export function errorMessage(code: string | undefined, fallback = '오류가 발
     invalid_email: '이메일 형식이 올바르지 않습니다.',
     invalid_join_code: '가입코드가 올바르지 않습니다.',
     already_registered: '이미 가입된 이메일입니다. 로그인해 주세요.',
-    otp_invalid: '인증 코드가 올바르지 않습니다.',
-    otp_expired: '인증 코드가 만료되었습니다. 재발급해 주세요.',
-    otp_too_many_attempts: '실패가 많습니다. 코드를 재발급해 주세요.',
-    otp_not_found: '유효한 인증 코드가 없습니다. 재발급해 주세요.',
+    // 서버는 검증 실패 사유를 가르지 않고 이 코드 하나만 준다(사유가 곧 가입 여부 신호였다 —
+    // auth-service.ts otpFailure 주석). 그래서 문구가 "틀렸다·만료됐다·너무 많이 틀렸다"를 함께 말한다.
+    otp_invalid: '인증 코드가 올바르지 않거나 만료되었습니다. 다시 확인하거나 코드를 재발급해 주세요.',
+    membership_inactive: '멤버십이 활성화되지 않은 계정입니다. 회장단에게 문의해 주세요.',
     cooldown: '잠시 후 다시 시도해 주세요.',
     consent_required: '개인정보 수집·이용에 동의해야 가입할 수 있습니다.',
     forbidden: '권한이 없습니다.',

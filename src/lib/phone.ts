@@ -5,9 +5,24 @@ export function phoneDigits(s: string | null | undefined): string {
   return (s ?? '').replace(/\D/g, '');
 }
 
-/** 한국 전화번호로 볼 수 있는가 — 0 으로 시작하는 9~11자리(휴대폰·유선 포함). 빈 값은 false. */
+/** 입력칸에 들어올 수 있는 길이 상한. `http/input.ts` 의 LIMITS.phone 과 같은 값이어야 한다. */
+export const MAX_PHONE_INPUT = 30;
+
+/** 번호를 적을 때 쓰는 글자(숫자·하이픈·공백·점·괄호). 그 밖의 글자가 섞이면 번호가 아니다. */
+const PHONE_CHARS_RE = /^[0-9\s().-]+$/;
+
+/**
+ * 한국 전화번호로 볼 수 있는가 — 0 으로 시작하는 9~11자리(휴대폰·유선 포함). 빈 값은 false.
+ *
+ * 숫자 **개수만** 세면 안 된다(2026-10-17 보안 감사). 예전에는 숫자 9개가 섞인 아무 문자열이나
+ * 통과했고, 9자리는 아래 formatPhone 이 원문을 그대로 돌려줘서 길이 제한 없는 임의 문구가
+ * `users.phone` 에 저장됐다 — 그 값은 카페 공지의 {{팀장단}} 으로 그대로 나간다.
+ */
 export function isValidPhone(s: string | null | undefined): boolean {
-  const d = phoneDigits(s);
+  if (typeof s !== 'string') return false;
+  const raw = s.trim();
+  if (raw.length > MAX_PHONE_INPUT || !PHONE_CHARS_RE.test(raw)) return false;
+  const d = phoneDigits(raw);
   return d.length >= 9 && d.length <= 11 && d.startsWith('0');
 }
 
@@ -16,6 +31,8 @@ export function formatPhone(s: string | null | undefined): string {
   const d = phoneDigits(s);
   if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
   if (d.length === 10) return d.startsWith('02') ? `${d.slice(0, 2)}-${d.slice(2, 6)}-${d.slice(6)}` : `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  // 9자리도 isValidPhone 이 받는 길이다 — 원문으로 흘려보내지 말고 숫자로 다시 짠다.
+  if (d.length === 9) return d.startsWith('02') ? `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}` : `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
   return (s ?? '').trim();
 }
 

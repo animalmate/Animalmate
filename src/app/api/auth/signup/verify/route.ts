@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
-import { verifySignup } from '@/auth/auth-service';
+import { AuthError, verifySignup } from '@/auth/auth-service';
 import { defaultMailer } from '@/auth/mailer';
 import { authErrorResponse, jsonWithSession, requireSecret } from '@/auth/route-helpers';
-import { consumeRateLimit, resetRateLimit, clientIp, RULES } from '@/http/rate-limit';
+import { consumeRateLimit, refundRateLimit, resetRateLimit, clientIp, RULES } from '@/http/rate-limit';
 import { LIMITS, checkLength } from '@/http/input';
 import { isValidPhone, formatPhone } from '@/lib/phone';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,9 +18,13 @@ export async function POST(req: Request): Promise<Response> {
     // 로그인 검증과 같은 버킷을 공유한다 — 공격자가 가입/로그인을 번갈아 쓰며 상한을 두 배로 쓰지 못하게.
     await consumeRateLimit(db, RULES.otpVerify, ip);
     const { email, code, name, phone, privacyConsent } = await req.json();
+    const addr = normalizeEmail(String(email ?? ''));
+    // 주소 단위 통을 깎기 전에 모양부터 본다(로그인 검증과 같은 이유 — 그쪽 주석 참고).
+    checkLength('이메일', addr, LIMITS.email);
+    if (!isValidEmail(addr)) throw new AuthError('otp_invalid');
     // 무차별 대입이 노리는 것은 IP 가 아니라 **그 주소의 코드**다. 주소로도 묶어야 IP 를 바꿔
     // 가며 시도하는 경로가 막히고, 공유 IP 뒤 여러 명이 서로의 예산을 깎지 않는다.
-    await consumeRateLimit(db, RULES.otpVerifyEmail, String(email ?? '').trim().toLowerCase());
+    await consumeRateLimit(db, RULES.otpVerifyEmail, addr);
     checkLength('이름', name == null ? null : String(name), LIMITS.name);
     // 개인정보 수집·이용 동의는 계정을 만드는 조건이다. 화면에서 체크박스를 비활성화하는 것은
     // 검증이 아니므로(규칙 #6) 여기서도 막는다 — 동의 없이는 계정이 만들어지지 않는다.
@@ -28,11 +33,12 @@ export async function POST(req: Request): Promise<Response> {
     if (!isValidPhone(phone)) return NextResponse.json({ error: 'bad_phone' }, { status: 400 });
     const { token, userId } = await verifySignup(
       db,
-      { email, code: String(code ?? ''), name, phone: formatPhone(phone) },
+      { email: addr, code: String(code ?? ''), name, phone: formatPhone(phone) },
       { secret: requireSecret(), mailer: defaultMailer() }
     );
-    await resetRateLimit(db, RULES.otpVerify, ip);
-    await resetRateLimit(db, RULES.otpVerifyEmail, String(email ?? '').trim().toLowerCase());
+    // IP 통은 자기 몫만 되돌리고, 주소 통은 지운다(로그인 검증 주석 참고 — 결정 169).
+    await refundRateLimit(db, RULES.otpVerify, ip);
+    await resetRateLimit(db, RULES.otpVerifyEmail, addr);
     return jsonWithSession({ ok: true, userId }, token);
   } catch (e) {
     return authErrorResponse(e);

@@ -15,6 +15,17 @@ describe('isValidPhone', () => {
     expect(isValidPhone('123-4567-8901')).toBe(false); // 0으로 시작 안 함
     expect(isValidPhone('010-1234-56789')).toBe(false); // 12자리
   });
+  it('숫자 개수만 맞고 다른 글자가 섞이면 거부(임의 문구가 users.phone 으로 들어가던 구멍)', () => {
+    expect(isValidPhone('021234567 <공지에 들어갈 아무 문구>')).toBe(false);
+    expect(isValidPhone(`02-123-4567${' '.repeat(40)}x`)).toBe(false);
+    expect(isValidPhone('0'.padEnd(31, ' ') + '21234567')).toBe(false); // 길이 상한(30)
+    expect(isValidPhone(1012345678 as unknown as string)).toBe(false); // JSON 숫자
+  });
+  it('흔한 표기(공백·점·괄호)는 그대로 받는다', () => {
+    expect(isValidPhone(' 010 1234 5678 ')).toBe(true);
+    expect(isValidPhone('010.1234.5678')).toBe(true);
+    expect(isValidPhone('(02) 123-4567')).toBe(true);
+  });
 });
 
 describe('formatPhone', () => {
@@ -24,6 +35,11 @@ describe('formatPhone', () => {
   it('10자리 02 → 2-4-4, 그 외 → 3-3-4', () => {
     expect(formatPhone('0212345678')).toBe('02-1234-5678');
     expect(formatPhone('0311234567')).toBe('031-123-4567');
+  });
+  it('9자리도 숫자로 다시 짠다(원문을 그대로 돌려주지 않는다)', () => {
+    expect(formatPhone('021234567')).toBe('02-123-4567');
+    expect(formatPhone('(02) 123 4567')).toBe('02-123-4567');
+    expect(formatPhone('031123456')).toBe('031-123-456');
   });
   it('형식 아니면 입력 그대로 trim', () => {
     expect(formatPhone('  abc ')).toBe('abc');

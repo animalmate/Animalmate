@@ -12,6 +12,7 @@
 // 정밀한 셰이핑이 아니라 자동화 차단이므로 충분하다. 카운터는 DB 에 둔다 — 서버리스는
 // 인스턴스가 요청마다 바뀔 수 있어 메모리 카운터가 사실상 무력하기 때문.
 
+import { createHash } from 'node:crypto';
 import { and, eq, lt, sql } from 'drizzle-orm';
 import { rateLimits } from '@/db/schema';
 import type { Db, Database } from '@/db/types';
@@ -111,23 +112,32 @@ export const RULES = {
    * "혹시 바뀌었나" 다시 보기). 인원(30) × 사람당 2회 = 60 을 바닥으로 잡았다.
    *
    * 올려도 **열거 방어는 그대로다.** 특정인의 전화번호를 맞히려는 시도는 이 통이 아니라
-   * 아래 recruitLookupFail(이름 HMAC, 시간당 10회)이 막는다(결정 80) — IP 를 바꿔 가며 노려도
-   * 대상 단위로 모여 막히므로, 이 통을 넓히는 것과 무관하다. 여기 남은 목적은 도배 차단뿐이라
-   * 분당 60(= 초당 1회)이면 사람이 아닌 것만 걸린다.
+   * 아래 recruitLookupFailIp(IP+이름)·recruitLookupFail(이름) 두 통이 막는다(결정 80·169) — 이 통을
+   * 넓히는 것과 무관하다. 여기 남은 목적은 도배 차단뿐이라 분당 60(= 초당 1회)이면 사람이 아닌 것만 걸린다.
    *
    * 윈도를 60초로 **짧게** 유지하는 것도 의도다. 어쩌다 막히더라도 1분 안에 풀린다 —
    * 창을 넓게 잡으면(예: 5분 300회) 한 번 소진했을 때 발표날 저녁에 5분을 기다리게 된다.
    */
   recruitLookup: { bucket: 'recruit_lookup', windowSeconds: 60, max: 60 },
   /**
-   * F9 결과 조회 **열거 방지** — 식별자는 IP 가 아니라 **조회 대상(이름)의 HMAC**이다
-   * (2026-07-31, 결정 80. 키 생성은 `src/recruit/lookup-key.ts`).
+   * F9 결과 조회 **열거 방지 ①** — 식별자는 **조회하는 곳(IP) + 조회 대상(이름)의 HMAC**이다
+   * (2026-10-17, 결정 169. 키 생성은 `src/recruit/lookup-key.ts`).
    *
-   * 열거 공격은 "특정인의 전화번호를 맞히는" 일이라 대상 단위로 세는 것이 맞다 —
-   * IP 를 바꿔 가며 한 사람을 노려도 한 통에 모여 막히고(IP 기준보다 강하다),
-   * 발표 직후 한 공인 IP 뒤 수십 명이 서로의 예산을 깎지도 않는다.
+   * 한 곳에서 한 사람의 번호를 맞혀 보는 반복을 시간당 10회로 끊는다. 대상(이름)만으로 묶던
+   * 예전 통(결정 80)은 열거는 잘 막았지만, **남의 이름으로 틀린 번호를 10번 넣는 것만으로 그
+   * 사람(과 동명이인 전원)이 1시간 동안 자기 결과를 못 보는** 표적 잠금이 됐다 — 하필 면접 링크를
+   * 확인해야 하는 시점이나 발표 직후에. 이제 그렇게 깎이는 것은 **넣은 쪽의 통**뿐이다.
    */
-  recruitLookupFail: { bucket: 'recruit_lookup_fail', windowSeconds: 3600, max: 10 },
+  recruitLookupFailIp: { bucket: 'recruit_lookup_fail_ip', windowSeconds: 3600, max: 10 },
+  /**
+   * F9 결과 조회 **열거 방지 ②** — 조회 대상(이름)의 HMAC. IP 를 바꿔 가며 한 사람을 노리는
+   * 분산 시도를 대상 단위로 모아 막는 **뒷받침 상한**이다(결정 80 의 장점은 여기 남긴다).
+   *
+   * 값을 ①보다 크게(100) 잡은 이유: 한 IP 는 ①에 막혀 이 통에 최대 10회만 보탤 수 있으므로,
+   * 남의 결과 조회를 막으려면 IP 를 10개 넘게 동원해야 한다. 그래도 전화번호(010 뒤 8자리 = 1억
+   * 가지)를 맞히기에는 시간당 100회가 무의미한 크기라 열거 방어는 그대로다.
+   */
+  recruitLookupFail: { bucket: 'recruit_lookup_fail', windowSeconds: 3600, max: 100 },
   /**
    * 번개 신청·쪽지 — **IP 가 아니라 회원 id 로 센다.**
    *
@@ -139,12 +149,45 @@ export const RULES = {
    * 쪽지 표를 부풀리는 일뿐이고, 그것 말고는 이 표에 행을 만들 방법이 없다.
    */
   flashMessage: { bucket: 'flash_message', windowSeconds: 60, max: 20 },
+  /**
+   * 챗봇 질문 — 번개와 같은 이유로 **회원 id 로 센다.**
+   *
+   * 일일 쿼터(`src/rag/quota.ts`)는 `chat_logs` 행 수로 세는데, 그 행은 **답변이 끝난 뒤에야**
+   * 생긴다(2~15초). 그래서 질문을 동시에 여러 개 띄우면 전부 같은 개수를 보고 통과해 상한을
+   * 넘겼고, 답변 도중 실패한 질문은 행이 아예 남지 않아 세어지지도 않았다(2026-10-17 보안 감사).
+   * 이 통은 원자적 UPSERT 라 그 틈을 분당 10회로 묶는다 — 쿼터를 넘는 폭은 많아야 그만큼이다.
+   * 사람은 답을 읽고 다음 질문을 하므로 분당 10회에 닿을 일이 없다.
+   */
+  chatbotAsk: { bucket: 'chatbot_ask', windowSeconds: 60, max: 10 },
 } as const satisfies Record<string, LimitRule>;
 
 /** 고정 윈도의 시작 시각(윈도 길이로 내림). */
 function windowStartOf(now: Date, windowSeconds: number): Date {
   const ms = windowSeconds * 1000;
   return new Date(Math.floor(now.getTime() / ms) * ms);
+}
+
+/** 이보다 긴 식별자는 그대로 저장하지 않는다(아래 storedIdentifier). 정상 값(IP·주소·HMAC)은 한참 짧다. */
+const MAX_PLAIN_IDENTIFIER = 128;
+
+/**
+ * DB 에 저장할 식별자. **정상 값은 그대로 두고**, 비정상 값만 고정 길이 해시로 바꾼다.
+ *
+ * 왜 필요한가(2026-10-17 보안 감사): 식별자에는 요청 본문의 이메일처럼 **검증 전 값**이 들어온다.
+ * NUL 이 섞이거나 기본키 인덱스 한도(약 2.7KB)를 넘으면 INSERT 가 실패하고, 실패하면 아래
+ * consumeRateLimit 이 요청을 그냥 통과시킨다(fail-open) — 이상한 값을 보내는 것만으로 리밋을
+ * 건너뛰는 길이었다. 해시로 바꾸면 같은 값은 같은 통에 모이고 INSERT 는 실패하지 않는다.
+ *
+ * 전부 해시하지 않는 이유: 통합 테스트·운영 점검이 식별자 원문(IP, 테스트 접두사)으로 행을
+ * 찾아 지운다. 정상 값의 저장 형태를 바꾸면 그 정리가 조용히 빗나간다.
+ */
+export function storedIdentifier(identifier: string): string {
+  let suspicious = identifier.length > MAX_PLAIN_IDENTIFIER;
+  for (let i = 0; !suspicious && i < identifier.length; i++) {
+    const c = identifier.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) suspicious = true;
+  }
+  return suspicious ? `sha256:${createHash('sha256').update(identifier).digest('hex')}` : identifier;
 }
 
 /**
@@ -155,10 +198,11 @@ function windowStartOf(now: Date, windowSeconds: number): Date {
 export async function consumeRateLimit(
   db: Db,
   rule: LimitRule,
-  identifier: string,
+  rawIdentifier: string,
   now: Date = new Date()
 ): Promise<void> {
   const windowStart = windowStartOf(now, rule.windowSeconds);
+  const identifier = storedIdentifier(rawIdentifier);
   let count: number;
   try {
     const [row] = await db
@@ -187,14 +231,49 @@ export async function pruneRateLimits(db: Database, now: Date = new Date()): Pro
   await db.delete(rateLimits).where(lt(rateLimits.windowStart, cutoff));
 }
 
-/** 특정 주체의 카운터를 지운다(로그인 성공 시 그 IP 의 검증 실패 누적을 되돌리는 용도). */
+/**
+ * 특정 주체의 카운터를 통째로 지운다.
+ *
+ * ⚠ **그 통을 그 사람 혼자 쓸 때만** 부른다(예: 주소 단위 통 — 코드를 맞힌 사람이 곧 주소 주인이다).
+ * 여러 사람이 나눠 쓰는 IP 통에 쓰면, 공격자가 **자기 계정으로 한 번 로그인하는 것만으로** 남의
+ * 주소에 쌓은 실패를 지울 수 있다(2026-10-17 보안 감사). 그런 통은 refundRateLimit 을 쓴다.
+ */
 export async function resetRateLimit(db: Database, rule: LimitRule, identifier: string): Promise<void> {
   try {
     await db
       .delete(rateLimits)
-      .where(and(eq(rateLimits.bucket, rule.bucket), eq(rateLimits.identifier, identifier)));
+      .where(and(eq(rateLimits.bucket, rule.bucket), eq(rateLimits.identifier, storedIdentifier(identifier))));
   } catch (e) {
     console.error('[rate-limit] 카운터 초기화 실패', e);
+  }
+}
+
+/**
+ * 방금 소비한 **1회만** 되돌린다(지금 윈도). 성공한 시도를 공유 통에서 빼 주는 용도다.
+ *
+ * 공유 IP 뒤 수십 명이 한꺼번에 로그인해도 성공한 사람은 통을 깎지 않고, 실패만 남는다.
+ * resetRateLimit 과 달리 **남이 쌓은 실패는 그대로 둔다** — 성공 한 번으로 지울 수 있는 것은
+ * 자기 몫 1회뿐이다. 윈도가 바뀐 뒤라면 되돌릴 행이 없어 아무 일도 하지 않는다.
+ */
+export async function refundRateLimit(
+  db: Database,
+  rule: LimitRule,
+  identifier: string,
+  now: Date = new Date()
+): Promise<void> {
+  try {
+    await db
+      .update(rateLimits)
+      .set({ count: sql`greatest(${rateLimits.count} - 1, 0)` })
+      .where(
+        and(
+          eq(rateLimits.bucket, rule.bucket),
+          eq(rateLimits.identifier, storedIdentifier(identifier)),
+          eq(rateLimits.windowStart, windowStartOf(now, rule.windowSeconds))
+        )
+      );
+  } catch (e) {
+    console.error('[rate-limit] 카운터 되돌리기 실패', e);
   }
 }
 

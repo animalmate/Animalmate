@@ -93,6 +93,19 @@ async function sendOtpIgnoringCooldown(
   await ctx.mailer.sendOtp({ to: email, code, purpose });
 }
 
+/**
+ * 검증 실패는 **사유와 무관하게 하나의 코드**로 돌려준다.
+ *
+ * 사유를 그대로 내보내면 그 자체가 가입 여부 오라클이었다(2026-10-17 보안 감사): 미가입 주소는
+ * 1단계에서 코드 행이 만들어지지 않으므로 아무 코드나 넣으면 `otp_not_found`, 가입된 주소는
+ * `otp_invalid` 가 났다. 몇 번 더 틀리면 가입된 주소만 `otp_too_many_attempts` 로 바뀌는 것도
+ * 같은 신호다. 1단계 응답을 통일해 둔 것(결정 9)이 2단계에서 그대로 새고 있었다.
+ * 화면 문구는 "틀렸거나 만료됐다 — 다시 받아라" 하나로 충분하다(src/lib/api.ts).
+ */
+function otpFailure(): AuthError {
+  return new AuthError('otp_invalid');
+}
+
 export async function verifySignup(
   db: DB,
   input: { email: string; code: string; name?: string; phone?: string | null },
@@ -100,7 +113,7 @@ export async function verifySignup(
 ): Promise<{ token: string; userId: string }> {
   const email = norm(input.email);
   const res = await verifyEmailCode(db, { email, purpose: 'signup', code: input.code, secret: ctx.secret, now: ctx.now });
-  if (res !== 'ok') throw new AuthError(`otp_${res}`);
+  if (res !== 'ok') throw otpFailure();
 
   const now = ctx.now ?? new Date();
   const termStart = fmtDate(now);
@@ -125,6 +138,8 @@ export async function verifySignup(
 // ── 로그인 ─────────────────────────────────────────────────────────────
 export async function requestLogin(db: DB, input: { email: string }, ctx: AuthCtx): Promise<void> {
   const email = norm(input.email);
+  // 주소 모양은 가입 여부와 무관한 정보라 먼저 거절해도 열거가 되지 않는다(가입 1단계와 같다).
+  if (!isValidEmail(email)) throw new AuthError('invalid_email');
   const user = await getUserByEmail(db, email);
   if (!user) return; // 계정 열거 방지: 없어도 조용히 성공처럼 반환(코드 미발송)
   // 쿨다운을 던지면 "가입된 주소만 429" 가 되어 열거가 뚫린다(가입 경로와 같은 이유).
@@ -138,9 +153,9 @@ export async function verifyLogin(
 ): Promise<{ token: string; userId: string; role: Role }> {
   const email = norm(input.email);
   const res = await verifyEmailCode(db, { email, purpose: 'login', code: input.code, secret: ctx.secret, now: ctx.now });
-  if (res !== 'ok') throw new AuthError(`otp_${res}`);
+  if (res !== 'ok') throw otpFailure();
   const user = await getUserByEmail(db, email);
-  if (!user) throw new AuthError('otp_not_found');
+  if (!user) throw otpFailure();
   const role = await currentRole(db, user.id, ctx.now);
   return {
     token: signSession({ sub: user.id, role, sv: user.sessionVersion }, ctx.secret),
@@ -217,14 +232,22 @@ export async function loadActor(db: DB, userId: string, sessionVersion?: number)
 
   let role: Role = 'member';
   for (const r of ms) if (ROLE_RANK[r.role] > ROLE_RANK[role]) role = r.role;
+  const membershipActive = ms.length > 0;
   // 비활성 팀은 권한도 접힌 것으로 본다 — 팀을 비활성화해도 team_members 행은 남기 때문에,
   // 플래그만 보면 해체한 팀이 공고 편집 권한을 계속 들고 있게 된다.
-  const teams: ActorTeam[] = tms.map((t) => ({
-    teamId: t.teamId,
-    position: t.position,
-    canEditNotice: t.canEditNotice && t.teamActive,
-  }));
-  return { userId, name: u.name, role, membershipActive: ms.length > 0, teams };
+  //
+  // 같은 이유로 **멤버십이 꺼진 계정은 팀 소속을 통째로 비운다.** 비활성화·장기 미접속 만료는
+  // memberships 만 내리고 team_members 는 남긴다 — 그래서 전직 팀장이 다시 로그인하면
+  // 가이드북 관리 화면(확인 전 본문 포함)이 그대로 열렸다(2026-10-17 보안 감사). 쓰기는 authorize 가
+  // membershipActive 로 막지만 팀 소속으로 판단하는 **읽기**는 거기를 지나지 않는다.
+  const teams: ActorTeam[] = membershipActive
+    ? tms.map((t) => ({
+        teamId: t.teamId,
+        position: t.position,
+        canEditNotice: t.canEditNotice && t.teamActive,
+      }))
+    : [];
+  return { userId, name: u.name, role, membershipActive, teams };
 }
 
 /** 활동 흔적을 하루에 한 번만 갱신한다. 이 값의 해상도는 '일' 이면 충분하다. */

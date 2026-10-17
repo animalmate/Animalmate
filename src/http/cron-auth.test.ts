@@ -24,4 +24,9 @@ describe('isAuthorizedCron', () => {
   it('Bearer 접두사 없음 → 거부', () => {
     expect(isAuthorizedCron(SECRET, SECRET)).toBe(false);
   });
+
+  it('길이가 달라도 던지지 않고 거부한다(해시로 같은 길이를 맞춰 비교)', () => {
+    expect(isAuthorizedCron(`Bearer ${SECRET}x`, SECRET)).toBe(false);
+    expect(isAuthorizedCron('Bearer ', SECRET)).toBe(false);
+  });
 });
