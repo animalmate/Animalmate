@@ -13,6 +13,7 @@
 //   <style> 때문이고, 스타일 주입은 스크립트 주입과 달리 위험도가 낮다. 이 한계는 07-DECISIONS 16 에 기록.
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { isCrossOriginWrite } from '@/http/csrf';
 
 const FONT_CDN = 'https://cdn.jsdelivr.net'; // Pretendard 폰트(globals.css @import)
 
@@ -28,6 +29,20 @@ const SUPABASE_ORIGIN = (() => {
 })();
 
 export function middleware(request: NextRequest): NextResponse {
+  // 상태를 바꾸는 API 요청은 우리 화면에서 왔을 때만 받는다(CSRF — 이유는 src/http/csrf.ts 머리 주석).
+  // 라우트마다 넣으면 하나를 빠뜨리는 순간 구멍이 되므로 모든 API 가 지나는 여기서 한 번에 건다.
+  if (
+    isCrossOriginWrite({
+      method: request.method,
+      pathname: request.nextUrl.pathname,
+      selfOrigin: request.nextUrl.origin,
+      origin: request.headers.get('origin'),
+      secFetchSite: request.headers.get('sec-fetch-site'),
+    })
+  ) {
+    return NextResponse.json({ error: 'cross_site_request' }, { status: 403 });
+  }
+
   // Web Crypto(btoa)만 쓴다 — 미들웨어는 edge 런타임이라 Node Buffer 를 가정하지 않는다.
   const nonce = btoa(crypto.randomUUID());
   const isProd = process.env.NODE_ENV === 'production';
