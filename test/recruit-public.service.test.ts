@@ -7,7 +7,7 @@ import * as schema from '@/db/schema';
 import { users, recruitCohorts, recruitApplicants, rateLimits } from '@/db/schema';
 import { RULES } from '@/http/rate-limit';
 import { lookupApplicantResult } from '@/recruit/lookup';
-import { lookupFailKey } from '@/recruit/lookup-key';
+import { lookupFailIpKey, lookupFailKey } from '@/recruit/lookup-key';
 import { findApplicantInCohort, submitApplicant } from '@/recruit/applicants';
 import { getPublicNoticeCohort } from '@/recruit/cohorts';
 import { TEST_DATABASE_URL } from './db-url';
@@ -32,7 +32,12 @@ const GUIDE_PHONE = '01077778888';
 // 실제 IP 형식일 필요는 없다 — 레이트 리밋 식별자 문자열일 뿐이다.
 const RUN_TAG = `qa-lookup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 let ipSeq = 0;
-const nextIp = () => `${RUN_TAG}-${++ipSeq}`;
+const usedIps: string[] = [];
+const nextIp = () => {
+  const ip = `${RUN_TAG}-${++ipSeq}`;
+  usedIps.push(ip);
+  return ip;
+};
 
 /** 이 테스트가 조회에 쓰는 이름 전부 — 실패 카운터 정리 대상. */
 const LOOKUP_NAMES = [NAME, '없는사람', GUIDE_NAME];
@@ -58,6 +63,13 @@ suite('공개 접수·조회 (실 DB)', () => {
     await db
       .delete(rateLimits)
       .where(and(eq(rateLimits.bucket, RULES.recruitLookupFail.bucket), inArray(rateLimits.identifier, keys)));
+    // IP+이름 통(결정 169)은 HMAC 이라 접두사로 못 찾는다 — 이 실행이 쓴 IP 로 키를 다시 만들어 지운다.
+    const ipKeys = usedIps.flatMap((ip) => LOOKUP_NAMES.map((n) => lookupFailIpKey(n, ip, SECRET)));
+    if (ipKeys.length > 0) {
+      await db
+        .delete(rateLimits)
+        .where(and(eq(rateLimits.bucket, RULES.recruitLookupFailIp.bucket), inArray(rateLimits.identifier, ipKeys)));
+    }
     // 총량 카운터도 이 실행 몫만 지운다(RUN_TAG 접두사). 안 지우면 실행마다 행이 쌓인다.
     await db
       .delete(rateLimits)

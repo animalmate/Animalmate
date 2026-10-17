@@ -6,7 +6,7 @@ import { db } from '../db/client';
 import { recruitApplicants, recruitCohorts, recruitSlots } from '../db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { consumeRateLimit, resetRateLimit, RULES } from '../http/rate-limit';
-import { lookupFailKey } from './lookup-key';
+import { lookupFailIpKey, lookupFailKey } from './lookup-key';
 import { visibleLookupResult, type PublicStage } from './lookup-visibility';
 import { pickInterviewLink } from './interview-link';
 import type { RecruitStatus } from './status';
@@ -44,14 +44,18 @@ export async function lookupApplicantResult(
     return null;
   }
 
-  // 두 상한은 서로 다른 것을 막는다.
-  //  · recruitLookup(IP)      — 총량. 한 곳에서 쏟아지는 요청 자체를 막는다.
-  //  · recruitLookupFail(이름) — 열거. **특정인의 전화번호를 맞히려는 반복**을 막는다.
-  // 실패 카운터를 IP 로 묶으면 발표 직후 한 공인 IP 뒤 수십 명이 서로의 예산을 깎아,
-  // 남의 오타 열 번에 내가 1시간 잠긴다. 대상(이름)으로 묶으면 그 충돌이 사라지고,
-  // 오히려 IP 를 바꿔 가며 한 사람을 노리는 시도까지 한 통에 모여 막힌다(결정 80).
-  const failKey = lookupFailKey(cleanName, process.env.SESSION_SECRET ?? '');
+  // 세 상한은 서로 다른 것을 막는다.
+  //  · recruitLookup(IP)            — 총량. 한 곳에서 쏟아지는 요청 자체를 막는다.
+  //  · recruitLookupFailIp(IP+이름) — 열거. 한 곳에서 **특정인의 전화번호를 맞히려는 반복**을 막는다.
+  //  · recruitLookupFail(이름)      — 뒷받침. IP 를 바꿔 가며 한 사람을 노리는 분산 시도를 모은다.
+  // 실패 카운터를 IP 로만 묶으면 발표 직후 한 공인 IP 뒤 수십 명이 서로의 예산을 깎는다(결정 80).
+  // 이름으로만 묶으면 남의 이름으로 틀린 번호를 10번 넣어 그 사람을 1시간 잠글 수 있었다(결정 169).
+  // 순서가 중요하다: IP+이름 통이 먼저 막아야 한 곳이 이름 통에 보탤 수 있는 양이 10회로 묶인다.
+  const secret = process.env.SESSION_SECRET ?? '';
+  const failKey = lookupFailKey(cleanName, secret);
+  const failIpKey = lookupFailIpKey(cleanName, ip, secret);
   await consumeRateLimit(db, RULES.recruitLookup, ip);
+  await consumeRateLimit(db, RULES.recruitLookupFailIp, failIpKey);
   await consumeRateLimit(db, RULES.recruitLookupFail, failKey);
 
   const [applicant] = await db
@@ -80,7 +84,8 @@ export async function lookupApplicantResult(
     return null;
   }
 
-  // 본인이 맞혔으면 그 대상의 실패 누적을 지운다(이름 단위 — 그 사람만 초기화된다).
+  // 본인이 맞혔으면 그 대상의 실패 누적을 지운다(그 사람의 두 통만 초기화된다).
+  await resetRateLimit(db, RULES.recruitLookupFailIp, failIpKey);
   await resetRateLimit(db, RULES.recruitLookupFail, failKey);
 
   const [cohort] = await db

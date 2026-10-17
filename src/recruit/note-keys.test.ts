@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildNoteKey, cohortNoteKeyPrefix, ALL_TEAMS } from './note-keys';
+import { buildNoteKey, cohortNoteKeyPrefix, ALL_TEAMS, isValidNoteKey, MAX_NOTE_KEY_LENGTH } from './note-keys';
 
 const COHORT = '11111111-2222-3333-4444-555555555555';
 
@@ -28,5 +28,24 @@ describe('공용 메모지 키', () => {
     expect(buildNoteKey(COHORT, 'doc', '1팀').startsWith(prefix)).toBe(true);
     expect(buildNoteKey(COHORT, 'interview-assign').startsWith(prefix)).toBe(true);
     expect(buildNoteKey(other, 'doc', '1팀').startsWith(prefix)).toBe(false);
+  });
+});
+
+describe('isValidNoteKey — 폐기 접두사 밖의 메모를 막는다', () => {
+  it('화면이 만드는 키는 받는다', () => {
+    expect(isValidNoteKey(buildNoteKey(COHORT, 'doc', '1팀 - 파주일산'))).toBe(true);
+    expect(isValidNoteKey(buildNoteKey(COHORT, 'interview-assign'))).toBe(true);
+    expect(isValidNoteKey(buildNoteKey(COHORT, 'doc', '1팀: 파주'))).toBe(true);
+  });
+
+  it('기수 접두사가 없는 키는 거부한다 — 폐기해도 남는다', () => {
+    expect(isValidNoteKey('recruit:doc')).toBe(false); // 예전 화면당 키
+    expect(isValidNoteKey('아무거나')).toBe(false);
+    expect(isValidNoteKey(`recruit:not-a-uuid:doc:ALL`)).toBe(false);
+    expect(isValidNoteKey(null)).toBe(false);
+  });
+
+  it('지나치게 긴 키는 거부한다', () => {
+    expect(isValidNoteKey(buildNoteKey(COHORT, 'doc', 'x'.repeat(MAX_NOTE_KEY_LENGTH)))).toBe(false);
   });
 });

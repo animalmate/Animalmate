@@ -6,10 +6,24 @@ import { validateScore } from '@/recruit/score-rules';
 import { internalError } from '@/http/errors';
 import { checkLength, InputTooLongError, LIMITS } from '@/http/input';
 import { aggregateScoresByApplicant } from '@/recruit/aggregate';
-import { listApplicantIdsByCohort } from '@/recruit/applicants';
+import { listApplicantIdsByCohort, listApplicantsByIds } from '@/recruit/applicants';
+import { scoresLocked, type RecruitStatus } from '@/recruit/status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/**
+ * 최종 결과가 정해진 지원자면 409 응답을, 아니면 null 을 돌려준다(status.ts scoresLocked 주석).
+ * 없는 지원자는 여기서 거르지 않는다 — 저장은 FK 가, 삭제는 지울 행이 없어 그대로 끝난다.
+ */
+async function lockedResponse(applicantId: string): Promise<Response | null> {
+  const [target] = await listApplicantsByIds([applicantId]);
+  if (!target || !scoresLocked(target.status as RecruitStatus)) return null;
+  return NextResponse.json(
+    { error: 'scores_locked', message: '최종 결과가 확정된 지원자는 점수를 바꿀 수 없습니다.' },
+    { status: 409 }
+  );
+}
 
 export async function GET(req: Request): Promise<Response> {
   const actor = await getCurrentActor();
@@ -68,6 +82,8 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
     checkLength('코멘트', comment, LIMITS.contentMd);
+    const locked = await lockedResponse(String(applicantId));
+    if (locked) return locked;
 
     // 바뀐 상태를 함께 돌려준다 — 화면이 목록 전체를 다시 받지 않고 딱지만 고칠 수 있게(면접 단계).
     const { applicantStatus } = await recordScore(applicantId, actor.userId, stage, numScore, comment);
@@ -94,6 +110,8 @@ export async function DELETE(req: Request): Promise<Response> {
   }
 
   try {
+    const locked = await lockedResponse(applicantId);
+    if (locked) return locked;
     // 저장(POST)과 같은 모양으로 바뀐 상태를 돌려준다 — 화면이 명단 전체를 다시 받지 않고
     // 딱지만 고칠 수 있게. 마지막 면접 점수를 지우면 '서류 합격'으로 되돌아간다.
     const { applicantStatus } = await deleteScore(applicantId, actor.userId, stage);

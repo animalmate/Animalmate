@@ -7,6 +7,7 @@ import {
   ALLOWED_IMAGE_TYPES,
   MAX_IMAGE_BYTES,
   deleteNoticeImageByUrl,
+  sniffImageType,
   uploadNoticeImage,
 } from '@/storage/notice-images';
 
@@ -61,7 +62,18 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    const uploaded = await uploadNoticeImage(cohortId, await file.arrayBuffer(), file.type);
+    const bytes = await file.arrayBuffer();
+    // 붙어 온 형식이 아니라 **내용**으로 다시 본다(sniffImageType 주석). 저장 형식도 내용 쪽을 쓴다 —
+    // 확장자만 잘못 붙은 진짜 이미지(.jpg 인데 PNG)는 받되, 이미지가 아닌 것은 받지 않는다.
+    const actualType = sniffImageType(new Uint8Array(bytes));
+    if (!actualType) {
+      return NextResponse.json(
+        { error: 'unsupported_type', message: 'JPG, PNG, WebP 이미지만 올릴 수 있습니다. 파일이 손상되었거나 이미지가 아닌 것 같아요.' },
+        { status: 400 }
+      );
+    }
+
+    const uploaded = await uploadNoticeImage(cohortId, bytes, actualType);
     return NextResponse.json(uploaded);
   } catch (e) {
     return internalError('recruit/notice/images POST', e);

@@ -346,6 +346,23 @@ export async function runResultMailWorker(deps: { mailer?: Mailer; appUrl?: stri
   for (const row of batch) {
     const attempts = row.attempts + 1;
 
+    // **보내기 전에 이 행을 점유한다**(시도 횟수를 읽은 값 그대로일 때만 +1). 크론이 겹쳐 두 워커가
+    // 같은 대기열을 읽으면, 예전에는 둘 다 보내서 같은 지원자가 합격·불합격 메일을 두 통씩 받았다
+    // (2026-10-17 보안 감사). 점유에 진 워커는 그 행을 건너뛴다. 상태값을 새로 만들지 않고 시도
+    // 횟수로 낙관적 잠금을 거는 것이라 스키마는 그대로다 — 점유 뒤 죽으면 행은 queued 로 남아 다음에 다시 간다.
+    const [claimed] = await db
+      .update(recruitResultMails)
+      .set({ attempts })
+      .where(
+        and(
+          eq(recruitResultMails.id, row.id),
+          eq(recruitResultMails.status, 'queued'),
+          eq(recruitResultMails.attempts, row.attempts)
+        )
+      )
+      .returning({ id: recruitResultMails.id });
+    if (!claimed) continue;
+
     if (!isValidEmail(row.email)) {
       // 담은 뒤에 이메일이 지워졌거나, 주소가 아닌 값이 들어 있는 경우.
       // **여기가 마지막 관문이다**: 이 값은 바로 다음 줄에서 nodemailer 의 `to` 가 되므로,

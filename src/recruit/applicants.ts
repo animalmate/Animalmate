@@ -306,6 +306,18 @@ export interface ApplicantSubmission {
   englishName?: string | null;
 }
 
+/**
+ * 지원서를 받을 수 없는 상태. 라우트가 4xx 로 사람 말을 돌려준다.
+ *  - closed  : 마감·폐기된 기수(라우트가 먼저 보지만, 잠금 안에서 **다시** 본다 — 아래 주석)
+ *  - decided : 이미 서류 결과가 정해진 지원서(재제출로 고칠 수 없다)
+ */
+export class SubmissionRejectedError extends Error {
+  constructor(readonly reason: 'closed' | 'decided') {
+    super(`submission rejected: ${reason}`);
+    this.name = 'SubmissionRejectedError';
+  }
+}
+
 export interface SubmissionOutcome {
   applicantId: string;
   /** 기존 지원서를 갈아 끼웠는가(= 중복 제출이었는가). */
@@ -374,11 +386,14 @@ export async function submitApplicant(input: ApplicantSubmission): Promise<Submi
 
   return db.transaction(async (tx) => {
     // 같은 기수의 접수를 한 줄로 세운다(위 주석 — 두 번 누르기 경합).
-    await tx
-      .select({ id: recruitCohorts.id })
+    const [cohort] = await tx
+      .select({ id: recruitCohorts.id, isClosed: recruitCohorts.isClosed, archivedStats: recruitCohorts.archivedStats })
       .from(recruitCohorts)
       .where(eq(recruitCohorts.id, input.cohortId))
       .for('update');
+    // 마감·폐기 여부를 **잠근 뒤에 다시** 본다. 라우트의 검사는 잠금 밖이라, 그 사이에 마감 스위치를
+    // 켜거나 폐기를 실행하면 닫힌 기수(폐기면 아무도 보지 않는 곳)에 지원서가 들어갔다(2026-10-17 감사).
+    if (!cohort || cohort.isClosed || cohort.archivedStats) throw new SubmissionRejectedError('closed');
 
     const [existing] = await tx
       .select({
@@ -414,6 +429,13 @@ export async function submitApplicant(input: ApplicantSubmission): Promise<Submi
       if (!created) return null;
       return { applicantId: created.id, replaced: false, previousStatus: null, previousScoreCount: 0, replacedEmail: null };
     }
+
+    // **서류 결과가 정해진 지원서는 갈아 끼우지 않는다**(2026-10-17 보안 감사, 결정 169).
+    // 이 폼은 비로그인이고 신원 확인이 이름+전화뿐이라, 그 둘을 아는 사람이 합격·면접 단계 지원서의
+    // 자기소개서·희망팀·연락처를 덮어쓸 수 있었다. 결정 144 가 "남은 위험"으로 적어 두고 상태별 차단을
+    // 미뤄 둔 그 자리다. 재제출을 허용한 이유(오타·빠뜨린 문항 고치기)는 심사 전에만 성립하므로
+    // `received` 까지는 그대로 갈아 끼우고, 그 뒤는 운영진에게 연락하라고 돌려보낸다.
+    if (existing.status !== 'received') throw new SubmissionRejectedError('decided');
 
     // 운영진이 배정팀을 손대지 않았을 때만 새 1지망을 따라간다(위 주석).
     const staffMovedTeam = existing.assignedTeam !== existing.wishTeam1;

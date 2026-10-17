@@ -38,11 +38,14 @@ export async function GET(req: Request): Promise<Response> {
   //  - 운영진 이상: 최신 기수 그대로. 편집 화면은 **아직 본문이 없는 새 기수를 열어야** 하므로
   //    여기까지 좁히면 방금 만든 기수를 못 연다(지금은 편집 화면이 항상 cohortId 를 넘기지만,
   //    기본값이 그 화면을 막는 모양으로 남아 있으면 안 된다).
-  const cohort = cohortId
-    ? await getCohortById(cohortId)
-    : isInternal
-      ? ((await listCohorts())[0] ?? null)
-      : await getPublicNoticeCohort();
+  //  - 기수 지정(cohortId)은 **운영진 이상만** 따른다. 비로그인에게까지 받아 주면, 아직 공개하지 않은
+  //    다음 기수의 공고 초안을 id 하나로 읽을 수 있었다(2026-10-17 보안 감사). 공개 화면은 이 값을
+  //    넘기지 않는다(서버 컴포넌트가 직접 읽는다) — 지정을 요구하는 것은 편집 화면뿐이다.
+  const cohort = isInternal
+    ? cohortId
+      ? await getCohortById(cohortId)
+      : ((await listCohorts())[0] ?? null)
+    : await getPublicNoticeCohort();
   if (!cohort) return NextResponse.json({ cohort: null }, { status: 200 });
 
   const publicFields = {

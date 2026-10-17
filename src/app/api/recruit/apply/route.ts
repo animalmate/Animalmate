@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { clientIp, consumeRateLimit, RateLimitError, RULES } from '@/http/rate-limit';
 import { getCohortById, listCohorts } from '@/recruit/cohorts';
-import { submitApplicant } from '@/recruit/applicants';
+import { submitApplicant, SubmissionRejectedError } from '@/recruit/applicants';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { applicantEmailChangedMail, defaultMailer } from '@/auth/mailer';
 import { internalError } from '@/http/errors';
@@ -196,10 +196,23 @@ export async function POST(req: Request): Promise<Response> {
       if (outcome.replacedEmail) await notifyEmailChanged(outcome.replacedEmail);
     }
 
-    return NextResponse.json({ ok: true, applicantId: outcome.applicantId, replaced: outcome.replaced });
+    // 내부 id 는 내보내지 않는다 — 화면이 쓰지 않고, 이름+전화만으로 남의 지원서 id 를 캐는 통로가 된다.
+    // `replaced` 는 남긴다: 앞서 낸 것이 대체됐다고 지원자에게 말해야 한다(결정 144).
+    return NextResponse.json({ ok: true, replaced: outcome.replaced });
   } catch (e) {
     if (e instanceof InputTooLongError) {
       return NextResponse.json({ error: 'too_long', message: e.message }, { status: 400 });
+    }
+    if (e instanceof SubmissionRejectedError) {
+      return NextResponse.json(
+        e.reason === 'decided'
+          ? {
+              error: 'already_reviewed',
+              message: '이미 심사가 진행된 지원서는 다시 제출해 고칠 수 없습니다. 수정이 필요하면 운영진에게 문의해 주세요.',
+            }
+          : { error: 'closed', message: '해당 기수의 신입 모집이 마감되었습니다.' },
+        { status: e.reason === 'decided' ? 409 : 400 }
+      );
     }
     return internalError('recruit/apply POST', e);
   }

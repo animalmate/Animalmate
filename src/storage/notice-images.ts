@@ -17,6 +17,21 @@ export const NOTICE_BUCKET = 'recruit-notice';
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
+/**
+ * 파일 앞부분의 서명(매직 바이트)으로 실제 이미지 형식을 판정한다. 아니면 null.
+ *
+ * 왜 브라우저가 붙인 형식(file.type)만으로 부족한가(2026-10-17 보안 감사): 그 값은 올리는 쪽이
+ * 마음대로 정한다. 이 버킷은 **공개**라, 이미지라고 우기는 아무 파일이나 올리면 우리 도메인 주소로
+ * 누구에게나 배포되는 파일 보관소가 된다. 내용이 실제로 그 형식일 때만 받는다.
+ */
+export function sniffImageType(bytes: Uint8Array): (typeof ALLOWED_IMAGE_TYPES)[number] | null {
+  const at = (i: number, ...sig: number[]) => sig.every((b, j) => bytes[i + j] === b);
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
+  if (at(0, 0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return 'image/webp'; // RIFF....WEBP
+  return null;
+}
+
 function storageBase(): { base: string; key: string } {
   const base = (process.env.SUPABASE_URL ?? '').replace(/\/$/, '');
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';

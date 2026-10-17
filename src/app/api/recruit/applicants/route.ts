@@ -22,6 +22,14 @@ import { parseReviewMark } from '@/recruit/review-marks';
 import { internalError } from '@/http/errors';
 import { recordAudit, buildAuditEntry } from '@/auth/audit';
 import { db } from '@/db/client';
+import { LIMITS } from '@/http/input';
+
+/** 화면이 보내는 자유 입력 칸의 길이 상한. 회장단·운영진만 쓰는 값이어도 서버에서 묶는다(규칙 #6). */
+const MAX_INTERVIEW_LINK = 500;
+
+function tooLong(field: string, max: number): Response {
+  return NextResponse.json({ error: 'too_long', message: `${field}은(는) ${max}자를 넘을 수 없습니다.` }, { status: 400 });
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -198,6 +206,9 @@ export async function PATCH(req: Request): Promise<Response> {
       // 읽혀 표시가 조용히 사라진다(parseReviewMark 주석).
       const mark = parseReviewMark(body.reviewMark);
       if (mark === undefined) return NextResponse.json({ error: 'invalid_mark' }, { status: 400 });
+      if (typeof body.reviewMoveTeam === 'string' && body.reviewMoveTeam.length > LIMITS.name) {
+        return tooLong('갈 팀', LIMITS.name);
+      }
 
       // 갈 팀은 그대로 넘긴다 — 'move' 가 아닐 때 지우는 일은 서비스가 한다(setReviewMark).
       // 안 고를 수 있는 값이라 없다고 400 을 내지 않는다.
@@ -219,6 +230,9 @@ export async function PATCH(req: Request): Promise<Response> {
 
     if (action === 'assign_slot') {
       if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
+      if (interviewLink != null && (typeof interviewLink !== 'string' || interviewLink.length > MAX_INTERVIEW_LINK)) {
+        return tooLong('면접 링크', MAX_INTERVIEW_LINK);
+      }
       const applicant = await getApplicantById(id);
       if (!applicant) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
@@ -245,8 +259,9 @@ export async function PATCH(req: Request): Promise<Response> {
           action: 'recruit.applicant.assignSlot',
           targetTable: 'recruit_applicants',
           targetId: id,
-          before: { slotId: applicant.slotId },
-          after: { slotId: slotId ?? null },
+          // 개인 면접 링크도 지원자 화면에 그대로 나가는 값이라 바뀌었는지 남긴다(주소 자체는 아래에).
+          before: { slotId: applicant.slotId, interviewLink: applicant.interviewLink ?? null },
+          after: { slotId: slotId ?? null, ...(interviewLink !== undefined ? { interviewLink: interviewLink ?? null } : {}) },
         })
       );
       return NextResponse.json({ applicant: updated });
@@ -321,6 +336,7 @@ export async function PATCH(req: Request): Promise<Response> {
 
     if (action === 'update_station') {
       if (!id || typeof nearStation !== 'string') return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
+      if (nearStation.length > LIMITS.name) return tooLong('가까운 역', LIMITS.name);
       const updated = await updateApplicantNearStation(id, nearStation);
       return NextResponse.json({ applicant: updated });
     }

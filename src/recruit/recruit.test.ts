@@ -6,6 +6,7 @@ import {
   canConfirmFinal,
   canTransition,
   canMarkAttendance,
+  scoresLocked,
 } from './status';
 // scores.ts 가 아니라 score-rules.ts 에서 가져온다 — scores.ts 는 db/client 를 import 하므로
 // DB 연결 없는 순수 단위 테스트에서 로드하면 DATABASE_URL 에러가 난다.
@@ -273,6 +274,21 @@ describe('attendanceRevertTarget (불참을 되돌렸을 때 착지할 상태)',
       const viaScore = nextStatusOnScoreChange('doc_pass', count);
       const viaRevert = attendanceRevertTarget(count);
       expect(viaRevert).toBe(viaScore);
+    }
+  });
+});
+
+// 최종 결과가 정해진 뒤에는 점수를 바꾸지 않는다(2026-10-17 보안 감사) — 결정의 근거가 결정 뒤에
+// 바뀌면 되짚을 수 없다. 그 전 단계(면접 완료·불참 포함)는 지금처럼 채점·정정할 수 있어야 한다.
+describe('scoresLocked (최종 확정 뒤 채점 잠금)', () => {
+  it('최종 합격·불합격이면 잠근다', () => {
+    expect(scoresLocked('final_pass')).toBe(true);
+    expect(scoresLocked('final_fail')).toBe(true);
+  });
+
+  it('그 전 단계는 열어 둔다 — 잘못 넣은 점수를 지우는 길(결정 143)이 막히면 안 된다', () => {
+    for (const s of ['received', 'doc_pass', 'doc_fail', 'interview_done', 'interview_noshow'] as const) {
+      expect(scoresLocked(s)).toBe(false);
     }
   });
 });

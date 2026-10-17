@@ -62,11 +62,16 @@ describe('Recruit Flow & Permissions Tests', () => {
     expect(RULES.recruitLookup.windowSeconds).toBeLessThanOrEqual(60);
   });
 
-  it('열거 방어는 총량(IP)이 아니라 대상(이름) 통이 맡는다 — 총량을 넓혀도 흔들리지 않는다', () => {
+  it('열거 방어는 총량(IP)이 아니라 대상 단위 통이 맡는다 — 총량을 넓혀도 흔들리지 않는다', () => {
     // 결정 80. 이 분리가 있어야 위의 상한을 인원에 맞춰 올릴 수 있다.
     expect(RULES.recruitLookupFail.bucket).not.toBe(RULES.recruitLookup.bucket);
-    // 특정인을 노리는 반복은 여전히 좁다 — 전화 11자리 조합에 견줘 시간당 10회는 무의미한 크기다.
-    expect(RULES.recruitLookupFail.max).toBeLessThanOrEqual(10);
+    expect(RULES.recruitLookupFailIp.bucket).not.toBe(RULES.recruitLookup.bucket);
+    // 한 곳에서 특정인을 노리는 반복은 여전히 좁다(결정 169, IP+이름 통) — 전화 11자리 조합에 견줘
+    // 시간당 10회는 무의미한 크기다. 이름 통은 IP 여럿을 동원한 분산 시도를 모으는 뒷받침이라 넓지만,
+    // 그래도 하루 내내 시도해 맞힐 수 있는 크기는 아니다.
+    expect(RULES.recruitLookupFailIp.max).toBeLessThanOrEqual(10);
+    expect(RULES.recruitLookupFail.max).toBeLessThanOrEqual(100);
+    expect(RULES.recruitLookupFailIp.windowSeconds).toBe(3600);
     expect(RULES.recruitLookupFail.windowSeconds).toBe(3600);
   });
 });

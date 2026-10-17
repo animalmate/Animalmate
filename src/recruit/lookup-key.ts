@@ -26,3 +26,19 @@ export function lookupFailKey(name: string, secret: string): string {
   if (!secret) throw new Error('SESSION_SECRET 가 필요합니다(조회 실패 카운터 해시).');
   return createHmac('sha256', secret).update(`${DOMAIN}${name.trim()}`).digest('base64url').slice(0, 32);
 }
+
+/** IP+이름 통의 도메인 구분자. 이름 통과 같은 비밀키를 쓰므로 값이 겹치지 않게 따로 둔다. */
+const IP_DOMAIN = 'recruit-lookup-fail-ip:v1:';
+
+/**
+ * (조회하는 곳, 조회 대상) → 실패 카운터 식별자(2026-10-17, 결정 169).
+ *
+ * 이름만으로 세면 **남이** 그 이름으로 틀린 번호를 넣어 본인의 조회를 막을 수 있었다(표적 잠금).
+ * 조회하는 곳(IP)을 함께 묶으면, 틀린 시도가 깎는 것은 그 곳의 통뿐이다. 이름은 lookupFailKey 와
+ * 같게 정규화한다 — 공백 하나로 매번 새 통을 받는 우회를 막는다. IP 와 이름 사이에 줄바꿈을 둬
+ * "1.2.3.4"+"5홍길동"과 "1.2.3.45"+"홍길동"이 같은 값이 되지 않게 한다.
+ */
+export function lookupFailIpKey(name: string, ip: string, secret: string): string {
+  if (!secret) throw new Error('SESSION_SECRET 가 필요합니다(조회 실패 카운터 해시).');
+  return createHmac('sha256', secret).update(`${IP_DOMAIN}${ip}\n${name.trim()}`).digest('base64url').slice(0, 32);
+}

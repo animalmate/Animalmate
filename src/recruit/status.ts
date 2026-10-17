@@ -32,6 +32,18 @@ export function nextStatusOnScoreChange(
   return currentStatus;
 }
 
+/**
+ * 점수를 더 이상 바꿀 수 없는가 — **최종 결과가 정해진 뒤**(final_pass·final_fail).
+ *
+ * 상태 자체는 위 nextStatusOnScoreChange 가 최종 상태를 건드리지 않아 안전했지만, 점수는 발표 뒤에도
+ * 운영진 누구나 더하고 지울 수 있었고 기록도 남지 않았다(2026-10-17 보안 감사). 결정의 근거가 된
+ * 숫자가 결정 뒤에 바뀌면 "왜 이 사람이 붙었나"를 되짚을 수 없다. 서비스(recordScore)는 상태 불변만
+ * 지키고, 이 판정은 채점 라우트가 건다 — 운영진이 쓰는 길을 막는 것이 목적이다.
+ */
+export function scoresLocked(status: RecruitStatus): boolean {
+  return status === 'final_pass' || status === 'final_fail';
+}
+
 /** 서류 합격 확정 가능 여부 (received 상태만 합격/불합격 확정 가능) */
 export function canConfirmDoc(status: RecruitStatus): boolean {
   return status === 'received';

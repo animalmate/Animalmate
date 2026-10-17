@@ -3,7 +3,7 @@
 // 2단계 확인 후 지원자 인적사항, 점수, 메모 전량 Hard Delete. 익명 집계 통계만 둔다.
 
 import { db } from '../db/client';
-import { recruitCohorts, recruitApplicants, recruitScores, screenNotes } from '../db/schema';
+import { recruitCohorts, recruitApplicants, recruitScores, screenNotes, recruitSlots, recruitDutyAssignments } from '../db/schema';
 import { eq, like } from 'drizzle-orm';
 import { recordAudit, buildAuditEntry } from '../auth/audit';
 import { purgeBlockReason } from './purge-rules';
@@ -79,7 +79,15 @@ export async function purgeCohortApplicants(cohortId: string, actorUserId: strin
     //    메모지 화면 자체는 재사용 자산이지만 그 내용은 기수 것이다(09-RECRUIT-DESIGN §8).
     await tx.delete(screenNotes).where(like(screenNotes.contextKey, cohortNoteKeyPrefix(cohortId)));
 
-    // 5. Audit log 기록 [high]
+    // 5. 면접 시간표와 대기실 배정도 지운다(면접관 배정은 슬롯에 cascade 로 딸려 간다).
+    //    지원자가 사라진 기수에서 시간표는 쓸 데가 없는데, 그 안에는 계정 없는 면접관·도우미의
+    //    **실명**(0028)과 줄마다 적는 자유 메모("○○ 지원자 요청으로 15분 지연")가 남는다.
+    //    예전에는 지원자 행만 지워서 이것들이 기수 행과 함께 무기한 남았다(2026-10-17 보안 감사).
+    //    기수 행 자체는 익명 집계(archived_stats)를 들고 남는다.
+    await tx.delete(recruitSlots).where(eq(recruitSlots.cohortId, cohortId));
+    await tx.delete(recruitDutyAssignments).where(eq(recruitDutyAssignments.cohortId, cohortId));
+
+    // 6. Audit log 기록 [high]
     await recordAudit(
       tx,
       buildAuditEntry({
