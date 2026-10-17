@@ -2,7 +2,9 @@
 // 스키마를 바꾸면 03-DATA-MODEL.md 를 같은 커밋에서 갱신할 것(CLAUDE.md 코드 컨벤션).
 //
 // 규칙 반영:
-//  - RLS 는 마이그레이션에서 전 테이블 활성화(정책 미부여 = 기본 거부, 규칙 #8). 여기서는 테이블만 정의.
+//  - RLS 는 전 테이블 활성화(정책 미부여 = 기본 거부, 규칙 #8). **모든 pgTable 끝에 `.enableRLS()` 를
+//    붙인다**(0042) — 스키마가 RLS 를 말하지 않으면 `drizzle-kit push` 가 그것을 "꺼진 상태"로 읽고 실제로
+//    꺼 버린다(2026-07-27 사고). 새 테이블에도 반드시 붙일 것. 정책(pgPolicy)은 만들지 않는다.
 //  - 데이터 접근은 서버(service role) 경유. 브라우저에서 직접 쿼리 금지.
 //  - 조직 수치(팀 수/인원)는 전부 데이터 → 상수 하드코딩 금지(PRD §4, 핵심 설계 결정 6).
 
@@ -159,7 +161,7 @@ export const users = pgTable('users', {
    */
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 // ⚠ DB 에는 `users_last_seen_idx`(last_seen_at) 인덱스가 있다 — 손으로 쓴 마이그레이션 0024 에서
 // 만들었고 여기(schema.ts)에도 drizzle 스냅샷에도 없다. 즉 **drizzle 은 그 인덱스를 모른다.**
 // 여기에 index() 로 다시 선언하면 generate 가 이미 있는 이름으로 CREATE INDEX 를 뽑아 마이그레이션이
@@ -175,7 +177,7 @@ export const memberships = pgTable('memberships', {
   termStart: date('term_start').notNull(),
   termEnd: date('term_end').notNull(), // 크론이 경과 건을 expired 로 강등(규칙 임기 자동 만료)
   status: membershipStatusEnum('status').notNull().default('active'),
-});
+}).enableRLS();
 
 /** 팀장단 1인(공지에 삽입되는 연락처 + 관리 권한 계정). 개인정보 — 런타임 입력이며 코드/시드에 넣지 않는다(규칙 #4). */
 // teams.leaders = 봉사 공지 {{팀장단}}에 덧붙는 "미가입자 수동 항목"(이름·전화만 있는 사람).
@@ -199,7 +201,7 @@ export const teams = pgTable('teams', {
   canEditNotice: boolean('can_edit_notice').notNull().default(false),
   // 매 학기 교체되는 팀장단 명단(공지 {{팀장단}} 자동 삽입용).
   leaders: jsonb('leaders').$type<TeamLeader[]>().notNull().default(sql`'[]'::jsonb`),
-});
+}).enableRLS();
 
 export const teamMembers = pgTable(
   'team_members',
@@ -215,7 +217,7 @@ export const teamMembers = pgTable(
     label: text('label'),
   },
   (t) => [unique('team_members_team_user_uq').on(t.teamId, t.userId)]
-);
+).enableRLS();
 
 // 제거됨: invites (마이그레이션 0020). 학기별 가입코드(join_codes)가 대체했고(결정 2)
 // 읽고 쓰는 코드가 하나도 없었다. 0행 확인 후 DROP.
@@ -228,14 +230,14 @@ export const boards = pgTable('boards', {
   purpose: text('purpose'),
   botCanWrite: boolean('bot_can_write').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
-});
+}).enableRLS();
 
 export const naverTokens = pgTable('naver_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
   refreshTokenEncrypted: text('refresh_token_encrypted').notNull(),
   lastRefreshedAt: timestamp('last_refreshed_at', { withTimezone: true }),
   status: naverTokenStatusEnum('status').notNull().default('ok'),
-});
+}).enableRLS();
 
 export const scheduledPosts = pgTable(
   'scheduled_posts',
@@ -264,7 +266,7 @@ export const scheduledPosts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('scheduled_posts_due_idx').on(t.status, t.publishAt)]
-);
+).enableRLS();
 
 // ── 봉사 워크플로 ──────────────────────────────────────────────────────
 // 발행 양식(템플릿). 팀 소유·개인 소유·global(공용) 셋. global 은 owner_id=null, 편집=회장단만.
@@ -287,7 +289,7 @@ export const postTemplates = pgTable('post_templates', {
     .references(() => users.id),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // 제거됨: recurring_rules (마이그레이션 0020). 일괄 생성 기능을 없앤 2026-07-24 이후로
 // 읽고 쓰는 코드가 없었고, 데이터 보존을 위해 남겨 두었지만 0행이라 보존할 것도 없었다.
@@ -307,7 +309,7 @@ export const events = pgTable('events', {
   // 공지 발행용 회차 데이터 = 예약 폼과 통합(일시/장소/정원 = 챗봇 상태질의 원천).
   // post→event 연결은 scheduled_posts.event_id 로 통일(events.scheduled_post_id 제거).
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // 미완성 점검 알림 발송 기록(중복 방지). 같은 예약글에 같은 날 중복 알림 금지.
 export const noticeCheckLog = pgTable(
@@ -321,7 +323,7 @@ export const noticeCheckLog = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique('notice_check_uq').on(t.scheduledPostId, t.noticeDate)]
-);
+).enableRLS();
 
 // ── RAG/챗봇 ───────────────────────────────────────────────────────────
 export const documents = pgTable('documents', {
@@ -338,7 +340,7 @@ export const documents = pgTable('documents', {
   piiChecked: boolean('pii_checked').notNull().default(false), // PII 감지 시 확인 요구(규칙 #5)
   // 손으로 쓴 문서인지, 가이드북 PDF 에서 뽑아낸 본문인지. 관리 목록을 가르는 데만 쓴다.
   kind: documentKindEnum('kind').notNull().default('manual'),
-});
+}).enableRLS();
 
 export const docChunks = pgTable(
   'doc_chunks',
@@ -356,7 +358,7 @@ export const docChunks = pgTable(
     // 임베딩 근접 검색용 HNSW 인덱스(cosine). visibility 필터는 검색 SQL 에서 조인으로 강제.
     index('doc_chunks_embedding_idx').using('hnsw', t.embedding.op('vector_cosine_ops')),
   ]
-);
+).enableRLS();
 
 export const chatLogs = pgTable('chat_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -367,7 +369,7 @@ export const chatLogs = pgTable('chat_logs', {
   sources: text('sources').array(), // 출처 문서명
   handedOff: boolean('handed_off').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // ── 인증(가입코드 + 이메일 OTP) ───────────────────────────────────────
 // 부원 가입 = 학기별 가입코드(활성 코드 항상 1개) + 이메일 6자리 OTP. 로그인 = 이메일 OTP.
@@ -387,7 +389,7 @@ export const joinCodes = pgTable(
   },
   // 활성 코드는 항상 1개(부분 유니크 인덱스 — is_active=true 인 행이 최대 1개).
   (t) => [uniqueIndex('join_codes_single_active').on(t.isActive).where(sql`${t.isActive}`)]
-);
+).enableRLS();
 
 export const emailCodes = pgTable(
   'email_codes',
@@ -402,7 +404,7 @@ export const emailCodes = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('email_codes_email_purpose_idx').on(t.email, t.purpose)]
-);
+).enableRLS();
 
 /**
  * 레이트 리밋 카운터(고정 윈도). 인증 전 엔드포인트(가입/로그인 요청·검증)를 보호한다.
@@ -423,7 +425,7 @@ export const rateLimits = pgTable(
     uniqueIndex('rate_limits_pk').on(t.bucket, t.identifier, t.windowStart),
     index('rate_limits_window_idx').on(t.windowStart), // 오래된 행 정리용
   ]
-);
+).enableRLS();
 
 /**
  * 앱 설정(key-value) — 회장단이 콘솔에서 바꾸는 운영 파라미터. 상수 하드코딩 대신 여기 둔다(결정 3).
@@ -435,7 +437,7 @@ export const appSettings = pgTable('app_settings', {
   valueJson: jsonb('value_json').notNull(),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // ── 운영 공통 ──────────────────────────────────────────────────────────
 export const auditLogs = pgTable('audit_logs', {
@@ -447,7 +449,7 @@ export const auditLogs = pgTable('audit_logs', {
   beforeJson: jsonb('before_json'),
   afterJson: jsonb('after_json'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // ── F9 신입 모집 (지원자 = 비부원, PII 최소화·보관 제한. 결정 #7 번복 2026-07-25, 07-DECISIONS) ──
 // 규칙: 지원자 데이터·자기소개서는 RAG 인덱스 반입 금지(규칙 #5). 열람=운영진 이상, export=회장단만+audit.
@@ -484,7 +486,7 @@ export const recruitCohorts = pgTable('recruit_cohorts', {
     .notNull()
     .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // 면접 슬롯(조×시간 격자). 10분 단위 세분화 지원. 장소 프리셋 또는 비대면 링크 지정.
 export const recruitSlots = pgTable('recruit_slots', {
@@ -516,7 +518,7 @@ export const recruitSlots = pgTable('recruit_slots', {
     .notNull()
     .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 // ⚠ DB 에는 `recruit_slots_cohort_idx`(cohort_id) 인덱스가 있다(마이그레이션 0014, 손으로 작성).
 // users_last_seen_idx 와 같은 사정 — schema.ts·drizzle 스냅샷 어디에도 없으니 여기서 다시 선언하지 말 것.
 
@@ -545,7 +547,7 @@ export const recruitSlotInterviewers = pgTable(
     unique('recruit_slot_interviewers_uq').on(t.slotId, t.userId),
     unique('recruit_slot_interviewers_name_uq').on(t.slotId, t.name),
   ]
-);
+).enableRLS();
 
 // 면접 당일 지원 업무(대기실) 배정. 면접관이 아니라 명단 체크·대기실 안내·인솔을 맡는 사람들.
 // 지난 기수는 이걸 별도 엑셀로 돌렸다(22.png) — 면접 시간표와 같은 시간축을 쓰므로 함께 둔다.
@@ -580,7 +582,7 @@ export const recruitDutyAssignments = pgTable(
   },
   // 한 시간대의 한 역할에는 한 명. 같은 칸을 두 번 저장하면 덮어쓴다(upsert).
   (t) => [unique('recruit_duty_assignments_uq').on(t.cohortId, t.startsAt, t.duty)]
-);
+).enableRLS();
 
 // 지원자(구글폼 전 필드 또는 온라인 직접 입력). birth_date·ot_attend·remote_interview_wish 는 폼 표기가 제각각이라 원문 text 로 둔다.
 export const recruitApplicants = pgTable(
@@ -628,7 +630,7 @@ export const recruitApplicants = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('recruit_applicants_cohort_idx').on(t.cohortId)]
-);
+).enableRLS();
 
 // 채점(서류·면접). 본인 점수만 수정(UNIQUE). 0.0~10.0, 0.5 단위(서비스 검증 + 마이그레이션 CHECK).
 export const recruitScores = pgTable(
@@ -648,7 +650,7 @@ export const recruitScores = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique('recruit_scores_uq').on(t.applicantId, t.scorerUserId, t.stage)]
-);
+).enableRLS();
 
 /**
  * 결과 안내 메일 발송 대기열 겸 이력.
@@ -696,7 +698,7 @@ export const recruitResultMails = pgTable(
     // 크론이 매번 "보낼 것"과 "최근 24시간에 보낸 수"를 찾는다. 둘 다 status 로 시작한다.
     index('recruit_result_mails_status_idx').on(t.status, t.sentAt),
   ]
-);
+).enableRLS();
 // ⚠ 중복 방어 UNIQUE 두 개는 **부분 인덱스**라 drizzle 로 선언할 수 없어 마이그레이션 0040 에
 // 손으로 넣었다(`recruit_slots_cohort_idx` 와 같은 사정 — 여기서 다시 선언하지 말 것):
 //   · recruit_result_mails_once_uq      (applicant_id, stage) WHERE stage <> 'interview'
@@ -720,7 +722,7 @@ export const recruitMemos = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique('recruit_memos_uq').on(t.applicantId, t.authorUserId)]
-);
+).enableRLS();
 
 // 화면별 공용 메모지(운영진 누구나 함께 쓰고 지우는 자유 메모). context_key 로 화면 구분.
 // 지원자별 개인 메모(recruit_memos)와는 별개. 자동 저장, 마지막 수정자·시각 표시.
@@ -729,7 +731,7 @@ export const screenNotes = pgTable('screen_notes', {
   content: text('content').notNull().default(''),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 
 // ── 동아리 일정(캘린더) ────────────────────────────────────────────────
@@ -760,7 +762,7 @@ export const schedules = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('schedules_start_idx').on(t.startDate)]
-);
+).enableRLS();
 
 // ── 팀 가이드북 ────────────────────────────────────────────────────────
 // 팀별 가이드북 PDF. 두 가지를 동시에 한다: **부원이 화면에서 바로 보는 파일**과
@@ -793,7 +795,7 @@ export const teamGuidebooks = pgTable('team_guidebooks', {
     .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // ── 동아리 전체 가이드북 ───────────────────────────────────────────────
 // 기수 단위로 회장단이 올리는 한 권(예: "33기 전체 가이드북"). 팀 가이드북과 **테이블을 나눴다.**
@@ -829,7 +831,7 @@ export const clubGuidebooks = pgTable(
   // 고정 키 + CHECK = "행은 하나뿐"의 DB 보장. 스키마에 적어 두는 이유는 다음 db:generate 가
   // 모르는 제약으로 보고 지워 버리지 않게 하기 위해서다.
   (t) => [check('club_guidebooks_singleton', sql`${t.id} = 'club'`)]
-);
+).enableRLS();
 
 // ── 번개(즉흥 소모임) ──────────────────────────────────────────────────
 // 카톡 공지 → 개최자에게 개인톡, 으로 굴러가던 것을 게시판으로 옮긴다. 옮기는 이유는 "글이
@@ -888,7 +890,7 @@ export const flashMeetups = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('flash_meetups_date_idx').on(t.meetDate)]
-);
+).enableRLS();
 
 /**
  * 공동 개최자. 번개는 여럿이 함께 여는 일이 흔해서(사용자 요청) 개최자를 컬럼 하나로 두지 않는다.
@@ -910,7 +912,7 @@ export const flashHosts = pgTable(
     readAt: timestamp('read_at', { withTimezone: true }),
   },
   (t) => [unique('flash_hosts_uq').on(t.flashId, t.userId)]
-);
+).enableRLS();
 
 /**
  * 번개 신청. **메시지가 곧 신청이다**(사용자 결정) — "테마 1 참가하고 싶습니다!" 처럼 쓴 첫 쪽지가
@@ -961,7 +963,7 @@ export const flashSignups = pgTable(
     unique('flash_signups_uq').on(t.flashId, t.userId), // 한 번개에 한 사람 한 자리
     index('flash_signups_order_idx').on(t.flashId, t.seq),
   ]
-);
+).enableRLS();
 
 /**
  * 신청 건마다 붙는 1:1 대화(신청자 ↔ 개최자 전원). 첫 줄이 신청 메시지다.
@@ -981,4 +983,4 @@ export const flashMessages = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('flash_messages_thread_idx').on(t.signupId, t.createdAt)]
-);
+).enableRLS();

@@ -378,14 +378,21 @@
   - **상태 자동 전환**: 면접 점수 최초 저장 시 doc_pass→interview_done, 점수 0개로 감소 시 interview_done→doc_pass
     (같은 트랜잭션). 면접불참(interview_noshow)은 **면접관(운영진)이 면접 콘솔에서 표시**하고 되돌릴 수도 있다
     (2026-07-31, 07-DECISIONS 67). 순수 함수 `nextStatusOnScoreChange` 로 분리(단위 테스트).
-  - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 60회(총량) + 같은 이름 실패 10회/시간
-    (`rate_limits` 재사용, 버킷 `recruit_lookup`/`recruit_lookup_fail`). **시도 입력값(이름·전화)은 저장하지 않는다**
+  - 조회 보호: 실패 메시지 단일화("입력 정보를 확인해주세요"), IP당 분당 60회(총량) + 같은 곳·같은 이름 10회/시간
+    + 같은 이름 100회/시간(`rate_limits` 재사용, 버킷 `recruit_lookup`/`recruit_lookup_fail_ip`/`recruit_lookup_fail`,
+    2026-10-17 결정 169 — 이름만으로 세면 남이 그 이름을 잠글 수 있었다). **시도 입력값(이름·전화)은 저장하지 않는다**
     — 비지원자 PII 수집 금지(규칙 #4/#5). 결정 #8의 "시도 로그"는 카운터로 대체(07-DECISIONS 25).
   - RLS: 신규 8테이블 생성과 동시에 RLS 활성화(규칙 #8, RLS 테스트가 누락을 자동 감지).
   - ⚠ **`drizzle-kit push` 사용 금지**(0014 사고): push 는 schema.ts 에 RLS 선언이 없는 것을 보고
     **public 전 테이블의 RLS 를 꺼버린다**. 실제로 2026-07-27 전 28개 테이블 RLS 가 해제되어
     anon key 로 `users`·`memberships` 가 조회되는 상태였다. 스키마 변경은 반드시
     `npm run db:generate` → `npm run db:migrate`. 0014 가 RLS 를 일괄 복구했다.
+  - **schema.ts 가 RLS 를 선언한다**(0042, 2026-10-17): 모든 `pgTable(...)` 끝에 `.enableRLS()`. 위 사고의
+    근본 원인(스키마가 RLS 를 말하지 않음)을 없앤 것이다 — 이제 push 를 해도 RLS 를 끄지 않는다(그래도 push 는
+    쓰지 않는다: 마이그레이션 이력이 갈라진다). 0042 는 DB 에서 아무것도 바꾸지 않는다(이미 켜진 RLS 재선언).
+    **새 테이블에도 반드시 붙일 것.** 정책(`pgPolicy`)은 만들지 않는다(규칙 #8).
+  - 기수 폐기(`recruit/purge`)는 지원자·점수·메모·결과 메일·공용 메모지에 더해 **면접 슬롯·면접관 배정·대기실
+    배정**까지 지운다(2026-10-17). 계정 없는 면접관·도우미 실명과 줄 메모가 기수 행과 함께 무기한 남았다.
 
 ## 접근 규칙 (서버에서 강제)
 1. 쓰기 요청마다: 인증 → membership active? → 역할 충족? → 소유권(personal=본인,
