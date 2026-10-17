@@ -83,7 +83,11 @@ function waitForCallback(expectedState) {
     server.on('error', (e) =>
       resolve({ ok: false, reason: `콜백 서버 오류: ${e.message} (포트 ${CALLBACK_PORT} 사용 중일 수 있음)` })
     );
-    server.listen(CALLBACK_PORT, () => {
+    // 이 컴퓨터 안에서만 받는다. 호스트를 비우면 모든 인터페이스(0.0.0.0)에 열려, 같은 WiFi 의 다른
+    // 기기가 콜백을 먼저 두드려 발급을 끊을 수 있다(state 검사로 토큰은 못 가져가지만 흐름이 깨진다).
+    // 'localhost' 로 두면 REDIRECT_URI(http://localhost:…)와 같은 이름으로 열린다(127.0.0.1 로 못 박으면
+    // localhost 를 ::1 로 푸는 환경에서 콜백이 닿지 않는다).
+    server.listen(CALLBACK_PORT, 'localhost', () => {
       const state = expectedState;
       const authUrl = `${AUTHORIZE_URL}?${new URLSearchParams({
         response_type: 'code',

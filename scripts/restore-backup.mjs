@@ -168,6 +168,15 @@ function cleanupRepo() {
   if (tempRepo) rmSync(tempRepo, { recursive: true, force: true });
 }
 
+// Ctrl+C 로 끊어도 임시 폴더(받아 온 백업 사본)를 남기지 않는다. 사본은 암호화돼 있지만,
+// 키 하나면 전부 열리는 파일이라 OS 임시 폴더에 흩어 두지 않는다(2026-10-17 보안 감사).
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.once(sig, () => {
+    cleanupRepo();
+    process.exit(130);
+  });
+}
+
 /** gpg --decrypt → zlib gunzip. 압축 해제된 평문 스트림을 돌려준다. */
 function decryptStream() {
   // 암호는 argv 에 두지 않는다(ps 로 보인다). 암호문을 파일 인자로 주므로 stdin 이 비어 있어

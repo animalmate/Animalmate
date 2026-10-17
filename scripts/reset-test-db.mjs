@@ -19,6 +19,8 @@
 //  - 테스트 DB 상태가 의심스러울 때 — 언제 돌려도 안전하다. 테스트 DB 에 보존할 데이터는 없다.
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import postgres from 'postgres';
@@ -50,7 +52,29 @@ const prod = [process.env.DATABASE_URL, process.env.DIRECT_URL]
   .map(projectRef)
   .filter(Boolean);
 
-if (target && prod.includes(target)) {
+// ② 운영 URL 이 .env 에 **없어도** 막는다. 위 대조는 DATABASE_URL·DIRECT_URL 이 함께 있을 때만
+//    성립해서, 그 둘이 없는 머신(또는 셸)에서 TEST_DATABASE_URL 에 운영 값을 넣으면 그대로 운영 스키마를
+//    지웠다(2026-10-17 보안 감사). 통합 테스트 가드(test/db-url.ts)와 같은 해시 대조를 여기서도 한다.
+//    해시 값은 test/prod-ref.ts 한 곳에만 두고 거기서 읽는다 — 두 벌로 두면 한쪽만 바뀐다.
+//    읽지 못하면 **멈춘다**(확인하지 못한 채 스키마를 지우지 않는다).
+function prodRefHash() {
+  try {
+    const src = readFileSync(fileURLToPath(new URL('../test/prod-ref.ts', import.meta.url)), 'utf8');
+    return /PROD_REF_SHA256\s*=\s*'([0-9a-f]{64})'/.exec(src)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+const PROD_HASH = prodRefHash();
+if (!PROD_HASH) {
+  console.error('\n✖ test/prod-ref.ts 에서 운영 프로젝트 해시를 읽지 못했습니다. 확인 없이 지우지 않습니다.\n');
+  process.exit(1);
+}
+// URL 안의 ref 모양 토큰(20자)을 전부 해시로 대조한다 — 사용자명·호스트 어디에 있든 잡힌다(prod-ref.ts 와 같은 규칙).
+const looksLikeProduction = (u) =>
+  (u.toLowerCase().match(/[a-z0-9]{20}/g) ?? []).some((t) => createHash('sha256').update(t).digest('hex') === PROD_HASH);
+
+if ((target && prod.includes(target)) || looksLikeProduction(url)) {
   console.error(
     '\n✖ TEST_DATABASE_URL 이 **운영 프로젝트**를 가리키고 있습니다. 이 스크립트는 스키마를 통째로\n' +
       '  지웁니다 — 운영이면 전 데이터가 사라집니다. 중단합니다.\n'

@@ -212,7 +212,8 @@ read -s -p "키: " K && BACKUP_ENCRYPTION_KEY="$K" node scripts/restore-backup.m
 
 ## CI
 
-`.github/workflows/ci.yml`이 push/PR마다 타입체크 → 린트 → 단위 테스트 → RLS 테스트를 실행한다.
+`.github/workflows/ci.yml`이 push/PR마다 타입체크 → 린트 → 단위 테스트 → 통합 테스트(테스트 DB)를 실행하고,
+**main 에 push 됐을 때만** 운영 RLS 증명을 실행한다(운영 자격증명을 리뷰 전 브랜치 코드에 주지 않는다 — 07-DECISIONS 169).
 RLS 테스트는 GitHub 리포 Settings > Secrets and variables > Actions의 `SUPABASE_URL`,
 `SUPABASE_ANON_KEY`, `DIRECT_URL`(**Repository secret**으로 등록 — Environment secret은
 워크플로에 `environment:` 선언이 없어 안 읽힌다)을 쓴다. 2026-07-27 등록 완료.
