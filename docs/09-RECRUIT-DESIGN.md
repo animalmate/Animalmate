@@ -358,7 +358,9 @@ CP949 되살리기(115), 빠진 행 알림(116), 중복쌍 표시(117·120), 주
 
 ## 8. 폐기 (회장단, 되돌릴 수 없음)
 - 2단계 확인(모달 + 라벨 재입력). 실행 = `archived_stats` 계산(지원자 수·서류합격·최종합격·평균 서류/면접 점수,
-  전부 익명 수치) → cohort.closed_at·archived_stats 기록 → applicants delete(cascade 로 slots/scores/memos 동반).
+  전부 익명 수치) → cohort.closed_at·archived_stats 기록 → applicants delete(cascade 로 scores/memos/결과 메일 동반)
+  → **면접 슬롯(cascade 로 면접관 배정)·대기실 배정도 delete**(2026-10-17 — 계정 없는 면접관·도우미 실명과 줄 메모가
+  남았다).
   mapping_presets 는 재사용 자산이라 유지. 공용 메모지는 키가 `recruit:{cohortId}:{화면}:{팀}` 이라
   기수 단위로 전량 삭제한다(운영진이 메모지에 지원자 실명을 적으므로, 남기면 "모두 폐기" 고지를 어긴다).
 - 재폐기 차단: `archived_stats` 가 이미 있으면 409. 두 번 실행하면 지원자가 0명이라 집계가 0 으로 덮여
