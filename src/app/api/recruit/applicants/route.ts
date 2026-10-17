@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentActor } from '@/auth/current-user';
-import { isPrivileged, isStaffPlus } from '@/auth/permissions';
+import { canMarkRecruitReview, isPrivileged, isStaffPlus } from '@/auth/permissions';
 import {
   listApplicantsByCohort,
   listApplicantsByCohortSlim,
@@ -188,13 +188,13 @@ export async function PATCH(req: Request): Promise<Response> {
       return NextResponse.json({ status: moved.after });
     }
 
-    // 최종 검토(5번)의 의견 표시 — **팀장단이 회의 중에 누르는 값**이라 운영진 이상에게 연다.
-    // 상태를 바꾸지 않으므로 회장단 전용(recruit.manage)이 아니라 채점과 같은 층(recruit.score,
-    // staff+)이다: 여기서 붙는 것은 "이렇게 하자"는 의견이고, 합격/불합격은 6번에서 회장단이 정한다.
+    // 최종 검토(5번)의 의견 표시 — **팀장단(position='leader')과 회장단만** 누른다(결정 171).
+    // 열람은 운영진 전원이지만, 이 표시가 6번 최종 결정의 입력으로 그대로 쓰이므로(결정 138)
+    // 일반 팀원(position='member')은 제외한다.
     if (action === 'review_mark') {
-      if (!isStaffPlus(actor.role)) {
+      if (!canMarkRecruitReview(actor)) {
         return NextResponse.json(
-          { error: 'forbidden', message: '검토 표시는 운영진만 할 수 있습니다.' },
+          { error: 'forbidden', message: '검토 표시는 팀장단과 회장단만 할 수 있습니다.' },
           { status: 403 }
         );
       }

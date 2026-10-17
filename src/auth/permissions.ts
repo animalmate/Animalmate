@@ -62,6 +62,7 @@ export type Action =
   | { kind: 'bot.token' } // 봇 토큰 관리
   | { kind: 'joincode.manage' } // 학기 가입코드 발급/재발급
   | { kind: 'recruit.score' } // F9 신입 모집: 채점·개인메모·공용메모지(운영진 이상)
+  | { kind: 'recruit.reviewMark' } // F9 신입 모집: 5번 최종 검토 표시(팀장단 + 회장단)
   | { kind: 'recruit.notice' } // F9 신입 모집: 공고·안내문구·마감/공개 스위치·기수 생성(회장단 + 공고 편집 팀)
   | { kind: 'recruit.manage' } // F9 신입 모집: 확정·배정·공개·폐기·export(회장단 전용)
   | { kind: 'flash.create' } // 번개 개최 — 부원도 낼 수 있다(부원 건은 pending 으로 들어간다)
@@ -133,6 +134,18 @@ export function leadsTeam(actor: Actor, teamId: string): boolean {
 }
 
 /**
+ * 5번 최종 검토 화면에서 탈락/다른 팀 표시를 누를 수 있는가 — **팀장단(어느 팀이든 position='leader')과 회장단**.
+ *
+ * 화면 열람은 운영진 전원(staff+)이지만, 표시(review_mark)는 6번 최종 결정 화면의 합격/불합격/최종 팀
+ * 계산에 그대로 쓰이므로(결정 138) 일반 팀원은 읽기만 하고 팀장단·회장단만 표시한다(결정 171).
+ */
+export function canMarkRecruitReview(actor: Actor): boolean {
+  if (!actor.membershipActive) return false;
+  if (isPrivileged(actor.role)) return true;
+  return isStaffPlus(actor.role) && actor.teams.some((t) => t.position === 'leader');
+}
+
+/**
  * 쓰기 행위 권한 판단(순수). 서버에서 이 결과로 실행 여부와 audit override 를 결정한다.
  */
 export function authorize(actor: Actor, action: Action): Decision {
@@ -173,6 +186,11 @@ export function authorize(actor: Actor, action: Action): Decision {
     case 'post.create':
     case 'recruit.score':
       return isStaffPlus(actor.role) ? ALLOW : deny('role_insufficient');
+
+    // F9 5번 최종 검토 표시(탈락 / 다른 팀): 팀장단(position='leader')과 회장단만(결정 171).
+    // 화면 열람은 운영진 전원이나, 표시는 6번 최종 결정의 입력으로 그대로 쓰이므로 일반 팀원은 제외한다.
+    case 'recruit.reviewMark':
+      return canMarkRecruitReview(actor) ? ALLOW : deny('role_insufficient');
 
     // F9 공고·안내(본문·포스터·지원서 문항·기수 생성·마감/공개 스위치·합격자 안내문):
     // 회장단 + 공고 편집 권한이 켜진 팀. 운영진이라고 다 되는 것이 아니다 —

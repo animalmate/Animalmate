@@ -526,7 +526,7 @@ export const SCREEN_HELP: Record<ScreenKey, ScreenHelp> = {
   'recruit-review': {
     title: '5. 최종 검토 — 도움말',
     body: `면접이 끝난 뒤, 결정하기 **전에** 팀장단이 다 같이 보며 **의견을 남기는** 화면입니다.
-운영진 누구나 볼 수 있고 표시할 수 있습니다.
+운영진 누구나 볼 수 있고, **탈락·다른 팀 표시는 팀장단과 회장단만** 할 수 있습니다.
 
 ## 보는 법
 

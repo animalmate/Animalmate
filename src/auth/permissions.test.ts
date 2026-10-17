@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   authorize,
   canEditRecruitNotice,
+  canMarkRecruitReview,
   ownsResource,
   isPrivileged,
   isStaffPlus,
@@ -214,6 +215,26 @@ describe('authorize — 권한 매트릭스 (03 접근 규칙 / PRD §4)', () =>
     expect(authorize(actor('staff', { membershipActive: false }), { kind: 'recruit.score' }).reason).toBe(
       'membership_inactive'
     );
+  });
+
+  it('18. recruit.reviewMark(5번 최종 검토 표시) = 팀장단(leader) + 회장단만 허용, 일반 팀원(member)·부원·만료 거부', () => {
+    const teamLeader = actor('staff', { teams: [team('t-1', 'leader')] });
+    const teamMember = actor('staff', { teams: [team('t-1', 'member')] });
+    const noTeamStaff = actor('staff');
+    const expiredLeader = actor('staff', { membershipActive: false, teams: [team('t-1', 'leader')] });
+
+    expect(authorize(teamLeader, { kind: 'recruit.reviewMark' }).allowed).toBe(true);
+    expect(authorize(actor('board'), { kind: 'recruit.reviewMark' }).allowed).toBe(true);
+    expect(authorize(actor('sysadmin'), { kind: 'recruit.reviewMark' }).allowed).toBe(true);
+
+    expect(authorize(teamMember, { kind: 'recruit.reviewMark' }).reason).toBe('role_insufficient');
+    expect(authorize(noTeamStaff, { kind: 'recruit.reviewMark' }).reason).toBe('role_insufficient');
+    expect(authorize(actor('member'), { kind: 'recruit.reviewMark' }).reason).toBe('role_insufficient');
+    expect(authorize(expiredLeader, { kind: 'recruit.reviewMark' }).reason).toBe('membership_inactive');
+
+    expect(canMarkRecruitReview(teamLeader)).toBe(true);
+    expect(canMarkRecruitReview(teamMember)).toBe(false);
+    expect(canMarkRecruitReview(expiredLeader)).toBe(false);
   });
 });
 

@@ -35,6 +35,7 @@ tmp/
 
 # 에디터
 .vscode/
+.vs/
 .idea/
 *.swp
 

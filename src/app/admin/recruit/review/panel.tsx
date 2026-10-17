@@ -183,6 +183,7 @@ function MarkBox({
   onToggle,
   applicantName,
   saving,
+  disabled = false,
   compact = false,
 }: {
   mark: ReviewMark;
@@ -191,20 +192,23 @@ function MarkBox({
   applicantName: string;
   /** 저장이 끝나기 전에 같은 줄을 또 누르면 요청이 엇갈려 마지막 값이 뒤집힌다. */
   saving: boolean;
+  /** 팀장단·회장단이 아닌 일반 운영진은 읽기 전용이라 잠근다(결정 171). */
+  disabled?: boolean;
   /** 폰 카드용 — 글자를 함께 보여 준다(표는 열 제목이 이미 말해 준다). */
   compact?: boolean;
 }) {
   const style = MARK_STYLE[mark];
+  const locked = saving || disabled;
   return (
     <label
-      className={`flex min-h-tap cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 text-[12px] font-semibold transition-colors ${
+      className={`flex min-h-tap items-center justify-center gap-1.5 rounded-lg border px-2 text-[12px] font-semibold transition-colors ${
         checked ? style.on : style.off
-      } ${saving ? 'cursor-wait opacity-60' : ''} ${compact ? 'flex-1 py-1' : 'w-full'}`}
+      } ${saving ? 'cursor-wait opacity-60' : disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${compact ? 'flex-1 py-1' : 'w-full'}`}
     >
       <input
         type="checkbox"
         checked={checked}
-        disabled={saving}
+        disabled={locked}
         onChange={onToggle}
         aria-label={`${applicantName} ${REVIEW_MARK_LABEL[mark]} 표시`}
         className="h-4 w-4 rounded border-ink-300 text-blue-600 focus:ring-blue-500"
@@ -232,6 +236,7 @@ function MoveTeamSelect({
   onChange,
   applicantName,
   saving,
+  disabled = false,
 }: {
   value: string | null;
   teams: string[];
@@ -239,13 +244,14 @@ function MoveTeamSelect({
   onChange: (team: string) => void;
   applicantName: string;
   saving: boolean;
+  disabled?: boolean;
 }) {
   const extra = value && !teams.includes(value) ? [value] : [];
   return (
     <Select
       uiSize="sm"
       value={value ?? ''}
-      disabled={saving}
+      disabled={saving || disabled}
       onChange={(e) => onChange(e.target.value)}
       aria-label={`${applicantName} 보낼 팀`}
       // 글자 크기를 덧붙이지 않는다 — `uiSize` 가 정한 `text-[13px]` 과 같은 특이도라
@@ -391,7 +397,15 @@ function ScoreDetail({
   );
 }
 
-export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEditNotice: boolean }) {
+export function RecruitReviewPanel({
+  role,
+  canEditNotice,
+  canMark,
+}: {
+  role: Role;
+  canEditNotice: boolean;
+  canMark: boolean;
+}) {
   const [cohorts, setCohorts] = useState<any[]>([]);
   // 기수 목록을 받아오는 동안 셀렉트에 표시한다(빈 드롭다운 = '기수 없음' 오해 방지).
   const [cohortsLoading, setCohortsLoading] = useState(true);
@@ -512,7 +526,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
     mark: ReviewMark | null,
     moveTeam: string | null
   ) => {
-    if (markingIds.has(app.id)) return;
+    if (!canMark || markingIds.has(app.id)) return;
     const before: MarkState = {
       reviewMark: app.reviewMark ?? null,
       reviewMoveTeam: app.reviewMoveTeam ?? null,
@@ -618,7 +632,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
             면접을 본 지원자를 팀별로 놓고 면접 점수·지망 팀·면접 평가 총평을 함께 봅니다.{' '}
             <strong className="text-ink-700">탈락</strong>·
             <strong className="text-ink-700">다른 팀</strong>(보낼 팀은 안 골라도 됩니다) 표시는
-            회장단에게 넘길 의견이고, 합격 여부와 배정 팀은 여기서 바뀌지 않습니다.
+            팀장단과 회장단이 남기며, 합격 여부와 배정 팀은 다음 단계에서 확정합니다.
           </p>
         </div>
 
@@ -834,6 +848,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
                                     onToggle={() => handleMark(app, 'drop')}
                                     applicantName={app.name}
                                     saving={saving}
+                                    disabled={!canMark}
                                   />
                                 </td>
                                 <td className="p-2">
@@ -844,6 +859,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
                                       onToggle={() => handleMark(app, 'move')}
                                       applicantName={app.name}
                                       saving={saving}
+                                      disabled={!canMark}
                                     />
                                     {/* 켠 줄에만 나온다 — 안 켠 줄까지 셀렉트가 서면 표가
                                         "팀을 고르는 화면"으로 보인다. */}
@@ -855,6 +871,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
                                         onChange={(team) => handleMoveTeam(app, team)}
                                         applicantName={app.name}
                                         saving={saving}
+                                        disabled={!canMark}
                                       />
                                     ) : null}
                                   </div>
@@ -963,6 +980,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
                             onToggle={() => handleMark(app, 'drop')}
                             applicantName={app.name}
                             saving={saving}
+                            disabled={!canMark}
                             compact
                           />
                           <MarkBox
@@ -971,6 +989,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
                             onToggle={() => handleMark(app, 'move')}
                             applicantName={app.name}
                             saving={saving}
+                            disabled={!canMark}
                             compact
                           />
                         </div>
@@ -986,6 +1005,7 @@ export function RecruitReviewPanel({ role, canEditNotice }: { role: Role; canEdi
                               onChange={(team) => handleMoveTeam(app, team)}
                               applicantName={app.name}
                               saving={saving}
+                              disabled={!canMark}
                             />
                           </div>
                         ) : null}
